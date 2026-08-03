@@ -1,0 +1,5 @@
+git lfs track "*.glb"
+git lfs track "*.fbx"
+git lfs track "*.png"
+git lfs track "*.wav"
+git lfs track "*.mp3"
