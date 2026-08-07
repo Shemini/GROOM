@@ -51,6 +51,9 @@
   #healthNum{position:absolute;right:6px;top:1px;font-size:12px;color:var(--bone);}
 
   #ammoWrap{position:absolute;right:24px;bottom:24px;text-align:right;}
+  #minimapWrap{position:absolute;right:24px;bottom:104px;width:400px;height:400px;
+    border:2px solid var(--panel-line);background:transparent;overflow:hidden;}
+  #minimapCanvas{position:absolute;inset:0;width:100%;height:100%;}
   #weaponName{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;color:var(--bone);}
   #ammoNum{font-size:20px;color:var(--amber);}
   #ammoNum span{color:var(--dim);font-size:15px;}
@@ -175,6 +178,10 @@
     <div id="reloadTag">RELOADING...</div>
   </div>
 
+  <div id="minimapWrap">
+    <canvas id="minimapCanvas" width="400" height="400"></canvas>
+  </div>
+
   <div id="shopHint">[E] INTERACT &nbsp; [R] RELOAD &nbsp; [1-4] WEAPON &nbsp; [M] MUTE &nbsp; [B] CURSOR &nbsp; [~] DEBUG</div>
 </div>
 
@@ -211,6 +218,20 @@
   <input type="color" id="horizonColor" value="#e8c9a0">
   <div class="rowLabel"><span>Horizon Sharpness</span><span class="val" id="vHorizonSharpness">2.0</span></div>
   <input type="range" id="horizonSharpness" min="0.3" max="8" step="0.1" value="2.0">
+
+  <h3>LIGHTING</h3>
+  <div class="rowLabel"><span>Sun Color</span></div>
+  <input type="color" id="sunColor" value="#fff2df">
+  <div class="rowLabel"><span>Sun Intensity</span><span class="val" id="vSunIntensity">1.10</span></div>
+  <input type="range" id="sunIntensity" min="0" max="3" step="0.01" value="1.1">
+  <div class="rowLabel"><span>Ambient Color</span></div>
+  <input type="color" id="ambientColor" value="#4a5a78">
+  <div class="rowLabel"><span>Ambient Intensity</span><span class="val" id="vAmbientIntensity">0.70</span></div>
+  <input type="range" id="ambientIntensity" min="0" max="2" step="0.01" value="0.7">
+  <div class="rowLabel"><span>Contact Shadow Color</span></div>
+  <input type="color" id="contactShadowColor" value="#000000">
+  <div class="rowLabel"><span>Contact Shadow Opacity</span><span class="val" id="vContactShadowOpacity">0.45</span></div>
+  <input type="range" id="contactShadowOpacity" min="0" max="1" step="0.01" value="0.45">
 
   <div class="panelBtns">
     <button id="btnReset">RESET</button>
@@ -279,8 +300,13 @@ const PLAYER_RADIUS = 0.35;
 const ZOMBIE_RADIUS = 0.4;
 const WALK_SPEED = 5.0;
 const RUN_SPEED = 10.0;
+const ZOMBIE_SPEED_MULT = 2.5;
 const GRAVITY = 22;
-const CELL = 2; // nav grid cell size, meters
+const FINE_CELL = 2;      // nav grid cell size (meters) used once close to the player
+const COARSE_CELL = 5;    // nav grid cell size (meters) used for long-distance routing
+const FAR_THRESHOLD = 18; // meters — beyond this, zombies path on the coarse grid
+const STEP_SMOOTH_MAX = 1.2; // meters — normal walkable step/slope tolerance
+const LEDGE_DROP_MAX = 4.0;  // meters — max one-way drop zombies/paths will take off a ledge
 const INTERACT_RADIUS = 2.6;
 const STAGGER_DURATION = 0.35;
 const KNOCKBACK_DIST = 0.3;
@@ -288,6 +314,26 @@ const DROP_LIFETIME = 15;
 const DROP_TYPES = ['ammo','health','double','instakill'];
 const DROP_COLORS = { ammo:0xe8b24d, health:0x6fef7d, double:0xfff2b0, instakill:0xc81e2c };
 const BOX_COST = 1500;
+
+// Sprite-based enemy sizing. Fractions are relative to the 128x256 reference sheet, so they
+// carry over unchanged once the real (animated) spritesheet replaces this static test image.
+const AVG_ZOMBIE_HEIGHT = EYE_HEIGHT + 0.30; // tested value
+const ZOMBIE_HEIGHT_VARIATION = 0.10;        // total spread across the population, as a fraction of the average
+const HITBOX_WIDTH_FRACTION = 50/128;        // central width counted as the collidable body
+const HEAD_HEIGHT_FRACTION = 40/256;         // top portion counted as the head, for headshots
+
+// "TrajeA" enemy spritesheet: 2048x2048, 8 columns x 4 rows, each cell the same 1:2 aspect
+// as the original static reference image. Row order top-to-bottom in the source PNG:
+// 0 = walk toward player (looping), 1 = walk away from player (looping),
+// 2 = attack/punch (looping, overrides walk while in range), 3 = death (plays once).
+const SPRITE_COLS = 8, SPRITE_ROWS = 4;
+const ANIM_FRAME_DURATION = 1/8; // 8 frames per second -> a full 8-frame cycle takes 1s
+const ANIM_ROW_WALK_TOWARD = 0, ANIM_ROW_WALK_AWAY = 1, ANIM_ROW_ATTACK = 2, ANIM_ROW_DEATH = 3;
+
+// Sun light-travel direction, converted from the 3ds Max (-0.29, 0.222, -0.916) Z-up vector
+// to three.js's Y-up convention via the same (x,y,z) -> (x,z,-y) mapping used for the
+// FBX/glTF export pipeline elsewhere in this project.
+const SUN_DIRECTION = new THREE.Vector3(-0.29, -0.916, -0.222).normalize();
 
 const ALL_WEAPONS = [
   { name:'PISTOL',  type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72,  cost:0,    ammoCost:0,   spread:0.010, pellets:1 },
@@ -363,6 +409,7 @@ let scene, camera, renderer, clock;
 let renderTarget, quadScene, quadCamera, quadMesh, quadMaterial;
 let skyMesh, skyMaterial;
 let collisionMeshes = [];
+let environmentMeshes = [];
 let stationMarkers = []; // { core, group, weaponIndex, pos, spinPhase }
 let boxCore = null, boxPos = null;
 let trajectoryMarker = null;
@@ -374,11 +421,16 @@ let blackHoles = [];
 let damageNumbers = [];
 let drops = [];
 let flashLight;
-let navBlocked = null, navBounds = null, gridW=0, gridH=0;
+let zombieSpriteTexture = null;
+let navGridFine = null, navGridCoarse = null, levelMaxY = 10;
+let sunLight = null, ambientLight = null, levelBox = null;
+let minimapTransform = null, minimapCanvasEl = null, minimapCtx = null, minimapBgCanvas = null;
+const MINIMAP_V_FLIP = false; // flip if markers end up vertically mirrored vs. the real map
 let currentInteractable = null;
 let pendingSwapTarget = null;
 let boxState = 'idle';
 let feetY = 0;
+let playerVelY = 0;
 let playerStart = null;
 
 let audioCtx = null, masterGain = null, muted = false;
@@ -392,6 +444,8 @@ const raycaster = new THREE.Raycaster();
 const settings = {
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:4, lutStrength:1,
   skyColor:'#3a5f8a', horizonColor:'#e8c9a0', horizonSharpness:2.0,
+  sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
+  contactShadowColor:'#000000', contactShadowOpacity:0.45,
 };
 
 function createDefaultMods(){
@@ -580,20 +634,33 @@ function init(){
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 500);
+  raycaster.camera = camera; // THREE.Sprite raycasting throws without this set; costs nothing to set regardless
 
   renderer = new THREE.WebGLRenderer({ antialias:false, logarithmicDepthBuffer:true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.body.insertBefore(renderer.domElement, document.body.firstChild);
 
   clock = new THREE.Clock();
 
-  const hemi = new THREE.HemisphereLight(0x8a8a95, 0x1a1a1c, 0.9);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xfff2df, 0.6);
-  dir.position.set(50,100,30);
-  scene.add(dir);
+  minimapCanvasEl = el('minimapCanvas');
+  minimapCtx = minimapCanvasEl.getContext('2d');
+
+  ambientLight = new THREE.AmbientLight(new THREE.Color(settings.ambientColor), settings.ambientIntensity);
+  scene.add(ambientLight);
+
+  sunLight = new THREE.DirectionalLight(new THREE.Color(settings.sunColor), settings.sunIntensity);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(2048, 2048);
+  sunLight.shadow.bias = -0.0005;
+  sunLight.shadow.normalBias = 0.02;
+  sunLight.target = new THREE.Object3D();
+  scene.add(sunLight);
+  scene.add(sunLight.target);
+  // Positioned/oriented once the level's real size is known — see configureSunShadow().
 
   flashLight = new THREE.PointLight(0xfff2c0, 0, 12, 2);
   camera.add(flashLight);
@@ -900,9 +967,40 @@ function wireSettingsUI(){
     el('vHorizonSharpness').textContent = v.toFixed(1);
   });
 
+  el('sunColor').addEventListener('input', ()=>{
+    settings.sunColor = el('sunColor').value;
+    sunLight.color.set(settings.sunColor);
+  });
+  el('sunIntensity').addEventListener('input', ()=>{
+    const v = parseFloat(el('sunIntensity').value);
+    settings.sunIntensity = v; sunLight.intensity = v;
+    el('vSunIntensity').textContent = v.toFixed(2);
+  });
+  el('ambientColor').addEventListener('input', ()=>{
+    settings.ambientColor = el('ambientColor').value;
+    ambientLight.color.set(settings.ambientColor);
+  });
+  el('ambientIntensity').addEventListener('input', ()=>{
+    const v = parseFloat(el('ambientIntensity').value);
+    settings.ambientIntensity = v; ambientLight.intensity = v;
+    el('vAmbientIntensity').textContent = v.toFixed(2);
+  });
+  el('contactShadowColor').addEventListener('input', ()=>{
+    settings.contactShadowColor = el('contactShadowColor').value;
+    zombies.forEach(z=>z.blob.material.color.set(settings.contactShadowColor));
+  });
+  el('contactShadowOpacity').addEventListener('input', ()=>{
+    const v = parseFloat(el('contactShadowOpacity').value);
+    settings.contactShadowOpacity = v;
+    zombies.forEach(z=>z.blob.material.opacity = v);
+    el('vContactShadowOpacity').textContent = v.toFixed(2);
+  });
+
   el('btnReset').addEventListener('click', ()=>{
     const d = { brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:4, lutStrength:1,
-      skyColor:'#3a5f8a', horizonColor:'#e8c9a0', horizonSharpness:2.0 };
+      skyColor:'#3a5f8a', horizonColor:'#e8c9a0', horizonSharpness:2.0,
+      sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
+      contactShadowColor:'#000000', contactShadowOpacity:0.45 };
     Object.assign(settings, d);
     el('brightness').value=0; el('vBrightness').textContent='0.00';
     el('contrast').value=0; el('vContrast').textContent='0.00';
@@ -913,12 +1011,18 @@ function wireSettingsUI(){
     el('lutStrength').value=1; el('vLutStrength').textContent='1.00';
     el('skyColor').value=d.skyColor; el('horizonColor').value=d.horizonColor;
     el('horizonSharpness').value=2.0; el('vHorizonSharpness').textContent='2.0';
+    el('sunColor').value=d.sunColor; el('sunIntensity').value=d.sunIntensity; el('vSunIntensity').textContent=d.sunIntensity.toFixed(2);
+    el('ambientColor').value=d.ambientColor; el('ambientIntensity').value=d.ambientIntensity; el('vAmbientIntensity').textContent=d.ambientIntensity.toFixed(2);
+    el('contactShadowColor').value=d.contactShadowColor; el('contactShadowOpacity').value=d.contactShadowOpacity; el('vContactShadowOpacity').textContent=d.contactShadowOpacity.toFixed(2);
     quadMaterial.uniforms.brightness.value=0; quadMaterial.uniforms.contrast.value=0;
     quadMaterial.uniforms.hue.value=0; quadMaterial.uniforms.saturation.value=1;
     quadMaterial.uniforms.tint.value.set(1,1,1); quadMaterial.uniforms.lutStrength.value=1;
     skyMaterial.uniforms.skyColor.value.set(d.skyColor);
     skyMaterial.uniforms.horizonColor.value.set(d.horizonColor);
     skyMaterial.uniforms.horizonSharpness.value=2.0;
+    sunLight.color.set(d.sunColor); sunLight.intensity=d.sunIntensity;
+    ambientLight.color.set(d.ambientColor); ambientLight.intensity=d.ambientIntensity;
+    zombies.forEach(z=>{ z.blob.material.color.set(d.contactShadowColor); z.blob.material.opacity=d.contactShadowOpacity; });
     rebuildRenderTarget();
   });
 
@@ -961,14 +1065,148 @@ function loadModel(name, onDone, onProgress, onFail){
   );
 }
 
+// =================================================================
+// MINIMAP — calibrated from the reference plane's own world-space vertices and UVs, rather
+// than assuming it's axis-aligned. This solves a proper affine transform (handles any
+// rotation/scale the plane was placed with) from 3 well-spread sample points, so world (x,z)
+// maps to the same UV space the plane's texture would be sampled at.
+// =================================================================
+function det3(m){
+  return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+       - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+       + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+}
+function pickSpreadPoints(pts){
+  let p0 = pts[0];
+  let p1 = pts[0], maxD=-1;
+  for(const p of pts){ const d=(p.x-p0.x)*(p.x-p0.x)+(p.z-p0.z)*(p.z-p0.z); if(d>maxD){maxD=d;p1=p;} }
+  let p2 = pts[0], maxArea=-1;
+  for(const p of pts){
+    const area = Math.abs((p1.x-p0.x)*(p.z-p0.z) - (p1.z-p0.z)*(p.x-p0.x));
+    if(area>maxArea){ maxArea=area; p2=p; }
+  }
+  return [p0,p1,p2];
+}
+function solveAffineFromPoints(pts){
+  const [p0,p1,p2] = pickSpreadPoints(pts);
+  const M = [[p0.x,p0.z,1],[p1.x,p1.z,1],[p2.x,p2.z,1]];
+  const detM = det3(M);
+  if(Math.abs(detM) < 1e-6) return null; // degenerate (collinear) sample points
+  function solveFor(vals){
+    const Mx=[[vals[0],M[0][1],M[0][2]],[vals[1],M[1][1],M[1][2]],[vals[2],M[2][1],M[2][2]]];
+    const My=[[M[0][0],vals[0],M[0][2]],[M[1][0],vals[1],M[1][2]],[M[2][0],vals[2],M[2][2]]];
+    const Mc=[[M[0][0],M[0][1],vals[0]],[M[1][0],M[1][1],vals[1]],[M[2][0],M[2][1],vals[2]]];
+    return { A: det3(Mx)/detM, B: det3(My)/detM, C: det3(Mc)/detM };
+  }
+  return { uCoef: solveFor([p0.u,p1.u,p2.u]), vCoef: solveFor([p0.v,p1.v,p2.v]) };
+}
+function worldToMinimapUV(x,z){
+  if(!minimapTransform) return null;
+  const { uCoef, vCoef } = minimapTransform;
+  return { u: uCoef.A*x+uCoef.B*z+uCoef.C, v: vCoef.A*x+vCoef.B*z+vCoef.C };
+}
+function loadMinimap(){
+  loadModel('Minimap', root=>{
+    let meshFound = null;
+    root.traverse(o=>{ if(o.isMesh && !meshFound) meshFound = o; });
+    if(!meshFound){ console.error('Minimap.glb contains no mesh — minimap disabled.'); return; }
+    meshFound.updateMatrixWorld(true);
+    const posAttr = meshFound.geometry.attributes.position;
+    const uvAttr = meshFound.geometry.attributes.uv;
+    if(!uvAttr){ console.error('Minimap mesh has no UVs — minimap disabled.'); return; }
+    const pts = [];
+    const v = new THREE.Vector3();
+    for(let i=0;i<posAttr.count;i++){
+      v.fromBufferAttribute(posAttr, i).applyMatrix4(meshFound.matrixWorld);
+      pts.push({ x:v.x, z:v.z, u:uvAttr.getX(i), v:uvAttr.getY(i) });
+    }
+    minimapTransform = solveAffineFromPoints(pts);
+    if(!minimapTransform) console.error('Minimap calibration failed — sample points were collinear.');
+  }, ()=>{}, err=>{ console.error('Minimap load failed', err); });
+}
+
+// The source Minimap.png stores its content at ~60% alpha (153/255) rather than fully opaque,
+// while the surrounding area is correctly at 0% — so the whole image reads as uniformly
+// translucent instead of "solid map, transparent perimeter." Boosting non-zero alpha back
+// toward full opacity (leaving true-zero pixels untouched) corrects this without needing a
+// re-export. Runs once on load, not per frame.
+function loadMinimapImage(){
+  const img = new Image();
+  img.onload = () => {
+    const off = document.createElement('canvas');
+    off.width = img.width; off.height = img.height;
+    const octx = off.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    try {
+      const imgData = octx.getImageData(0, 0, off.width, off.height);
+      const d = imgData.data;
+      const BAKED_ALPHA = 0.6;
+      for(let i=3; i<d.length; i+=4){
+        if(d[i]>0) d[i] = Math.min(255, Math.round(d[i]/BAKED_ALPHA));
+      }
+      octx.putImageData(imgData, 0, 0);
+    } catch(e){
+      console.error('Minimap alpha correction skipped (canvas pixel read blocked) — using the image as-is:', e);
+    }
+    minimapBgCanvas = off;
+  };
+  img.onerror = () => console.error('Minimap.png failed to load');
+  img.src = './Minimap.png';
+}
+
+function updateMinimap(){
+  if(!minimapCtx) return;
+  const canvas = minimapCanvasEl;
+  minimapCtx.clearRect(0,0,canvas.width,canvas.height);
+  if(minimapBgCanvas) minimapCtx.drawImage(minimapBgCanvas, 0, 0, canvas.width, canvas.height);
+  if(!minimapTransform) return; // markers wait on calibration; background can already show
+
+  minimapCtx.fillStyle = '#e8434a';
+  zombies.forEach(z=>{
+    const uv = worldToMinimapUV(z.group.position.x, z.group.position.z);
+    if(!uv) return;
+    const zx = uv.u*canvas.width;
+    const zy = (MINIMAP_V_FLIP ? (1-uv.v) : uv.v) * canvas.height;
+    minimapCtx.beginPath();
+    minimapCtx.arc(zx,zy,5,0,Math.PI*2);
+    minimapCtx.fill();
+  });
+
+  const playerUV = worldToMinimapUV(camera.position.x, camera.position.z);
+  if(playerUV){
+    const px = playerUV.u*canvas.width;
+    const py = (MINIMAP_V_FLIP ? (1-playerUV.v) : playerUV.v) * canvas.height;
+    minimapCtx.fillStyle = '#4ea8e8';
+    minimapCtx.beginPath();
+    minimapCtx.arc(px,py,6,0,Math.PI*2);
+    minimapCtx.fill();
+    minimapCtx.strokeStyle = '#ffffff';
+    minimapCtx.lineWidth = 2;
+    minimapCtx.stroke();
+  }
+}
+
 function loadAssets(){
-  let envDone=false, colDone=false, envProgress=0, colProgress=0;
+  let envDone=false, colDone=false, spriteDone=false, envProgress=0, colProgress=0;
 
   function updateBar(){
     const pct = Math.round(((envProgress+colProgress)/2)*100);
     loadingFill.style.width = pct+'%';
     loadingLabel.textContent = pct+'%' + (envDone && !colDone ? ' — collision mesh' : (!envDone ? ' — environment' : ''));
   }
+
+  new THREE.TextureLoader().load('./TrajeA.png', tex=>{
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false; // mipmaps would blur in neighboring spritesheet frames at a distance
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    zombieSpriteTexture = tex;
+    spriteDone = true;
+    tryFinishLoading();
+  }, undefined, err=>{ console.error('Enemy sprite load failed', err); loadingLabel.textContent='Failed to load enemy sprite (TrajeA.png) — see console.'; });
+
+  loadMinimap(); // doesn't gate game start — the minimap just stays blank until it's ready
+  loadMinimapImage();
 
   loadModel('Collision', root=>{
     root.scale.set(SCALE_CORRECTION, SCALE_CORRECTION, SCALE_CORRECTION);
@@ -982,7 +1220,7 @@ function loadAssets(){
 
   loadModel('Environment', root=>{
     root.scale.set(SCALE_CORRECTION, SCALE_CORRECTION, SCALE_CORRECTION);
-    root.traverse(o=>{ if(o.isMesh) o.frustumCulled=false; });
+    root.traverse(o=>{ if(o.isMesh){ o.frustumCulled=false; o.castShadow=true; environmentMeshes.push(o); } });
     flattenMaterials(root);
     scene.add(root);
     envDone=true; envProgress=1; updateBar();
@@ -991,10 +1229,11 @@ function loadAssets(){
   err=>{ console.error('Environment load failed', err); loadingLabel.textContent='Failed to load environment — see console.'; });
 
   function tryFinishLoading(){
-    if(!envDone || !colDone) return;
+    if(!envDone || !colDone || !spriteDone) return;
     loadingLabel.textContent = 'Preparing level...';
     setTimeout(()=>{
       buildNavGrid();
+      configureSunShadow();
       placePlayerAtStart();
       placeStationsAndBox();
       gameState = 'menu';
@@ -1013,16 +1252,8 @@ function getFloorY(x, z, fromY){
   const hits = raycaster.intersectObjects(collisionMeshes, false);
   return hits.length>0 ? hits[0].point.y : null;
 }
-function canMoveTo(fromX, fromZ, toX, toZ, height){
-  const dx=toX-fromX, dz=toZ-fromZ;
-  const dist = Math.hypot(dx,dz);
-  if(dist<0.0001) return true;
-  const dir = new THREE.Vector3(dx,0,dz).normalize();
-  raycaster.set(new THREE.Vector3(fromX,height,fromZ), dir);
-  raycaster.far = dist + PLAYER_RADIUS;
-  const hits = raycaster.intersectObjects(collisionMeshes, false);
-  return !(hits.length>0 && hits[0].distance < dist+PLAYER_RADIUS);
-}
+// Used only for short validation checks (nav-grid edges, spawn/box placement) where we just
+// need a yes/no, not a slide response.
 function canMoveToRadius(fromX, fromZ, toX, toZ, height, radius){
   const dx=toX-fromX, dz=toZ-fromZ;
   const dist = Math.hypot(dx,dz);
@@ -1032,6 +1263,50 @@ function canMoveToRadius(fromX, fromZ, toX, toZ, height, radius){
   raycaster.far = dist + radius;
   const hits = raycaster.intersectObjects(collisionMeshes, false);
   return !(hits.length>0 && hits[0].distance < dist+radius);
+}
+// Shared by the player and zombies. Two improvements over a single-bounce version:
+// 1) Height-aware hit filtering — a horizontal ray can't tell "a real wall" from "the
+//    connecting face where a platform drops off to a lower floor" just from distance; both
+//    are directly in its path. We ignore any hit whose point is well below the current foot
+//    level, since that's a ledge you should be able to walk off, not something blocking you.
+// 2) Two bounce iterations — a single slide-and-recheck gives up entirely in concave corners
+//    (two walls meeting near 90°), which is exactly where zombies were getting stuck. This
+//    tries a second slide off the second wall's tangent before conceding no movement at all.
+function resolveSlide(fromX, fromZ, dx, dz, height, radius, feetYRef){
+  const minWallY = (feetYRef===undefined ? height-1.3 : feetYRef) - STEP_SMOOTH_MAX;
+  let moveX = dx, moveZ = dz;
+
+  for(let bounce=0; bounce<2; bounce++){
+    const dist = Math.hypot(moveX, moveZ);
+    if(dist<0.0001) return { x:fromX, z:fromZ };
+    const dirX = moveX/dist, dirZ = moveZ/dist;
+    raycaster.set(new THREE.Vector3(fromX,height,fromZ), new THREE.Vector3(dirX,0,dirZ));
+    raycaster.far = dist+radius;
+    const hits = raycaster.intersectObjects(collisionMeshes, false);
+    const blocking = hits.find(h => h.distance < dist+radius && h.point.y > minWallY);
+    if(!blocking){
+      return { x: fromX+moveX, z: fromZ+moveZ };
+    }
+    if(!blocking.face) return { x:fromX, z:fromZ };
+    let normal = blocking.face.normal.clone().transformDirection(blocking.object.matrixWorld);
+    normal.y = 0;
+    if(normal.lengthSq()<0.0001) return { x:fromX, z:fromZ };
+    normal.normalize();
+    const into = moveX*normal.x + moveZ*normal.z;
+    if(into>=0) return { x:fromX, z:fromZ };
+    moveX -= normal.x*into; moveZ -= normal.z*into; // remove into-wall component, keep tangential (slide)
+  }
+
+  // Final validity check on the twice-deflected vector before committing to it.
+  const finalDist = Math.hypot(moveX, moveZ);
+  if(finalDist<0.0001) return { x:fromX, z:fromZ };
+  const fdirX=moveX/finalDist, fdirZ=moveZ/finalDist;
+  raycaster.set(new THREE.Vector3(fromX,height,fromZ), new THREE.Vector3(fdirX,0,fdirZ));
+  raycaster.far = finalDist+radius;
+  const finalHits = raycaster.intersectObjects(collisionMeshes, false);
+  const finalBlocking = finalHits.find(h => h.distance < finalDist+radius && h.point.y > minWallY);
+  if(finalBlocking) return { x:fromX, z:fromZ };
+  return { x: fromX+moveX, z: fromZ+moveZ };
 }
 
 function placePlayerAtStart(){
@@ -1079,51 +1354,147 @@ function updateMovement(delta){
   const speed = ((keys['ShiftLeft']||keys['ShiftRight']) ? RUN_SPEED : WALK_SPEED) * (1+statValue('moveSpeed'));
   const dx = move.x*speed*delta, dz = move.z*speed*delta;
   const chestY = feetY+1.3, kneeY = feetY+0.4;
-  let nx = camera.position.x, nz = camera.position.z;
 
-  if(canMoveTo(nx,nz,nx+dx,nz,chestY) && canMoveTo(nx,nz,nx+dx,nz,kneeY)) nx += dx;
-  if(canMoveTo(nx,nz,nx,nz+dz,chestY) && canMoveTo(nx,nz,nx,nz+dz,kneeY)) nz += dz;
+  const chestResult = resolveSlide(camera.position.x, camera.position.z, dx, dz, chestY, PLAYER_RADIUS, feetY);
+  const kneeResult = resolveSlide(camera.position.x, camera.position.z,
+    chestResult.x-camera.position.x, chestResult.z-camera.position.z, kneeY, PLAYER_RADIUS, feetY);
+  const nx = kneeResult.x, nz = kneeResult.z;
 
   const floorY = getFloorY(nx, nz, feetY+2.2);
-  if(floorY!==null && Math.abs(floorY-feetY)<1.2) feetY += (floorY-feetY)*Math.min(1, delta*12);
-  else if(floorY!==null) feetY = floorY;
+  if(floorY!==null && (feetY-floorY) <= STEP_SMOOTH_MAX){
+    // grounded, or a normal step/slope — smooth snap, no falling physics needed
+    feetY += (floorY-feetY)*Math.min(1, delta*12);
+    playerVelY = 0;
+  } else {
+    // airborne (walked off a ledge, or no floor found below at all) — actually fall
+    playerVelY -= GRAVITY*delta;
+    feetY += playerVelY*delta;
+    if(floorY!==null && feetY<=floorY){ feetY = floorY; playerVelY = 0; }
+  }
 
   camera.position.set(nx, feetY+EYE_HEIGHT, nz);
 }
 
 // =================================================================
 // NAV GRID (A* over the collision mesh footprint, floor + wall sampled)
+// Two resolutions: a coarse grid for long-distance routing and a fine grid for precision
+// close to the player. Edges are directional so a steep one-way ledge drop is representable
+// (allowed going down, not going back up) without needing a separate system.
 // =================================================================
-function buildNavGrid(){
-  const box = new THREE.Box3();
-  collisionMeshes.forEach(m=>box.expandByObject(m));
-  navBounds = { minX: box.min.x-2, minZ: box.min.z-2, maxY: box.max.y+8 };
-  gridW = Math.ceil((box.max.x-box.min.x+4)/CELL);
-  gridH = Math.ceil((box.max.z-box.min.z+4)/CELL);
-  navBlocked = new Uint8Array(gridW*gridH);
-  navFloorY = new Float32Array(gridW*gridH);
-
+function buildGridAtResolution(cellSize, box){
+  const minX = box.min.x-2, minZ = box.min.z-2, maxY = box.max.y+8;
+  const gridW = Math.max(1, Math.ceil((box.max.x-box.min.x+4)/cellSize));
+  const gridH = Math.max(1, Math.ceil((box.max.z-box.min.z+4)/cellSize));
+  const navBlocked = new Uint8Array(gridW*gridH);
+  const navFloorY = new Float32Array(gridW*gridH);
   for(let gz=0; gz<gridH; gz++){
     for(let gx=0; gx<gridW; gx++){
-      const {x,z} = navGridToWorld(gx,gz);
-      const fy = getFloorY(x, z, navBounds.maxY);
+      const x = minX+gx*cellSize+cellSize/2, z = minZ+gz*cellSize+cellSize/2;
+      const fy = getFloorY(x, z, maxY);
       const idx = gz*gridW+gx;
       if(fy===null){ navBlocked[idx]=1; navFloorY[idx]=0; }
       else { navBlocked[idx]=0; navFloorY[idx]=fy; }
     }
   }
+  return { cellSize, minX, minZ, maxY, gridW, gridH, navBlocked, navFloorY };
 }
-let navFloorY = null;
-function navWorldToGrid(x,z){ return { gx: Math.floor((x-navBounds.minX)/CELL), gz: Math.floor((z-navBounds.minZ)/CELL) }; }
-function navGridToWorld(gx,gz){ return { x: navBounds.minX+gx*CELL+CELL/2, z: navBounds.minZ+gz*CELL+CELL/2 }; }
-function navIndex(gx,gz){ return gz*gridW+gx; }
-function navInBounds(gx,gz){ return gx>=0 && gx<gridW && gz>=0 && gz<gridH; }
 
-function edgeWalkable(gx1,gz1,gx2,gz2){
-  const idx1 = navIndex(gx1,gz1), idx2 = navIndex(gx2,gz2);
-  if(navBlocked[idx1] || navBlocked[idx2]) return false;
-  const p1 = navGridToWorld(gx1,gz1), p2 = navGridToWorld(gx2,gz2);
-  const y = Math.max(navFloorY[idx1], navFloorY[idx2]) + 1.2;
+function buildNavGrid(){
+  const box = new THREE.Box3();
+  collisionMeshes.forEach(m=>box.expandByObject(m));
+  if(!isFinite(box.min.x) || !isFinite(box.max.x)){
+    // Defensive: if the collision mesh failed to load/parse, don't let an Infinity bounding
+    // box crash the game with an invalid typed-array length — fall back to a 1x1 empty grid.
+    console.error('Collision mesh bounding box is invalid — nav grid skipped (collisionMeshes.length=' + collisionMeshes.length + ').');
+    const empty = { cellSize:FINE_CELL, minX:0, minZ:0, maxY:10, gridW:1, gridH:1, navBlocked:new Uint8Array([1]), navFloorY:new Float32Array([0]) };
+    navGridFine = empty; navGridCoarse = empty; levelMaxY = 10;
+    levelBox = box;
+    return;
+  }
+  levelBox = box;
+  levelMaxY = box.max.y+8;
+  navGridFine = buildGridAtResolution(FINE_CELL, box);
+  navGridCoarse = buildGridAtResolution(COARSE_CELL, box);
+}
+
+// Positions the sun along -SUN_DIRECTION from the level's center, aimed back at it, and fits
+// the shadow camera's orthographic frustum to the level's actual footprint — without this,
+// DirectionalLight defaults to a tiny shadow frustum useless at building scale.
+// Fits the sun's orthographic shadow frustum to the level by projecting the bounding box's
+// 8 corners into the light's OWN view-aligned basis (right/up/forward relative to
+// SUN_DIRECTION), not world X/Z. A frustum sized from world-axis extents only lines up with
+// geometry when the light points straight down — with real horizontal tilt (as here), that
+// mismatch misaligns the whole shadow frustum, which is what was causing shadows to look
+// disconnected from the geometry. This also tightens near/far to the true depth range for
+// better shadow-map precision, instead of a loose worst-case guess.
+function configureSunShadow(){
+  if(!levelBox || !isFinite(levelBox.min.x)) return;
+  const center = levelBox.getCenter(new THREE.Vector3());
+  const size = levelBox.getSize(new THREE.Vector3());
+  const diag = size.length();
+  const dist = diag*0.6 + 20;
+
+  const viewDir = SUN_DIRECTION.clone().normalize();
+  const lightPos = center.clone().addScaledVector(viewDir, -dist);
+  sunLight.position.copy(lightPos);
+  sunLight.target.position.copy(center);
+  sunLight.target.updateMatrixWorld();
+
+  const worldUp = Math.abs(viewDir.y) > 0.99 ? new THREE.Vector3(0,0,1) : new THREE.Vector3(0,1,0);
+  const right = new THREE.Vector3().crossVectors(viewDir, worldUp).normalize();
+  const camUp = new THREE.Vector3().crossVectors(right, viewDir).normalize();
+
+  let minR=Infinity, maxR=-Infinity, minU=Infinity, maxU=-Infinity, minD=Infinity, maxD=-Infinity;
+  const rel = new THREE.Vector3();
+  for(let ix=0; ix<2; ix++) for(let iy=0; iy<2; iy++) for(let iz=0; iz<2; iz++){
+    rel.set(
+      ix?levelBox.max.x:levelBox.min.x,
+      iy?levelBox.max.y:levelBox.min.y,
+      iz?levelBox.max.z:levelBox.min.z
+    ).sub(lightPos);
+    const r=rel.dot(right), u=rel.dot(camUp), d=rel.dot(viewDir);
+    if(r<minR)minR=r; if(r>maxR)maxR=r;
+    if(u<minU)minU=u; if(u>maxU)maxU=u;
+    if(d<minD)minD=d; if(d>maxD)maxD=d;
+  }
+
+  const margin = 2;
+  const cam = sunLight.shadow.camera;
+  cam.left = minR-margin; cam.right = maxR+margin;
+  cam.bottom = minU-margin; cam.top = maxU+margin;
+  cam.near = Math.max(0.5, minD-margin);
+  cam.far = maxD+margin;
+  cam.updateProjectionMatrix();
+}
+
+function gridWorldToCell(grid,x,z){ return { gx: Math.floor((x-grid.minX)/grid.cellSize), gz: Math.floor((z-grid.minZ)/grid.cellSize) }; }
+function gridCellToWorld(grid,gx,gz){ return { x: grid.minX+gx*grid.cellSize+grid.cellSize/2, z: grid.minZ+gz*grid.cellSize+grid.cellSize/2 }; }
+function gridIndex(grid,gx,gz){ return gz*grid.gridW+gx; }
+function gridInBounds(grid,gx,gz){ return gx>=0 && gx<grid.gridW && gz>=0 && gz<grid.gridH; }
+
+// Cheap approximate wall check using the precomputed nav grid (an array lookup) instead of a
+// live raycast — used for high-frequency checks like zombie-zombie separation, where doing a
+// full raycast per pair scales as O(n^2) with zombie count and was a real performance
+// regression (this is likely what caused movement to feel sluggish as enemy count grew).
+function isPositionBlocked(x, z){
+  if(!navGridFine) return false;
+  const c = gridWorldToCell(navGridFine, x, z);
+  if(!gridInBounds(navGridFine, c.gx, c.gz)) return true;
+  return !!navGridFine.navBlocked[gridIndex(navGridFine, c.gx, c.gz)];
+}
+
+// Directional: moving FROM (gx1,gz1) TO (gx2,gz2). A drop greater than the normal step
+// tolerance but within the safe ledge-drop range is allowed one-way (downhill only) — calling
+// this the other direction will naturally see a negative height difference and reject it.
+function edgeWalkable(grid, gx1,gz1,gx2,gz2){
+  const idx1 = gridIndex(grid,gx1,gz1), idx2 = gridIndex(grid,gx2,gz2);
+  if(grid.navBlocked[idx1] || grid.navBlocked[idx2]) return false;
+  const h1 = grid.navFloorY[idx1], h2 = grid.navFloorY[idx2];
+  const dh = h1-h2; // positive = stepping down from cell1 to cell2
+  if(dh > STEP_SMOOTH_MAX) return dh <= LEDGE_DROP_MAX;
+  if(-dh > STEP_SMOOTH_MAX) return false;
+  const p1 = gridCellToWorld(grid,gx1,gz1), p2 = gridCellToWorld(grid,gx2,gz2);
+  const y = Math.max(h1,h2)+1.2;
   return canMoveToRadius(p1.x,p1.z,p2.x,p2.z, y, ZOMBIE_RADIUS);
 }
 
@@ -1131,15 +1502,15 @@ function octileHeuristic(a,b){
   const dx=Math.abs(a.gx-b.gx), dz=Math.abs(a.gz-b.gz);
   return Math.max(dx,dz)+(Math.SQRT2-1)*Math.min(dx,dz);
 }
-function findPath(fromWorld, toWorld){
-  const start = navWorldToGrid(fromWorld.x, fromWorld.z);
-  const end = navWorldToGrid(toWorld.x, toWorld.z);
-  if(!navInBounds(start.gx,start.gz) || !navInBounds(end.gx,end.gz)) return null;
-  if(navBlocked[navIndex(end.gx,end.gz)]) return null;
-  const endIdx = navIndex(end.gx,end.gz);
+function findPath(fromWorld, toWorld, grid){
+  const start = gridWorldToCell(grid, fromWorld.x, fromWorld.z);
+  const end = gridWorldToCell(grid, toWorld.x, toWorld.z);
+  if(!gridInBounds(grid,start.gx,start.gz) || !gridInBounds(grid,end.gx,end.gz)) return null;
+  if(grid.navBlocked[gridIndex(grid,end.gx,end.gz)]) return null;
+  const endIdx = gridIndex(grid,end.gx,end.gz);
   const open = new Map();
   const closed = new Set();
-  open.set(navIndex(start.gx,start.gz), { g:0, f:octileHeuristic(start,end), parent:null, gx:start.gx, gz:start.gz });
+  open.set(gridIndex(grid,start.gx,start.gz), { g:0, f:octileHeuristic(start,end), parent:null, gx:start.gx, gz:start.gz });
   const neighbors = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   let iterations=0;
   while(open.size>0 && iterations<1600){
@@ -1148,17 +1519,17 @@ function findPath(fromWorld, toWorld){
     for(const [idx,node] of open){ if(best===null||node.f<best.f){best=node;bestIdx=idx;} }
     if(bestIdx===endIdx){
       const path=[]; let n=best;
-      while(n){ path.push(navGridToWorld(n.gx,n.gz)); n=n.parent; }
+      while(n){ path.push(gridCellToWorld(grid,n.gx,n.gz)); n=n.parent; }
       path.reverse();
       return path.length>1 ? path.slice(1) : path;
     }
     open.delete(bestIdx); closed.add(bestIdx);
     for(const [dx,dz] of neighbors){
       const ngx=best.gx+dx, ngz=best.gz+dz;
-      if(!navInBounds(ngx,ngz)) continue;
-      const nIdx = navIndex(ngx,ngz);
-      if(closed.has(nIdx) || navBlocked[nIdx]) continue;
-      if(!edgeWalkable(best.gx,best.gz,ngx,ngz)) continue;
+      if(!gridInBounds(grid,ngx,ngz)) continue;
+      const nIdx = gridIndex(grid,ngx,ngz);
+      if(closed.has(nIdx) || grid.navBlocked[nIdx]) continue;
+      if(!edgeWalkable(grid,best.gx,best.gz,ngx,ngz)) continue;
       const stepCost = (dx!==0&&dz!==0)?Math.SQRT2:1;
       const g = best.g+stepCost;
       const existing = open.get(nIdx);
@@ -1251,21 +1622,41 @@ function buildTrajectoryMarker(){
 // =================================================================
 // ZOMBIES
 // =================================================================
-function createZombieMesh(){
+const billboardGeometry = new THREE.PlaneGeometry(1,1);
+const blobShadowGeometry = new THREE.CircleGeometry(0.5,16);
+
+// A flat plane manually rotated to face the camera around the vertical axis only (unlike
+// THREE.Sprite, which always fully faces the camera on all axes and therefore could never
+// show a side/back view). This is also what makes shadow casting/receiving possible at all —
+// Sprite objects are excluded from three.js's shadow map pass entirely.
+function createZombieVisual(heightWorld, widthWorld){
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:0x3f6b3f, roughness:0.85 });
-  const headMat = new THREE.MeshStandardMaterial({ color:0x365f38, roughness:0.85 });
-  const eyeMat = new THREE.MeshStandardMaterial({ color:0xff2020, emissive:0xff2020, emissiveIntensity:1.2 });
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.38,1.2,8), bodyMat);
-  body.position.y = 0.68;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26,8,8), headMat);
-  head.position.y = 1.42;
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04,6,6), eyeMat);
-  eyeL.position.set(0.1,1.44,0.24);
-  const eyeR = eyeL.clone(); eyeR.position.x=-0.1;
-  group.add(body, head, eyeL, eyeR);
-  body.userData.isHead=false; head.userData.isHead=true;
-  return { group, body, head };
+  // Each zombie needs its own Texture instance (not the shared source) since offset/repeat
+  // drive its individual animation frame — cloning is cheap, it references the same
+  // already-uploaded image data rather than duplicating it.
+  const tex = zombieSpriteTexture.clone();
+  tex.needsUpdate = true;
+  tex.repeat.set(1/SPRITE_COLS, 1/SPRITE_ROWS);
+  tex.offset.set(0, 1-1/SPRITE_ROWS); // row 0 ("walk toward"), frame 0
+  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent:true, alphaTest:0.5, color:0xffffff, side:THREE.DoubleSide });
+  const billboard = new THREE.Mesh(billboardGeometry, mat);
+  billboard.scale.set(widthWorld, heightWorld, 1);
+  billboard.position.y = heightWorld/2; // group.position tracks feet; billboard is centered above it
+  billboard.castShadow = true;
+  billboard.frustumCulled = false;
+  billboard.receiveShadow = true;
+  group.add(billboard);
+
+  const shadowMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(settings.contactShadowColor), transparent:true,
+    opacity: settings.contactShadowOpacity, depthWrite:false,
+  });
+  const blob = new THREE.Mesh(blobShadowGeometry, shadowMat);
+  blob.rotation.x = -Math.PI/2;
+  blob.renderOrder = 1;
+  group.add(blob);
+
+  return { group, billboard, blob };
 }
 
 function isSpawnPointHidden(x,z){
@@ -1281,7 +1672,7 @@ function isSpawnPointHidden(x,z){
   if(angle > THREE.MathUtils.degToRad(55)) return true;
   raycaster.set(camPos, toPoint);
   raycaster.far = dist-0.5;
-  return raycaster.intersectObjects(collisionMeshes,false).length>0;
+  return raycaster.intersectObjects(environmentMeshes,false).length>0;
 }
 
 function findSpawnPosition(){
@@ -1291,45 +1682,84 @@ function findSpawnPosition(){
     const angle = Math.random()*Math.PI*2;
     const r = minR+Math.random()*(maxR-minR);
     const x = camPos.x+Math.cos(angle)*r, z = camPos.z+Math.sin(angle)*r;
-    const fy = getFloorY(x,z, navBounds?navBounds.maxY:camPos.y+10);
+    const fy = getFloorY(x,z, levelMaxY);
     if(fy===null) continue;
     if(isSpawnPointHidden(x,z)) return new THREE.Vector3(x,fy,z);
   }
   const forward = new THREE.Vector3();
   camera.getWorldDirection(forward); forward.y=0; forward.normalize();
   const x = camPos.x-forward.x*14, z = camPos.z-forward.z*14;
-  const fy = getFloorY(x,z, navBounds?navBounds.maxY:camPos.y+10);
+  const fy = getFloorY(x,z, levelMaxY);
   return new THREE.Vector3(x, fy!==null?fy:camPos.y-EYE_HEIGHT, z);
 }
 
 function spawnZombie(){
   const pos = findSpawnPosition();
-  const { group, body, head } = createZombieMesh();
+
+  const heightMult = 1 + (Math.random()-0.5)*ZOMBIE_HEIGHT_VARIATION;
+  const zHeight = AVG_ZOMBIE_HEIGHT*heightMult;
+  const spriteAspect = (zombieSpriteTexture && zombieSpriteTexture.image)
+    ? (zombieSpriteTexture.image.width/SPRITE_COLS) / (zombieSpriteTexture.image.height/SPRITE_ROWS)
+    : 0.5;
+  const zWidth = AVG_ZOMBIE_HEIGHT*spriteAspect; // width stays fixed — only height varies per zombie
+  const collisionRadius = (zWidth*HITBOX_WIDTH_FRACTION)/2;
+
+  const { group, billboard, blob } = createZombieVisual(zHeight, zWidth);
   group.position.copy(pos);
   scene.add(group);
+  const blobRadius = collisionRadius*1.6;
+  blob.scale.set(blobRadius, blobRadius, 1);
+  blob.position.set(0, 0.02, 0);
+
   const intensity = statValue('enemyIntensity');
   const hpBase = (55+wave.number*14)*(1+intensity*0.06);
-  const speed = (4+Math.min(wave.number*0.06,3)+Math.random()*0.35)*(1+intensity*0.06);
+  const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
   const z = {
-    group, body, head, hp:hpBase, maxHp:hpBase, speed, dmg:8+Math.min(wave.number,10),
-    lastAttack:-999, path:null, pathIndex:0, pathTimer:Math.random()*0.4, groanTimer:1+Math.random()*3,
+    group, billboard, blob, hp:hpBase, maxHp:hpBase, speed, dmg:8+Math.min(wave.number,10),
+    lastAttack:-999, path:null, pathIndex:0, pathCellSize:FINE_CELL, pathTimer:Math.random()*0.4, groanTimer:1+Math.random()*3,
     flashTimer:0, flashActive:false, staggerTimer:0, dot:null, stain:null, periodicTickTimer:0,
-    feetY: pos.y,
+    feetY: pos.y, velY: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
+    animRow: ANIM_ROW_WALK_TOWARD, animFrame: 0, animTimer: Math.random()*ANIM_FRAME_DURATION,
+    attacking: false, movingToward: true, dying: false, deathAnimDone: false,
+    calloutLastTime: -999, wasInCalloutRange: false,
   };
-  body.userData.zombieRef=z; head.userData.zombieRef=z;
+  billboard.userData.zombieRef=z;
   zombies.push(z);
   wave.spawned++;
 }
 
-function recomputePath(z){ z.path = findPath(z.group.position, camera.position); z.pathIndex=0; }
+// Keeps every zombie's flat billboard facing the camera around the vertical axis only
+// (cylindrical billboarding) so it always reads as a proper sprite instead of going edge-on,
+// and keeps the ground contact-shadow decal glued to its feet.
+// z.group never rotates (only its position tracks feet), so this world-space angle can be
+// assigned directly to the billboard's local rotation with no parent-rotation compensation —
+// movement facing is tracked separately via z.facingAngle, decoupled from this entirely.
+function updateBillboards(){
+  for(const z of zombies){
+    const dx = camera.position.x - z.group.position.x;
+    const dz = camera.position.z - z.group.position.z;
+    z.billboard.rotation.y = Math.atan2(dx, dz);
+  }
+}
+
+// Picks the coarse grid for long-distance routing and the fine grid once close to the player,
+// approximating "rough pathing far away, precise pathing up close" without needing splines.
+function recomputePath(z){
+  const dist = z.group.position.distanceTo(camera.position);
+  const grid = dist > FAR_THRESHOLD ? navGridCoarse : navGridFine;
+  z.path = findPath(z.group.position, camera.position, grid);
+  z.pathIndex = 0;
+  z.pathCellSize = grid.cellSize;
+}
 
 function updateZombies(delta, elapsed){
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
     if(z.flashActive){
       z.flashTimer -= delta;
-      if(z.flashTimer<=0){ z.body.material.emissive.setHex(0x000000); z.head.material.emissive.setHex(0x000000); z.flashActive=false; }
+      if(z.flashTimer<=0){ z.billboard.material.color.setHex(0xffffff); z.flashActive=false; }
     }
+    if(z.dying) continue;
     if(z.staggerTimer>0){ z.staggerTimer -= delta; continue; }
 
     let pulled=false;
@@ -1338,7 +1768,8 @@ function updateZombies(delta, elapsed){
       if(vd<v.radius && vd>0.05){
         const nx=(v.pos.x-z.group.position.x)/vd, nz=(v.pos.z-z.group.position.z)/vd;
         z.group.position.x += nx*v.pull*delta; z.group.position.z += nz*v.pull*delta;
-        z.group.rotation.y = Math.atan2(nx,nz);
+        z.facingAngle = Math.atan2(nx,nz); // stored for future facing-based texture selection; billboard rotation is independent
+        z.attacking = false; z.movingToward = true;
         pulled=true; break;
       }
     }
@@ -1350,11 +1781,12 @@ function updateZombies(delta, elapsed){
         if(dist<0.05) continue;
         const dir=new THREE.Vector3(dx,0,dz).normalize();
         raycaster.set(z.group.position.clone().setY(z.feetY+0.9), dir); raycaster.far=dist;
-        const blocked = raycaster.intersectObjects(collisionMeshes,false).length>0;
+        const blocked = raycaster.intersectObjects(environmentMeshes,false).length>0;
         if(!blocked){
           const nx=dx/dist, nz=dz/dist;
           z.group.position.x += nx*(z.speed*1.3)*delta; z.group.position.z += nz*(z.speed*1.3)*delta;
-          z.group.rotation.y = Math.atan2(nx,nz);
+          z.facingAngle = Math.atan2(nx,nz); // stored for future facing-based texture selection; billboard rotation is independent
+          z.attacking = false; z.movingToward = true;
           pulled=true; break;
         }
       }
@@ -1369,44 +1801,123 @@ function updateZombies(delta, elapsed){
     if(z.path && z.pathIndex<z.path.length){
       const wp = z.path[z.pathIndex];
       targetX=wp.x; targetZ=wp.z;
-      if(Math.hypot(targetX-z.group.position.x, targetZ-z.group.position.z)<CELL*0.55) z.pathIndex++;
+      if(Math.hypot(targetX-z.group.position.x, targetZ-z.group.position.z)<(z.pathCellSize||FINE_CELL)*0.55) z.pathIndex++;
     } else { targetX=camera.position.x; targetZ=camera.position.z; }
 
     if(distToPlayer>1.0){
+      z.attacking = false;
       const dx=targetX-z.group.position.x, dz=targetZ-z.group.position.z;
       const d=Math.hypot(dx,dz);
       if(d>0.0001){
         const nx=dx/d, nz=dz/d;
         const chestY = z.feetY+0.9;
-        let px=z.group.position.x, pz=z.group.position.z;
-        if(canMoveToRadius(px,pz,px+nx*z.speed*delta,pz,chestY,ZOMBIE_RADIUS)) px += nx*z.speed*delta;
-        if(canMoveToRadius(px,pz,px,pz+nz*z.speed*delta,chestY,ZOMBIE_RADIUS)) pz += nz*z.speed*delta;
+        const resolved = resolveSlide(z.group.position.x, z.group.position.z, nx*z.speed*delta, nz*z.speed*delta, chestY, z.collisionRadius||ZOMBIE_RADIUS, z.feetY);
+        const px = resolved.x, pz = resolved.z;
         const fy = getFloorY(px,pz, z.feetY+2.2);
-        if(fy!==null && Math.abs(fy-z.feetY)<1.2){ z.feetY += (fy-z.feetY)*Math.min(1,delta*10); }
-        else if(fy!==null){ z.feetY = fy; }
+        if(fy!==null && (z.feetY-fy) <= STEP_SMOOTH_MAX){
+          z.feetY += (fy-z.feetY)*Math.min(1,delta*10);
+          z.velY = 0;
+        } else {
+          z.velY = (z.velY||0) - GRAVITY*delta;
+          z.feetY += z.velY*delta;
+          if(fy!==null && z.feetY<=fy){ z.feetY = fy; z.velY = 0; }
+        }
         z.group.position.set(px, z.feetY, pz);
-        z.group.rotation.y = Math.atan2(nx,nz);
+        z.facingAngle = Math.atan2(nx,nz); // stored for future facing-based texture selection; billboard rotation is independent
+        // Row selection compares actual movement direction against the direction to the
+        // player — a positive dot product means this step is carrying it toward the player
+        // (even while routing around an obstacle it's still usually net-toward), negative
+        // means it's momentarily moving away.
+        const toPlayerX = camera.position.x-z.group.position.x, toPlayerZ = camera.position.z-z.group.position.z;
+        const toPlayerLen = Math.hypot(toPlayerX,toPlayerZ);
+        if(toPlayerLen>0.0001){
+          const dot = nx*(toPlayerX/toPlayerLen) + nz*(toPlayerZ/toPlayerLen);
+          z.movingToward = dot>=0;
+        }
       }
-    } else if(elapsed-z.lastAttack>1.0){
-      z.lastAttack = elapsed;
-      takeDamage(z.dmg);
+    } else {
+      z.attacking = true;
+      if(elapsed-z.lastAttack>1.0){
+        z.lastAttack = elapsed;
+        takeDamage(z.dmg);
+        if(attackSoundLimiter(elapsed)) playEnemyClip('attack', computePan(z.group.position), 0.6);
+      }
     }
 
     z.groanTimer -= delta;
-    if(z.groanTimer<=0 && distToPlayer<24){ soundGroan(computePan(z.group.position), distToPlayer); z.groanTimer=4+Math.random()*5; }
+    if(z.groanTimer<=0 && distToPlayer<24){ playEnemyClip('passive', computePan(z.group.position), 0.4); z.groanTimer=4+Math.random()*5; }
+
+    if(distToPlayer < CALLOUT_RANGE){
+      if(!z.wasInCalloutRange){
+        if(elapsed - z.calloutLastTime >= CALLOUT_COOLDOWN && calloutSoundLimiter(elapsed)){
+          playEnemyClip('callout', computePan(z.group.position), 0.45);
+          z.calloutLastTime = elapsed;
+        }
+        z.wasInCalloutRange = true;
+      }
+    } else {
+      z.wasInCalloutRange = false;
+    }
   }
 
+  // Unlike normal movement, this push had no wall awareness at all — in a crowded corner or
+  // doorway (exactly where stragglers were getting stuck) it could shove a zombie straight
+  // into geometry, and once embedded, ordinary collision-checked movement often couldn't work
+  // its way back out. Validated via the precomputed nav grid (a cheap array lookup) rather
+  // than a live raycast — a raycast per pair here scales as O(n^2) with zombie count and was
+  // very likely the actual cause of movement feeling more sluggish the more enemies were alive.
   for(let i=0;i<zombies.length;i++){
     for(let j=i+1;j<zombies.length;j++){
       const a=zombies[i], b=zombies[j];
+      if(a.dying || b.dying) continue;
       const dx=b.group.position.x-a.group.position.x, dz=b.group.position.z-a.group.position.z;
       const dist=Math.hypot(dx,dz);
-      const minDist=ZOMBIE_RADIUS*1.8;
+      const minDist=(a.collisionRadius||ZOMBIE_RADIUS)+(b.collisionRadius||ZOMBIE_RADIUS);
       if(dist<minDist && dist>0.0001){
         const overlap=(minDist-dist)/2, nx=dx/dist, nz=dz/dist;
-        a.group.position.x -= nx*overlap; a.group.position.z -= nz*overlap;
-        b.group.position.x += nx*overlap; b.group.position.z += nz*overlap;
+        const aNewX=a.group.position.x-nx*overlap, aNewZ=a.group.position.z-nz*overlap;
+        const bNewX=b.group.position.x+nx*overlap, bNewZ=b.group.position.z+nz*overlap;
+        if(!isPositionBlocked(aNewX,aNewZ)){ a.group.position.x=aNewX; a.group.position.z=aNewZ; }
+        if(!isPositionBlocked(bNewX,bNewZ)){ b.group.position.x=bNewX; b.group.position.z=bNewZ; }
       }
+    }
+  }
+}
+
+// Advances each zombie's current animation frame and picks which row to show:
+// dying > attacking (punch, overrides movement) > walking toward/away from the player.
+// Once the (non-looping) death row finishes playing, this performs the actual scene removal —
+// killZombie() only marks a zombie as dying, it doesn't remove it, so the death animation
+// always gets to play out fully first.
+function updateZombieAnimations(delta){
+  for(let i=zombies.length-1;i>=0;i--){
+    const z = zombies[i];
+    const targetRow = z.dying ? ANIM_ROW_DEATH : (z.attacking ? ANIM_ROW_ATTACK : (z.movingToward ? ANIM_ROW_WALK_TOWARD : ANIM_ROW_WALK_AWAY));
+
+    if(targetRow !== z.animRow){
+      z.animRow = targetRow;
+      z.animFrame = 0;
+      z.animTimer = 0;
+      const tex = z.billboard.material.map;
+      tex.offset.set(z.animFrame/SPRITE_COLS, 1-(z.animRow+1)/SPRITE_ROWS);
+    }
+
+    z.animTimer -= delta;
+    while(z.animTimer<=0){
+      z.animTimer += ANIM_FRAME_DURATION;
+      if(z.animRow===ANIM_ROW_DEATH){
+        if(z.animFrame<SPRITE_COLS-1) z.animFrame++;
+        else { z.deathAnimDone = true; break; }
+      } else {
+        z.animFrame = (z.animFrame+1) % SPRITE_COLS;
+      }
+      const tex = z.billboard.material.map;
+      tex.offset.set(z.animFrame/SPRITE_COLS, 1-(z.animRow+1)/SPRITE_ROWS);
+    }
+
+    if(z.dying && z.deathAnimDone){
+      scene.remove(z.group);
+      zombies.splice(i,1);
     }
   }
 }
@@ -1440,15 +1951,16 @@ function updateStatusEffects(delta, elapsed){
 }
 
 function triggerZombieFlash(z){
-  z.body.material.emissive.setHex(0xff3030); z.head.material.emissive.setHex(0xff3030);
+  z.billboard.material.color.setHex(0xff3030);
   z.flashTimer=0.12; z.flashActive=true;
 }
 function damageZombie(z, amount, opts){
   opts = opts||{};
-  if(!z || amount<=0) return false;
+  if(!z || z.dying) return true; // already dead/dying — treat as handled, no further effects
+  if(amount<=0) return false;
   z.hp -= amount;
   triggerZombieFlash(z);
-  spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,1.5,0)), Math.round(amount), !!opts.crit);
+  spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount), !!opts.crit);
   if(opts.stagger){
     z.staggerTimer = STAGGER_DURATION;
     if(opts.knockFrom){
@@ -1456,7 +1968,8 @@ function damageZombie(z, amount, opts){
       const d=Math.hypot(dx,dz);
       if(d>0.001){
         const nx=dx/d, nz=dz/d;
-        if(canMoveToRadius(z.group.position.x,z.group.position.z,z.group.position.x+nx*KNOCKBACK_DIST,z.group.position.z+nz*KNOCKBACK_DIST,z.feetY+0.9,ZOMBIE_RADIUS)){
+        const radius = z.collisionRadius||ZOMBIE_RADIUS;
+        if(canMoveToRadius(z.group.position.x,z.group.position.z,z.group.position.x+nx*KNOCKBACK_DIST,z.group.position.z+nz*KNOCKBACK_DIST,z.feetY+0.9,radius)){
           z.group.position.x += nx*KNOCKBACK_DIST; z.group.position.z += nz*KNOCKBACK_DIST;
         }
       }
@@ -1465,12 +1978,17 @@ function damageZombie(z, amount, opts){
   if(z.hp<=0){ killZombie(z, !!opts.headshot); return true; }
   return false;
 }
+// Rewards (money/XP/drops) still fire the instant a kill is confirmed, same as before — only
+// the actual removal from the scene is deferred, until the death animation has played through.
+// updateZombieAnimations() performs the real cleanup once z.deathAnimDone is set.
 function killZombie(z, headshot){
-  const idx = zombies.indexOf(z);
-  if(idx===-1) return;
+  if(z.dying) return; // guard against a second damage source killing the same corpse
+  z.dying = true;
+  z.deathAnimDone = false;
   soundDeath(computePan(z.group.position));
-  scene.remove(z.group);
-  zombies.splice(idx,1);
+  if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
+    playEnemyClip('dying', computePan(z.group.position), 0.55);
+  }
   const rewardMult = 1+statValue('enemyIntensity')*0.15;
   addMoney((10+Math.floor(Math.random()*8)+(headshot?8:0))*rewardMult);
   addXP((14+wave.number*1.4)*rewardMult);
@@ -1696,7 +2214,7 @@ function tryShoot(elapsed){
 function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
   const weapon = ALL_WEAPONS[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   const pellets=effectivePellets(wIdx), spread=effectiveSpread(wIdx);
   const stagger = weapon.name==='SHOTGUN';
   let anyHit=false, anyHeadshot=false;
@@ -1705,13 +2223,13 @@ function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
     dir.x+=(Math.random()-0.5)*spread; dir.y+=(Math.random()-0.5)*spread; dir.z+=(Math.random()-0.5)*spread;
     dir.normalize();
     raycaster.set(camera.position, dir); raycaster.far=60;
-    const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+    const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
     let tracerEnd = camera.position.clone().addScaledVector(dir,40);
     if(hits.length>0){
       const hit=hits[0]; tracerEnd=hit.point;
       const ref = hit.object.userData.zombieRef;
       if(ref){
-        const headshot = hit.object.userData.isHead;
+        const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
         const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
         damageZombie(ref, dmg, {headshot, crit:isCrit, stagger, knockFrom:camera.position});
         anyHit=true; if(headshot) anyHeadshot=true;
@@ -1725,29 +2243,30 @@ function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
 function fireChain(wIdx, dmgMult, isCrit, critMultVal){
   const weapon = ALL_WEAPONS[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
   if(hits.length===0){ spawnBolt(camera.position, camera.position.clone().addScaledVector(forward,40), 0x8fe8ff); return; }
   const first = hits[0];
   spawnBolt(camera.position, first.point, 0x8fe8ff);
   const ref = first.object.userData.zombieRef;
   if(!ref) return;
-  const headshot = first.object.userData.isHead;
+  const headshot = (!!(first.uv && first.uv.y > (1-HEAD_HEIGHT_FRACTION)));
   const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const hitSet = new Set([ref]);
   damageZombie(ref, dmg, {headshot, crit:isCrit});
   let currentPos = ref.group.position.clone();
+  let currentHeight = ref.height||AVG_ZOMBIE_HEIGHT;
   const chainCount = effectiveChainCount(wIdx), chainRadius = weapon.chainRadius;
   for(let jump=1; jump<chainCount; jump++){
     let nearest=null, nearestDist=chainRadius;
     for(const z of zombies){ if(hitSet.has(z)) continue; const d=currentPos.distanceTo(z.group.position); if(d<nearestDist){nearestDist=d;nearest=z;} }
     if(!nearest) break;
-    const targetPos = nearest.group.position.clone().add(new THREE.Vector3(0,0.9,0));
-    spawnBolt(currentPos.clone().add(new THREE.Vector3(0,0.9,0)), targetPos, 0x8fe8ff);
+    const targetPos = nearest.group.position.clone().add(new THREE.Vector3(0,(nearest.height||AVG_ZOMBIE_HEIGHT)*0.55,0));
+    spawnBolt(currentPos.clone().add(new THREE.Vector3(0,currentHeight*0.55,0)), targetPos, 0x8fe8ff);
     const dmg2 = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
     damageZombie(nearest, dmg2, {crit:isCrit});
-    currentPos = nearest.group.position.clone(); hitSet.add(nearest);
+    currentPos = nearest.group.position.clone(); currentHeight = nearest.height||AVG_ZOMBIE_HEIGHT; hitSet.add(nearest);
   }
   soundHit(headshot, isCrit); soundChain();
 }
@@ -1755,15 +2274,15 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
 function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
   const mods = player.weaponMods[wIdx], weapon = ALL_WEAPONS[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
   if(hits.length===0){ spawnBolt(camera.position, camera.position.clone().addScaledVector(forward,40), 0xd9a3ff); return; }
   const first = hits[0];
   spawnBolt(camera.position, first.point, 0xd9a3ff);
   const ref = first.object.userData.zombieRef;
   if(!ref) return;
-  const headshot = first.object.userData.isHead;
+  const headshot = (!!(first.uv && first.uv.y > (1-HEAD_HEIGHT_FRACTION)));
   const dmg = mods.evoDamage*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const hitSet = new Set([ref]); const chainOrder=[ref];
   damageZombie(ref, dmg, {headshot, crit:isCrit});
@@ -1775,8 +2294,8 @@ function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
     return nearest;
   }
   function strike(anchor, target){
-    const targetPos = target.group.position.clone().add(new THREE.Vector3(0,0.9,0));
-    spawnBolt(anchor.group.position.clone().add(new THREE.Vector3(0,0.9,0)), targetPos, 0xd9a3ff);
+    const targetPos = target.group.position.clone().add(new THREE.Vector3(0,(target.height||AVG_ZOMBIE_HEIGHT)*0.55,0));
+    spawnBolt(anchor.group.position.clone().add(new THREE.Vector3(0,(anchor.height||AVG_ZOMBIE_HEIGHT)*0.55,0)), targetPos, 0xd9a3ff);
     const dmg2 = mods.evoDamage*dmgMult*(isCrit?critMultVal:1);
     damageZombie(target, dmg2, {crit:isCrit});
     hitSet.add(target); chainOrder.push(target);
@@ -1808,9 +2327,9 @@ function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
 function firePierce(wIdx, dmgMult, isCrit, critMultVal){
   const weapon = ALL_WEAPONS[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=80;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
   let dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
   const falloff = effectivePierceFalloff(wIdx);
   let pierces=0, anyHit=false, anyHeadshot=false;
@@ -1818,7 +2337,7 @@ function firePierce(wIdx, dmgMult, isCrit, critMultVal){
   for(const hit of hits){
     const ref = hit.object.userData.zombieRef;
     if(!ref){ tracerEnd=hit.point; break; }
-    const headshot = hit.object.userData.isHead;
+    const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
     const hitDmg = dmg*(headshot?2:1);
     damageZombie(ref, hitDmg, {headshot, crit:isCrit, stagger:true, knockFrom:camera.position});
     anyHit=true; if(headshot) anyHeadshot=true;
@@ -1832,16 +2351,16 @@ function firePierce(wIdx, dmgMult, isCrit, critMultVal){
 function firePierceLiar(wIdx, dmgMult, isCrit, critMultVal){
   const mods = player.weaponMods[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=100;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
   const baseDmg = mods.evolvedBaseDamage*dmgMult*(isCrit?critMultVal:1);
   let hitIndex=0, anyHit=false, anyHeadshot=false;
   let tracerEnd = camera.position.clone().addScaledVector(forward,100);
   for(const hit of hits){
     const ref = hit.object.userData.zombieRef;
     if(!ref){ tracerEnd=hit.point; break; }
-    const headshot = hit.object.userData.isHead;
+    const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
     const hitDmg = (baseDmg*(1+hitIndex*mods.incrementPercent))*(headshot?2:1);
     damageZombie(ref, hitDmg, {headshot, crit:isCrit, stagger:true, knockFrom:camera.position});
     anyHit=true; if(headshot) anyHeadshot=true;
@@ -1854,15 +2373,15 @@ function firePierceLiar(wIdx, dmgMult, isCrit, critMultVal){
 function fireHeadhunter(wIdx, dmgMult, critMultVal){
   const mods = player.weaponMods[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
   let tracerEnd = camera.position.clone().addScaledVector(forward,40);
   if(hits.length>0){
     const hit=hits[0]; tracerEnd=hit.point;
     const ref = hit.object.userData.zombieRef;
     if(ref){
-      const headshot = hit.object.userData.isHead;
+      const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
       const effCrit = statValue('critChance')+(headshot?mods.critBonus:0);
       const isCrit = Math.random()<effCrit;
       const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
@@ -1877,16 +2396,16 @@ function fireHeadhunter(wIdx, dmgMult, critMultVal){
 function fireHellgun(wIdx, dmgMult, isCrit, critMultVal){
   const mods = player.weaponMods[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.body,z.head));
+  const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...collisionMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
   let tracerEnd = camera.position.clone().addScaledVector(forward,40);
   if(hits.length===0){ spawnTracer(camera.position, tracerEnd, 0xff5050); return; }
   const hit=hits[0]; tracerEnd=hit.point;
   spawnTracer(camera.position, tracerEnd, 0xff5050);
   const ref = hit.object.userData.zombieRef;
   if(!ref) return;
-  const headshot = hit.object.userData.isHead;
+  const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
   const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const primaryKilled = damageZombie(ref, dmg, {headshot, crit:isCrit});
   soundHit(headshot, isCrit);
@@ -2000,13 +2519,13 @@ function updateProjectiles(delta, elapsed){
     if(fy!==null && p.pos.y<=fy+0.15){ hitPos=p.pos.clone(); hitPos.y=fy; impacted=true; }
     if(!impacted){
       raycaster.set(p.pos.clone(), p.vel.clone().normalize()); raycaster.far = Math.max(0.15, p.vel.length()*delta+p.radius);
-      const hits = raycaster.intersectObjects(collisionMeshes,false);
+      const hits = raycaster.intersectObjects(environmentMeshes,false);
       if(hits.length>0 && hits[0].distance < p.radius+0.2){ hitPos=hits[0].point.clone(); impacted=true; }
     }
     if(!impacted && !p.groundOnly){
       for(const z of zombies){
-        const zc = z.group.position.clone(); zc.y += 0.7;
-        if(p.pos.distanceTo(zc) < ZOMBIE_RADIUS+p.radius){ hitPos=p.pos.clone(); impacted=true; break; }
+        const zc = z.group.position.clone(); zc.y += (z.height||1.7)*0.45;
+        if(p.pos.distanceTo(zc) < (z.collisionRadius||ZOMBIE_RADIUS)+p.radius){ hitPos=p.pos.clone(); impacted=true; break; }
       }
     }
     if(!impacted && elapsed-p.spawnTime>p.maxLife){ hitPos=p.pos.clone(); impacted=true; }
@@ -2428,6 +2947,54 @@ function computePan(worldPos){
   const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
   return THREE.MathUtils.clamp(rel.dot(right),-1,1);
 }
+
+// =================================================================
+// ENEMY FILE-BASED AUDIO — folder layout: ./Audio/<EnemyType>/<Category>/<EnemyType>_<Category>_<N>.ogg
+// Files are entirely optional: a missing file just means that attempt produces no sound
+// (cached after the first failure so we don't keep re-requesting a known-404 file).
+// =================================================================
+const ENEMY_AUDIO_TYPE = 'TrajeA';
+const AUDIO_CATEGORIES = {
+  dying:   { folder:'Dying',   count:5, rareProb:0.04  },
+  passive: { folder:'Passive', count:8, rareProb:0.005 },
+  callout: { folder:'Callout', count:8, rareProb:0.005 },
+  attack:  { folder:'Attack',  count:5, rareProb:0.04  }, // no exact rare % was given for attack — reused Dying's 4% as a sensible default; adjust AUDIO_CATEGORIES.attack.rareProb if you want it different
+};
+const CALLOUT_RANGE = 15; // meters — no exact distance was specified; tune this constant to taste
+const CALLOUT_COOLDOWN = 30; // seconds, per enemy
+
+const audioMissingCache = new Set();
+function pickRareLastIndex(count, rareProb){
+  if(Math.random() < rareProb) return count;
+  return 1 + Math.floor(Math.random()*(count-1));
+}
+function createRateLimiter(maxPerSecond){
+  let count=0, windowStart=-999;
+  return function tryConsume(nowSeconds){
+    if(nowSeconds - windowStart >= 1){ windowStart = nowSeconds; count = 0; }
+    if(count >= maxPerSecond) return false;
+    count++; return true;
+  };
+}
+const dyingSoundLimiter = createRateLimiter(3);
+const calloutSoundLimiter = createRateLimiter(3);
+const attackSoundLimiter = createRateLimiter(6);
+
+function playEnemyClip(categoryKey, pan, volume){
+  const cat = AUDIO_CATEGORIES[categoryKey];
+  if(!cat || !audioCtx) return;
+  const idx = pickRareLastIndex(cat.count, cat.rareProb);
+  const url = `./Audio/${ENEMY_AUDIO_TYPE}/${cat.folder}/${ENEMY_AUDIO_TYPE}_${cat.folder}_${idx}.ogg`;
+  if(audioMissingCache.has(url)) return;
+  try{
+    const audioEl = new Audio(url);
+    const source = audioCtx.createMediaElementSource(audioEl);
+    const gain = audioCtx.createGain(); gain.gain.value = volume;
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = pan;
+    source.connect(gain).connect(panner).connect(masterGain);
+    audioEl.play().catch(()=>{ audioMissingCache.add(url); });
+  } catch(e){ audioMissingCache.add(url); }
+}
 function playNoise(dur, filterFreq, vol, pan=0){
   if(!audioCtx) return;
   const bufferSize = Math.max(1, Math.floor(audioCtx.sampleRate*dur));
@@ -2538,6 +3105,9 @@ function animate(){
     if(mouseDown) tryShoot(elapsed);
     finishReloadIfDue(elapsed);
     updateZombies(delta, elapsed);
+    updateZombieAnimations(delta);
+    updateBillboards();
+    updateMinimap();
     updateStatusEffects(delta, elapsed);
     updateWave(delta, elapsed);
     updateInteractables(delta, elapsed);
