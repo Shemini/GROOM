@@ -77,6 +77,7 @@ function loadAssets(){
     loadingLabel.textContent = 'Preparing level...';
     setTimeout(()=>{
       buildNavGrid();
+      buildNavNodeGraph();
       configureSunShadow();
       placePlayerAtStart();
       placeStationsAndBox();
@@ -393,6 +394,106 @@ function findPath(fromWorld, toWorld, grid){
     if(closed.size>4000) return null;
   }
   return null;
+}
+
+// =================================================================
+// NAV NODE GRAPH — hand-placed waypoint routing for long-distance zombie movement.
+// Complements (doesn't replace) the grid system above: recomputePath() tries this first when
+// the zombie is far from the player, and falls back to the coarse/fine grid if no usable node
+// route exists (e.g. NAV_NODES is empty, or doesn't cover this part of the level yet).
+// =================================================================
+let navNodeGraph = null; // { adjacency: Map(id -> [{id, dist}, ...]) }
+
+// Checks whether a straight line between two points is actually walkable: continuous floor
+// the whole way (no gaps, no cliff-sized drops mid-segment) and clear of walls at chest height.
+function nodesConnected(ax, az, bx, bz){
+  const dist = Math.hypot(bx-ax, bz-az);
+  const steps = Math.max(2, Math.ceil(dist/2));
+  let prevY = null, firstY = null, lastY = null;
+  for(let s=0; s<=steps; s++){
+    const t = s/steps;
+    const x = ax+(bx-ax)*t, z = az+(bz-az)*t;
+    const fy = getFloorY(x, z, levelMaxY);
+    if(fy===null) return false;
+    if(prevY!==null && Math.abs(fy-prevY) > STEP_SMOOTH_MAX) return false;
+    if(firstY===null) firstY = fy;
+    lastY = fy;
+    prevY = fy;
+  }
+  const y = Math.max(firstY, lastY) + 1.2;
+  return canMoveToRadius(ax, az, bx, bz, y, ZOMBIE_RADIUS);
+}
+
+function buildNavNodeGraph(){
+  const adjacency = new Map();
+  NAV_NODES.forEach(n => adjacency.set(n.id, []));
+  const MAX_EDGE_DIST = 45; // meters — skip checking absurdly distant node pairs
+  for(let i=0;i<NAV_NODES.length;i++){
+    for(let j=i+1;j<NAV_NODES.length;j++){
+      const a = NAV_NODES[i], b = NAV_NODES[j];
+      const dist = Math.hypot(a.x-b.x, a.z-b.z);
+      if(dist > MAX_EDGE_DIST) continue;
+      if(nodesConnected(a.x, a.z, b.x, b.z)){
+        adjacency.get(a.id).push({ id:b.id, dist });
+        adjacency.get(b.id).push({ id:a.id, dist });
+      }
+    }
+  }
+  navNodeGraph = { adjacency };
+}
+
+// Finds the nearest node actually reachable in a straight line from worldPos — not just
+// nearest by distance, since the closest node by straight-line distance could be on the far
+// side of a wall (e.g. in an adjacent room).
+function nearestReachableNode(worldPos){
+  if(NAV_NODES.length===0) return null;
+  const candidates = NAV_NODES
+    .map(n => ({ n, dist: Math.hypot(n.x-worldPos.x, n.z-worldPos.z) }))
+    .sort((a,b)=>a.dist-b.dist);
+  for(const c of candidates.slice(0,6)){
+    if(nodesConnected(worldPos.x, worldPos.z, c.n.x, c.n.z)) return c.n;
+  }
+  return candidates[0].n; // fall back to nearest even if unverified, better than nothing
+}
+
+function findNodePath(fromWorld, toWorld){
+  if(!navNodeGraph || NAV_NODES.length===0) return null;
+  const startNode = nearestReachableNode(fromWorld);
+  const endNode = nearestReachableNode(toWorld);
+  if(!startNode || !endNode) return null;
+  if(startNode.id===endNode.id) return [{x:endNode.x, z:endNode.z}, {x:toWorld.x, z:toWorld.z}];
+
+  const nodeById = new Map(NAV_NODES.map(n=>[n.id,n]));
+  const h = (n) => Math.hypot(n.x-endNode.x, n.z-endNode.z);
+  const open = new Map();
+  const closed = new Set();
+  open.set(startNode.id, { g:0, f:h(startNode), parent:null, id:startNode.id });
+
+  let iterations=0;
+  while(open.size>0 && iterations<2000){
+    iterations++;
+    let bestId=null, best=null;
+    for(const [id,node] of open){ if(best===null||node.f<best.f){best=node;bestId=id;} }
+    if(bestId===endNode.id){
+      const path=[]; let n=best;
+      while(n){ const nd=nodeById.get(n.id); path.push({x:nd.x, z:nd.z}); n=n.parent; }
+      path.reverse();
+      path.push({x:toWorld.x, z:toWorld.z}); // final hop from the last node to the actual target
+      return path;
+    }
+    open.delete(bestId); closed.add(bestId);
+    const neighbors = navNodeGraph.adjacency.get(bestId) || [];
+    for(const edge of neighbors){
+      if(closed.has(edge.id)) continue;
+      const g = best.g + edge.dist;
+      const existing = open.get(edge.id);
+      if(!existing || g<existing.g){
+        const nd = nodeById.get(edge.id);
+        open.set(edge.id, { g, f:g+h(nd), parent:best, id:edge.id });
+      }
+    }
+  }
+  return null; // graph exists but start/end aren't connected — caller falls back to the grid
 }
 
 // =================================================================

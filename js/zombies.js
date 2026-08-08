@@ -132,8 +132,22 @@ function updateBillboards(){
 
 // Picks the coarse grid for long-distance routing and the fine grid once close to the player,
 // approximating "rough pathing far away, precise pathing up close" without needing splines.
+// Long-distance routing prefers the hand-placed node graph when one covers this route — it's
+// far more reliable than grid inference over real architecture — and only falls back to the
+// coarse grid if NAV_NODES doesn't reach this far yet.
 function recomputePath(z){
   const dist = z.group.position.distanceTo(camera.position);
+
+  if(dist > FAR_THRESHOLD && NAV_NODES.length>0){
+    const nodePath = findNodePath(z.group.position, camera.position);
+    if(nodePath){
+      z.path = nodePath;
+      z.pathIndex = 0;
+      z.pathCellSize = FINE_CELL; // waypoint-arrival tolerance for node hops
+      return;
+    }
+  }
+
   const primaryGrid = dist > FAR_THRESHOLD ? navGridCoarse : navGridFine;
   let path = findPath(z.group.position, camera.position, primaryGrid);
   let grid = primaryGrid;

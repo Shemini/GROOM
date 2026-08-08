@@ -22,14 +22,14 @@ const DROP_LIFETIME = 15;
 const DROP_TYPES = ['ammo','health','double','instakill'];
 const DROP_COLORS = { ammo:0xe8b24d, health:0x6fef7d, double:0xfff2b0, instakill:0xc81e2c };
 const BOX_COST = 1500;
- 
+
 // Sprite-based enemy sizing. Fractions are relative to the 128x256 reference sheet, so they
 // carry over unchanged once the real (animated) spritesheet replaces this static test image.
 const AVG_ZOMBIE_HEIGHT = EYE_HEIGHT + 0.30; // tested value
 const ZOMBIE_HEIGHT_VARIATION = 0.10;        // total spread across the population, as a fraction of the average
 const HITBOX_WIDTH_FRACTION = 50/128;        // central width counted as the collidable body
 const HEAD_HEIGHT_FRACTION = 40/256;         // top portion counted as the head, for headshots
- 
+
 // "TrajeA" enemy spritesheet: 2048x2048, 8 columns x 4 rows, each cell the same 1:2 aspect
 // as the original static reference image. Row order top-to-bottom in the source PNG:
 // 0 = walk toward player (looping), 1 = walk away from player (looping),
@@ -37,12 +37,27 @@ const HEAD_HEIGHT_FRACTION = 40/256;         // top portion counted as the head,
 const SPRITE_COLS = 8, SPRITE_ROWS = 4;
 const ANIM_FRAME_DURATION = 1/8; // 8 frames per second -> a full 8-frame cycle takes 1s
 const ANIM_ROW_WALK_TOWARD = 0, ANIM_ROW_WALK_AWAY = 1, ANIM_ROW_ATTACK = 2, ANIM_ROW_DEATH = 3;
- 
+
 // Sun light-travel direction, converted from the 3ds Max (-0.29, 0.222, -0.916) Z-up vector
 // to three.js's Y-up convention via the same (x,y,z) -> (x,z,-y) mapping used for the
 // FBX/glTF export pipeline elsewhere in this project.
 const SUN_DIRECTION = new THREE.Vector3(-0.29, -0.916, -0.222).normalize();
- 
+
+// =================================================================
+// NAV NODES — hand-placed waypoint graph for long-distance zombie routing.
+// Replace/extend this list with real spots: open the settings panel in-game, walk to each
+// corner/intersection/junction (especially anywhere pathfinding struggles, like a corridor
+// bend), and use the "COPY POSITION" button to grab exact coordinates. Only x/z matter here.
+// Connections between nodes are computed automatically at load time — you don't need to
+// specify which nodes link to which, just drop in positions.
+// This is used for routing beyond FAR_THRESHOLD; close-range movement still uses the fine
+// grid, so this only needs to cover the big, obvious junctions, not every nook.
+// =================================================================
+const NAV_NODES = [
+  // { id:'example_a', x:0, z:0 },
+  // { id:'example_b', x:5, z:5 },
+];
+
 const ALL_WEAPONS = [
   { name:'PISTOL',  type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72,  cost:0,    ammoCost:0,   spread:0.010, pellets:1 },
   { name:'SHOTGUN', type:'hitscan', dmg:17, fireRate:0.85, mag:6,  reserveMax:36,  cost:500,  ammoCost:100, spread:0.10,  pellets:6 },
@@ -55,7 +70,7 @@ const ALL_WEAPONS = [
   { name:'VORTEX CANNON', type:'vortex', dmg:0, fireRate:1.2, mag:2, reserveMax:6, launchSpeed:26, vortexRadius:6, vortexDuration:3, vortexPull:3.2, vortexDps:9, vortexBurst:55 },
 ];
 const SPECIAL_INDICES = [4,5,6,7,8];
- 
+
 const STATS = [
   { key:'damage',        name:'DAMAGE',       desc:'Weapon damage',                     perLevel:0.10, maxLevel:5 },
   { key:'fireRate',      name:'FIRE RATE',    desc:'Fire rate',                         perLevel:0.08, maxLevel:5 },
@@ -69,7 +84,7 @@ const STATS = [
   { key:'critMult',      name:'BRUTALITY',    desc:'Critical hit damage',               perLevel:0.25, maxLevel:5 },
   { key:'enemyIntensity',name:'BLOODLUST',    desc:'More & tougher — bigger payout',    perLevel:1,    maxLevel:5 },
 ];
- 
+
 const BASE_LEVEL_TABLES = {
   0: [ {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'damage', amount:0.15, label:'+15% damage'},
        {stat:'ammo',   amount:0.25, label:'+25% ammo capacity'}, {stat:'damage', amount:0.15, label:'+15% damage'} ],
@@ -90,7 +105,7 @@ const BASE_LEVEL_TABLES = {
   8: [ {stat:'duration', amount:0.20, label:'+20% vortex duration'}, {stat:'radius',   amount:0.15, label:'+15% vortex radius'},
        {stat:'duration', amount:0.20, label:'+20% vortex duration'}, {stat:'radius',   amount:0.15, label:'+15% vortex radius'} ],
 };
- 
+
 const EVOLUTIONS = {
   0: { name:'HELLGUN',      rotation:['coneDamage','coneDot','coneDuration','coneRadius'] },
   1: { name:'DOUBLE-ACTION',rotation:['damage','ammo','spread'] },
@@ -109,7 +124,7 @@ const EVO_KEY_LABELS = {
   radius:'+radius', subCount:'+1 sub-bomb', initialSpread:'+1 initial branch',
   dot:'+damage', duration:'+duration', incrementPercent:'+per-hit damage bonus',
 };
- 
+
 // =================================================================
 // STATE
 // =================================================================
@@ -140,7 +155,7 @@ let boxState = 'idle';
 let feetY = 0;
 let playerVelY = 0;
 let playerStart = null;
- 
+
 let audioCtx = null, masterGain = null, muted = false;
 let isLocked = false;
 let euler = new THREE.Euler(0,0,0,'YXZ');
@@ -148,14 +163,14 @@ let gameState = 'loading'; // loading | menu | playing | paused | settings | lev
 const keys = {};
 let mouseDown = false;
 const raycaster = new THREE.Raycaster();
- 
+
 const settings = {
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:4, lutStrength:1,
   skyColor:'#3a5f8a', horizonColor:'#e8c9a0', horizonSharpness:2.0,
   sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
   contactShadowColor:'#000000', contactShadowOpacity:0.45,
 };
- 
+
 function createDefaultMods(){
   return {
     dmgMult:1, ammoMult:1, fireRateMult:1, spreadMult:1, bounceBonus:0,
@@ -165,7 +180,7 @@ function createDefaultMods(){
     subCount:0, initialSpread:0, evoDamage:0, evolvedBaseDamage:0, incrementPercent:0,
   };
 }
- 
+
 const player = {
   health: 100, maxHealth: 100, money: 0, kills: 0,
   slots: [0, null, null, null],
@@ -176,12 +191,12 @@ const player = {
   weaponLevel: { 0:1 }, weaponEvolved: { 0:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods() },
   burstState: {}, doubleUntil: 0,
 };
- 
+
 const wave = {
   number: 1, toSpawn: 0, spawned: 0, spawnInterval: 1.2, spawnTimer: 0,
   betweenWaves: true, betweenTimer: 3, dropSchedule: [], killedThisWave: 0,
 };
- 
+
 const el = id => document.getElementById(id);
 const healthBarInner = el('healthBarInner'), healthNum = el('healthNum');
 const weaponNameEl = el('weaponName'), ammoNumEl = el('ammoNum'), reloadTagEl = el('reloadTag');
@@ -193,6 +208,5 @@ const startOverlay = el('startOverlay'), pauseOverlay = el('pauseOverlay'), game
 const loadingFill = el('loadingFill'), loadingLabel = el('loadingLabel'), startBtn = el('startBtn');
 const levelUpEl = el('levelUp'), levelUpCardsEl = el('levelUpCards'), rerollBtnEl = el('rerollBtn');
 const swapMenuEl = el('swapMenu'), swapCardsEl = el('swapCards'), debugPanelEl = el('debugPanel');
- 
+
 // =================================================================
- 
