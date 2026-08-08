@@ -10,9 +10,14 @@ const WALK_SPEED = 15.0;   // tripled for testing — was 5.0
 const RUN_SPEED = 30.0;    // tripled for testing — was 10.0
 const ZOMBIE_SPEED_MULT = 7.5; // tripled for testing — was 2.5
 const GRAVITY = 22;
-const FINE_CELL = 2;      // nav grid cell size (meters) used once close to the player
-const COARSE_CELL = 3;    // nav grid cell size (meters) used for long-distance routing — was 5, too coarse for doorway-scale passages
-const FAR_THRESHOLD = 18; // meters — beyond this, zombies path on the coarse grid
+// Nav grid cell size in metres. Finer = more faithful to real doorways and pillars (a zombie
+// is only ~0.4m wide, so 2m cells were very coarse). Build cost is no longer the constraint
+// thanks to the collision acceleration structure; see FLOW_FIELD_FINE_RADIUS in world.js.
+const FINE_CELL = 0.6;
+// The coarse nav grid is this many fine cells across (0.6 * 4 = 2.4m). It's downsampled from
+// the fine grid, and its flow field covers the WHOLE level with no distance cap — cheap,
+// because a street network's walkable area is only a small share of the map's footprint.
+const COARSE_FACTOR = 4;
 const STEP_SMOOTH_MAX = 1.2; // meters — normal walkable step/slope tolerance
 const LEDGE_DROP_MAX = 4.0;  // meters — max one-way drop zombies/paths will take off a ledge
 const INTERACT_RADIUS = 2.6;
@@ -44,14 +49,9 @@ const ANIM_ROW_WALK_TOWARD = 0, ANIM_ROW_WALK_AWAY = 1, ANIM_ROW_ATTACK = 2, ANI
 const SUN_DIRECTION = new THREE.Vector3(-0.29, -0.916, -0.222).normalize();
 
 // =================================================================
-// NAV NODES — hand-placed waypoint graph for long-distance zombie routing.
-// Replace/extend this list with real spots: open the settings panel in-game, walk to each
-// corner/intersection/junction (especially anywhere pathfinding struggles, like a corridor
-// bend), and use the "COPY POSITION" button to grab exact coordinates. Only x/z matter here.
-// Connections between nodes are computed automatically at load time — you don't need to
-// specify which nodes link to which, just drop in positions.
-// This is used for routing beyond FAR_THRESHOLD; close-range movement still uses the fine
-// grid, so this only needs to cover the big, obvious junctions, not every nook.
+// NAV NODES — no longer used by pathfinding. The flow field solves routing directly from the
+// collision mesh, so hand-placed waypoints aren't needed. Kept only because the capture UI
+// still writes here and the coordinates are handy reference points; safe to empty out.
 // =================================================================
 const NAV_NODES = [
   { id:'node1', x:-47.65, z:-9.52 },
