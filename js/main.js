@@ -28,7 +28,10 @@ function animate(){
     updateHUD();
   }
 
-  if(gameState!=='loading') renderFrame();
+  if(gameState!=='loading'){
+    updatePosReadout();
+    renderFrame();
+  }
 }
 
 init();

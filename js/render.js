@@ -404,6 +404,18 @@ function wireSettingsUI(){
     box.style.display='block'; box.value=json; box.select();
     if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(json).catch(()=>{});
   });
+
+  el('btnCopyPos').addEventListener('click', ()=>{
+    const x = camera.position.x.toFixed(2), z = camera.position.z.toFixed(2);
+    const text = `{ id:'node', x:${x}, z:${z} },`;
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(()=>{});
+  });
+}
+
+function updatePosReadout(){
+  const el2 = document.getElementById('posReadout');
+  if(!el2 || !camera) return;
+  el2.textContent = `x: ${camera.position.x.toFixed(2)}, z: ${camera.position.z.toFixed(2)}`;
 }
 
 // =================================================================
