@@ -433,7 +433,8 @@ function checkNodeEdge(ax, az, bx, bz){
 
 function buildNavNodeGraph(){
   const adjacency = new Map();
-  NAV_NODES.forEach(n => adjacency.set(n.id, []));
+  const reverseAdjacency = new Map();
+  NAV_NODES.forEach(n => { adjacency.set(n.id, []); reverseAdjacency.set(n.id, []); });
   const MAX_EDGE_DIST = 45; // meters — skip checking absurdly distant node pairs
   for(let i=0;i<NAV_NODES.length;i++){
     for(let j=i+1;j<NAV_NODES.length;j++){
@@ -442,32 +443,21 @@ function buildNavNodeGraph(){
       if(dist > MAX_EDGE_DIST) continue;
       const result = checkNodeEdge(a.x, a.z, b.x, b.z);
       if(!result) continue;
-      if(result.forward) adjacency.get(a.id).push({ id:b.id, dist });
-      if(result.backward) adjacency.get(b.id).push({ id:a.id, dist });
+      if(result.forward){ adjacency.get(a.id).push({ id:b.id, dist }); reverseAdjacency.get(b.id).push({ id:a.id, dist }); }
+      if(result.backward){ adjacency.get(b.id).push({ id:a.id, dist }); reverseAdjacency.get(a.id).push({ id:b.id, dist }); }
     }
   }
-  navNodeGraph = { adjacency };
+  navNodeGraph = { adjacency, reverseAdjacency };
 }
 
 // Finds the nearest node actually reachable (in the correct direction) from worldPos — not
 // just nearest by distance, since the closest node by straight-line distance could be on the
 // far side of a wall, or up a ledge that can only be reached from the other side.
-// If preferId is given and still reasonably close (within 1.3x the true nearest distance) and
-// reachable, it's kept instead of switching — without this, a position roughly equidistant
-// between two nodes flips its "nearest" choice on tiny movements, which combined with
-// periodic replanning caused visible back-and-forth oscillation between the two.
-function nearestReachableNode(worldPos, preferId){
+function nearestReachableNode(worldPos){
   if(NAV_NODES.length===0) return null;
   const candidates = NAV_NODES
     .map(n => ({ n, dist: Math.hypot(n.x-worldPos.x, n.z-worldPos.z) }))
     .sort((a,b)=>a.dist-b.dist);
-  if(preferId){
-    const preferred = candidates.find(c=>c.n.id===preferId);
-    if(preferred && preferred.dist <= candidates[0].dist*1.3){
-      const result = checkNodeEdge(worldPos.x, worldPos.z, preferred.n.x, preferred.n.z);
-      if(result && result.forward) return preferred.n;
-    }
-  }
   for(const c of candidates.slice(0,4)){
     const result = checkNodeEdge(worldPos.x, worldPos.z, c.n.x, c.n.z);
     if(result && result.forward) return c.n;
@@ -475,67 +465,101 @@ function nearestReachableNode(worldPos, preferId){
   return candidates[0].n; // fall back to nearest even if unverified, better than nothing
 }
 
+// Dijkstra on the REVERSE graph from targetId gives, for every node, the true shortest
+// directed graph-distance FROM that node TO targetId (respecting one-way ledge edges
+// correctly). Computed once per player-node-cache-update and shared by every zombie.
+function computeDistancesToTarget(targetId){
+  const dist = new Map();
+  NAV_NODES.forEach(n=>dist.set(n.id, Infinity));
+  dist.set(targetId, 0);
+  const visited = new Set();
+  const queue = [{id:targetId, d:0}];
+  while(queue.length>0){
+    queue.sort((a,b)=>a.d-b.d);
+    const cur = queue.shift();
+    if(visited.has(cur.id)) continue;
+    visited.add(cur.id);
+    const neighbors = navNodeGraph.reverseAdjacency.get(cur.id) || [];
+    for(const edge of neighbors){
+      const nd = cur.d + edge.dist;
+      if(nd < dist.get(edge.id)){ dist.set(edge.id, nd); queue.push({id:edge.id, d:nd}); }
+    }
+  }
+  return dist;
+}
+
 let cachedPlayerNode = null;
 let cachedPlayerNodePos = { x: Infinity, z: Infinity };
+let cachedNodeDistances = null; // Map(nodeId -> graph distance to cachedPlayerNode)
 const PLAYER_NODE_CACHE_DIST = 3; // meters — only recompute once the player has moved this far
 
-// The player's nearest node is the same value for every zombie at any given moment — computing
-// it fresh per zombie per replan (as findNodePath used to) meant redoing the same expensive
-// raycasting work once per zombie instead of once per player movement, which is almost
-// certainly what made pathing look frozen with several zombies active at long range.
+// The player's nearest node — and the distance table from every other node to it — is the
+// same for every zombie at any given moment. Computing it once per player movement instead of
+// once per zombie per replan is most of why this used to be so expensive with many zombies.
 function getCachedPlayerNode(){
   const dx = camera.position.x - cachedPlayerNodePos.x;
   const dz = camera.position.z - cachedPlayerNodePos.z;
   if(cachedPlayerNode===null || Math.hypot(dx,dz) > PLAYER_NODE_CACHE_DIST){
     cachedPlayerNode = nearestReachableNode(camera.position);
     cachedPlayerNodePos = { x: camera.position.x, z: camera.position.z };
+    cachedNodeDistances = cachedPlayerNode ? computeDistancesToTarget(cachedPlayerNode.id) : null;
   }
   return cachedPlayerNode;
 }
 
-function findNodePath(fromWorld, toWorld, preferStartId){
+// Picks the entry node that minimizes the WHOLE remaining journey (distance from worldPos to
+// the candidate, plus that candidate's precomputed graph-distance to the target) — not just
+// whichever node happens to be nearest right now. This is what actually fixes both the
+// oscillation-between-two-nodes problem and the "backtracks to an old node" problem: a sticky
+// memory of a previous choice was patching the symptom, but evaluating the true total cost is
+// what makes the choice stable and correct in the first place, without needing to remember
+// anything between replans.
+function bestEntryNode(worldPos){
+  if(NAV_NODES.length===0 || !cachedNodeDistances) return null;
+  const candidates = NAV_NODES
+    .map(n => ({ n, localDist: Math.hypot(n.x-worldPos.x, n.z-worldPos.z), toTarget: cachedNodeDistances.get(n.id) }))
+    .filter(c => c.toTarget < Infinity)
+    .map(c => ({ n:c.n, total: c.localDist + c.toTarget }))
+    .sort((a,b)=>a.total-b.total);
+  for(const c of candidates.slice(0,4)){
+    const result = checkNodeEdge(worldPos.x, worldPos.z, c.n.x, c.n.z);
+    if(result && result.forward) return c.n;
+  }
+  return candidates.length ? candidates[0].n : null;
+}
+
+function findNodePath(fromWorld, toWorld){
   if(!navNodeGraph || NAV_NODES.length===0) return null;
-  const startNode = nearestReachableNode(fromWorld, preferStartId);
-  const endNode = getCachedPlayerNode(); // toWorld is always the player position in practice
-  if(!startNode || !endNode) return null;
-  if(startNode.id===endNode.id){
-    const path = [{x:endNode.x, z:endNode.z}, {x:toWorld.x, z:toWorld.z}];
-    path.startNodeId = startNode.id;
-    return path;
-  }
+  const endNode = getCachedPlayerNode();
+  if(!endNode || !cachedNodeDistances) return null;
+  const startNode = bestEntryNode(fromWorld);
+  if(!startNode) return null;
 
+  // Exact distances are already known for every node, so following the path is just a greedy
+  // walk downhill along those distances — always correct (no separate search needed), and
+  // trivially cheap per zombie since the expensive part happened once, above, in the cache.
   const nodeById = new Map(NAV_NODES.map(n=>[n.id,n]));
-  const h = (n) => Math.hypot(n.x-endNode.x, n.z-endNode.z);
-  const open = new Map();
-  const closed = new Set();
-  open.set(startNode.id, { g:0, f:h(startNode), parent:null, id:startNode.id });
-
-  let iterations=0;
-  while(open.size>0 && iterations<2000){
-    iterations++;
-    let bestId=null, best=null;
-    for(const [id,node] of open){ if(best===null||node.f<best.f){best=node;bestId=id;} }
-    if(bestId===endNode.id){
-      const path=[]; let n=best;
-      while(n){ const nd=nodeById.get(n.id); path.push({x:nd.x, z:nd.z}); n=n.parent; }
-      path.reverse();
-      path.push({x:toWorld.x, z:toWorld.z}); // final hop from the last node to the actual target
-      path.startNodeId = startNode.id;
-      return path;
-    }
-    open.delete(bestId); closed.add(bestId);
-    const neighbors = navNodeGraph.adjacency.get(bestId) || [];
+  const path = [];
+  let currentId = startNode.id;
+  const visited = new Set();
+  while(currentId !== endNode.id){
+    if(visited.has(currentId)) break; // safety net against any inconsistency; shouldn't trigger
+    visited.add(currentId);
+    const nd = nodeById.get(currentId);
+    path.push({x:nd.x, z:nd.z});
+    const neighbors = navNodeGraph.adjacency.get(currentId) || [];
+    let bestNext = null, bestDist = cachedNodeDistances.get(currentId);
     for(const edge of neighbors){
-      if(closed.has(edge.id)) continue;
-      const g = best.g + edge.dist;
-      const existing = open.get(edge.id);
-      if(!existing || g<existing.g){
-        const nd = nodeById.get(edge.id);
-        open.set(edge.id, { g, f:g+h(nd), parent:best, id:edge.id });
-      }
+      const d = cachedNodeDistances.get(edge.id);
+      if(d < bestDist){ bestDist = d; bestNext = edge.id; }
     }
+    if(bestNext===null) break; // no improving neighbor — shouldn't happen if reachable
+    currentId = bestNext;
   }
-  return null; // graph exists but start/end aren't connected — caller falls back to the grid
+  const endNd = nodeById.get(endNode.id);
+  path.push({x:endNd.x, z:endNd.z});
+  path.push({x:toWorld.x, z:toWorld.z}); // final hop from the last node to the actual target
+  return path;
 }
 
 // =================================================================

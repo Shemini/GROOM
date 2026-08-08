@@ -100,7 +100,7 @@ function spawnZombie(){
 
   const intensity = statValue('enemyIntensity');
   const hpBase = (55+wave.number*14)*(1+intensity*0.06);
-  const speed = (20+Math.min(wave.number*0.5,10)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
+  const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
   const z = {
     group, billboard, blob, hp:hpBase, maxHp:hpBase, speed, dmg:8+Math.min(wave.number,10),
     lastAttack:-999, path:null, pathIndex:0, pathCellSize:FINE_CELL, pathTimer:Math.random()*0.4, groanTimer:1+Math.random()*3,
@@ -110,7 +110,7 @@ function spawnZombie(){
     attacking: false, movingToward: true, dying: false, deathAnimDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
-    lastStartNodeId: undefined, pathIsNodeBased: false,
+    pathIsNodeBased: false,
   };
   billboard.userData.zombieRef=z;
   zombies.push(z);
@@ -140,12 +140,11 @@ function recomputePath(z){
   const dist = z.group.position.distanceTo(camera.position);
 
   if(dist > FAR_THRESHOLD && NAV_NODES.length>0){
-    const nodePath = findNodePath(z.group.position, camera.position, z.lastStartNodeId);
+    const nodePath = findNodePath(z.group.position, camera.position);
     if(nodePath){
       z.path = nodePath;
       z.pathIndex = 0;
       z.pathCellSize = FINE_CELL; // waypoint-arrival tolerance for node hops
-      z.lastStartNodeId = nodePath.startNodeId;
       z.pathIsNodeBased = true;
       return;
     }
