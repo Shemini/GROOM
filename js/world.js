@@ -404,24 +404,31 @@ function findPath(fromWorld, toWorld, grid){
 // =================================================================
 let navNodeGraph = null; // { adjacency: Map(id -> [{id, dist}, ...]) }
 
-// Checks whether a straight line between two points is actually walkable: continuous floor
-// the whole way (no gaps, no cliff-sized drops mid-segment) and clear of walls at chest height.
-function nodesConnected(ax, az, bx, bz){
+// Checks whether a straight line between two points is walkable, and in which direction(s).
+// A gap (no floor somewhere along the line) or a wall always blocks it entirely. A genuine
+// elevation difference between the endpoints is only walkable downhill once it's bigger than a
+// normal step — mirroring the same one-way ledge-drop behavior the grid pathfinding already
+// has — so ledge-adjacent nodes connect correctly without needing any special collision
+// geometry. Returns null if blocked outright, or {forward, backward} booleans otherwise
+// (forward = walkable from a to b).
+function checkNodeEdge(ax, az, bx, bz){
   const dist = Math.hypot(bx-ax, bz-az);
   const steps = Math.max(2, Math.ceil(dist/2));
-  let prevY = null, firstY = null, lastY = null;
   for(let s=0; s<=steps; s++){
     const t = s/steps;
     const x = ax+(bx-ax)*t, z = az+(bz-az)*t;
-    const fy = getFloorY(x, z, levelMaxY);
-    if(fy===null) return false;
-    if(prevY!==null && Math.abs(fy-prevY) > STEP_SMOOTH_MAX) return false;
-    if(firstY===null) firstY = fy;
-    lastY = fy;
-    prevY = fy;
+    if(getFloorY(x, z, levelMaxY)===null) return null; // a gap/void anywhere along the line
   }
-  const y = Math.max(firstY, lastY) + 1.2;
-  return canMoveToRadius(ax, az, bx, bz, y, ZOMBIE_RADIUS);
+  const fa = getFloorY(ax, az, levelMaxY);
+  const fb = getFloorY(bx, bz, levelMaxY);
+  if(fa===null || fb===null) return null;
+  const y = Math.max(fa, fb) + 1.2;
+  if(!canMoveToRadius(ax, az, bx, bz, y, ZOMBIE_RADIUS)) return null; // a wall in the way
+
+  const dh = fa - fb; // positive: a sits higher than b
+  if(Math.abs(dh) <= STEP_SMOOTH_MAX) return { forward:true, backward:true };
+  if(dh > STEP_SMOOTH_MAX) return dh<=LEDGE_DROP_MAX ? { forward:true, backward:false } : null;
+  return (-dh)<=LEDGE_DROP_MAX ? { forward:false, backward:true } : null;
 }
 
 function buildNavNodeGraph(){
@@ -433,25 +440,26 @@ function buildNavNodeGraph(){
       const a = NAV_NODES[i], b = NAV_NODES[j];
       const dist = Math.hypot(a.x-b.x, a.z-b.z);
       if(dist > MAX_EDGE_DIST) continue;
-      if(nodesConnected(a.x, a.z, b.x, b.z)){
-        adjacency.get(a.id).push({ id:b.id, dist });
-        adjacency.get(b.id).push({ id:a.id, dist });
-      }
+      const result = checkNodeEdge(a.x, a.z, b.x, b.z);
+      if(!result) continue;
+      if(result.forward) adjacency.get(a.id).push({ id:b.id, dist });
+      if(result.backward) adjacency.get(b.id).push({ id:a.id, dist });
     }
   }
   navNodeGraph = { adjacency };
 }
 
-// Finds the nearest node actually reachable in a straight line from worldPos — not just
-// nearest by distance, since the closest node by straight-line distance could be on the far
-// side of a wall (e.g. in an adjacent room).
+// Finds the nearest node actually reachable (in the correct direction) from worldPos — not
+// just nearest by distance, since the closest node by straight-line distance could be on the
+// far side of a wall, or up a ledge that can only be reached from the other side.
 function nearestReachableNode(worldPos){
   if(NAV_NODES.length===0) return null;
   const candidates = NAV_NODES
     .map(n => ({ n, dist: Math.hypot(n.x-worldPos.x, n.z-worldPos.z) }))
     .sort((a,b)=>a.dist-b.dist);
   for(const c of candidates.slice(0,6)){
-    if(nodesConnected(worldPos.x, worldPos.z, c.n.x, c.n.z)) return c.n;
+    const result = checkNodeEdge(worldPos.x, worldPos.z, c.n.x, c.n.z);
+    if(result && result.forward) return c.n;
   }
   return candidates[0].n; // fall back to nearest even if unverified, better than nothing
 }
