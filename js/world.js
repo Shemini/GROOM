@@ -413,7 +413,7 @@ let navNodeGraph = null; // { adjacency: Map(id -> [{id, dist}, ...]) }
 // (forward = walkable from a to b).
 function checkNodeEdge(ax, az, bx, bz){
   const dist = Math.hypot(bx-ax, bz-az);
-  const steps = Math.max(2, Math.ceil(dist/2));
+  const steps = Math.max(2, Math.ceil(dist/3));
   for(let s=0; s<=steps; s++){
     const t = s/steps;
     const x = ax+(bx-ax)*t, z = az+(bz-az)*t;
@@ -457,17 +457,35 @@ function nearestReachableNode(worldPos){
   const candidates = NAV_NODES
     .map(n => ({ n, dist: Math.hypot(n.x-worldPos.x, n.z-worldPos.z) }))
     .sort((a,b)=>a.dist-b.dist);
-  for(const c of candidates.slice(0,6)){
+  for(const c of candidates.slice(0,4)){
     const result = checkNodeEdge(worldPos.x, worldPos.z, c.n.x, c.n.z);
     if(result && result.forward) return c.n;
   }
   return candidates[0].n; // fall back to nearest even if unverified, better than nothing
 }
 
+let cachedPlayerNode = null;
+let cachedPlayerNodePos = { x: Infinity, z: Infinity };
+const PLAYER_NODE_CACHE_DIST = 3; // meters — only recompute once the player has moved this far
+
+// The player's nearest node is the same value for every zombie at any given moment — computing
+// it fresh per zombie per replan (as findNodePath used to) meant redoing the same expensive
+// raycasting work once per zombie instead of once per player movement, which is almost
+// certainly what made pathing look frozen with several zombies active at long range.
+function getCachedPlayerNode(){
+  const dx = camera.position.x - cachedPlayerNodePos.x;
+  const dz = camera.position.z - cachedPlayerNodePos.z;
+  if(cachedPlayerNode===null || Math.hypot(dx,dz) > PLAYER_NODE_CACHE_DIST){
+    cachedPlayerNode = nearestReachableNode(camera.position);
+    cachedPlayerNodePos = { x: camera.position.x, z: camera.position.z };
+  }
+  return cachedPlayerNode;
+}
+
 function findNodePath(fromWorld, toWorld){
   if(!navNodeGraph || NAV_NODES.length===0) return null;
   const startNode = nearestReachableNode(fromWorld);
-  const endNode = nearestReachableNode(toWorld);
+  const endNode = getCachedPlayerNode(); // toWorld is always the player position in practice
   if(!startNode || !endNode) return null;
   if(startNode.id===endNode.id) return [{x:endNode.x, z:endNode.z}, {x:toWorld.x, z:toWorld.z}];
 
