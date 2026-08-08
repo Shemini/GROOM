@@ -452,11 +452,22 @@ function buildNavNodeGraph(){
 // Finds the nearest node actually reachable (in the correct direction) from worldPos — not
 // just nearest by distance, since the closest node by straight-line distance could be on the
 // far side of a wall, or up a ledge that can only be reached from the other side.
-function nearestReachableNode(worldPos){
+// If preferId is given and still reasonably close (within 1.3x the true nearest distance) and
+// reachable, it's kept instead of switching — without this, a position roughly equidistant
+// between two nodes flips its "nearest" choice on tiny movements, which combined with
+// periodic replanning caused visible back-and-forth oscillation between the two.
+function nearestReachableNode(worldPos, preferId){
   if(NAV_NODES.length===0) return null;
   const candidates = NAV_NODES
     .map(n => ({ n, dist: Math.hypot(n.x-worldPos.x, n.z-worldPos.z) }))
     .sort((a,b)=>a.dist-b.dist);
+  if(preferId){
+    const preferred = candidates.find(c=>c.n.id===preferId);
+    if(preferred && preferred.dist <= candidates[0].dist*1.3){
+      const result = checkNodeEdge(worldPos.x, worldPos.z, preferred.n.x, preferred.n.z);
+      if(result && result.forward) return preferred.n;
+    }
+  }
   for(const c of candidates.slice(0,4)){
     const result = checkNodeEdge(worldPos.x, worldPos.z, c.n.x, c.n.z);
     if(result && result.forward) return c.n;
@@ -482,12 +493,16 @@ function getCachedPlayerNode(){
   return cachedPlayerNode;
 }
 
-function findNodePath(fromWorld, toWorld){
+function findNodePath(fromWorld, toWorld, preferStartId){
   if(!navNodeGraph || NAV_NODES.length===0) return null;
-  const startNode = nearestReachableNode(fromWorld);
+  const startNode = nearestReachableNode(fromWorld, preferStartId);
   const endNode = getCachedPlayerNode(); // toWorld is always the player position in practice
   if(!startNode || !endNode) return null;
-  if(startNode.id===endNode.id) return [{x:endNode.x, z:endNode.z}, {x:toWorld.x, z:toWorld.z}];
+  if(startNode.id===endNode.id){
+    const path = [{x:endNode.x, z:endNode.z}, {x:toWorld.x, z:toWorld.z}];
+    path.startNodeId = startNode.id;
+    return path;
+  }
 
   const nodeById = new Map(NAV_NODES.map(n=>[n.id,n]));
   const h = (n) => Math.hypot(n.x-endNode.x, n.z-endNode.z);
@@ -505,6 +520,7 @@ function findNodePath(fromWorld, toWorld){
       while(n){ const nd=nodeById.get(n.id); path.push({x:nd.x, z:nd.z}); n=n.parent; }
       path.reverse();
       path.push({x:toWorld.x, z:toWorld.z}); // final hop from the last node to the actual target
+      path.startNodeId = startNode.id;
       return path;
     }
     open.delete(bestId); closed.add(bestId);
