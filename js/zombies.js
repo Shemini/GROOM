@@ -11,7 +11,7 @@ function getBlobShadowGeometry(){
   if(!blobShadowGeometry) blobShadowGeometry = new THREE.CircleGeometry(0.5,16);
   return blobShadowGeometry;
 }
-
+ 
 // A flat plane manually rotated to face the camera around the vertical axis only (unlike
 // THREE.Sprite, which always fully faces the camera on all axes and therefore could never
 // show a side/back view). This is also what makes shadow casting/receiving possible at all —
@@ -33,7 +33,7 @@ function createZombieVisual(heightWorld, widthWorld){
   billboard.frustumCulled = false;
   billboard.receiveShadow = true;
   group.add(billboard);
-
+ 
   const shadowMat = new THREE.MeshBasicMaterial({
     color: new THREE.Color(settings.contactShadowColor), transparent:true,
     opacity: settings.contactShadowOpacity, depthWrite:false,
@@ -42,10 +42,10 @@ function createZombieVisual(heightWorld, widthWorld){
   blob.rotation.x = -Math.PI/2;
   blob.renderOrder = 1;
   group.add(blob);
-
+ 
   return { group, billboard, blob };
 }
-
+ 
 function isSpawnPointHidden(x,z){
   const camPos = camera.position;
   const forward = new THREE.Vector3();
@@ -61,7 +61,7 @@ function isSpawnPointHidden(x,z){
   raycaster.far = dist-0.5;
   return raycaster.intersectObjects(environmentMeshes,false).length>0;
 }
-
+ 
 function findSpawnPosition(){
   const camPos = camera.position;
   const minR=10, maxR=20;
@@ -79,10 +79,10 @@ function findSpawnPosition(){
   const fy = getFloorY(x,z, levelMaxY);
   return new THREE.Vector3(x, fy!==null?fy:camPos.y-EYE_HEIGHT, z);
 }
-
+ 
 function spawnZombie(){
   const pos = findSpawnPosition();
-
+ 
   const heightMult = 1 + (Math.random()-0.5)*ZOMBIE_HEIGHT_VARIATION;
   const zHeight = AVG_ZOMBIE_HEIGHT*heightMult;
   const spriteAspect = (zombieSpriteTexture && zombieSpriteTexture.image)
@@ -90,14 +90,14 @@ function spawnZombie(){
     : 0.5;
   const zWidth = AVG_ZOMBIE_HEIGHT*spriteAspect; // width stays fixed — only height varies per zombie
   const collisionRadius = (zWidth*HITBOX_WIDTH_FRACTION)/2;
-
+ 
   const { group, billboard, blob } = createZombieVisual(zHeight, zWidth);
   group.position.copy(pos);
   scene.add(group);
   const blobRadius = collisionRadius*1.6;
   blob.scale.set(blobRadius, blobRadius, 1);
   blob.position.set(0, 0.02, 0);
-
+ 
   const intensity = statValue('enemyIntensity');
   const hpBase = (55+wave.number*14)*(1+intensity*0.06);
   const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
@@ -115,7 +115,7 @@ function spawnZombie(){
   zombies.push(z);
   wave.spawned++;
 }
-
+ 
 // Keeps every zombie's flat billboard facing the camera around the vertical axis only
 // (cylindrical billboarding) so it always reads as a proper sprite instead of going edge-on,
 // and keeps the ground contact-shadow decal glued to its feet.
@@ -129,7 +129,7 @@ function updateBillboards(){
     z.billboard.rotation.y = Math.atan2(dx, dz);
   }
 }
-
+ 
 // Picks the coarse grid for long-distance routing and the fine grid once close to the player,
 // approximating "rough pathing far away, precise pathing up close" without needing splines.
 // Long-distance routing prefers the hand-placed node graph when one covers this route — it's
@@ -137,7 +137,7 @@ function updateBillboards(){
 // coarse grid if NAV_NODES doesn't reach this far yet.
 function recomputePath(z){
   const dist = z.group.position.distanceTo(camera.position);
-
+ 
   if(dist > FAR_THRESHOLD && NAV_NODES.length>0){
     const nodePath = findNodePath(z.group.position, camera.position);
     if(nodePath){
@@ -147,7 +147,7 @@ function recomputePath(z){
       return;
     }
   }
-
+ 
   const primaryGrid = dist > FAR_THRESHOLD ? navGridCoarse : navGridFine;
   let path = findPath(z.group.position, camera.position, primaryGrid);
   let grid = primaryGrid;
@@ -163,7 +163,7 @@ function recomputePath(z){
   z.pathIndex = 0;
   z.pathCellSize = grid.cellSize;
 }
-
+ 
 function updateZombies(delta, elapsed){
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
@@ -173,7 +173,7 @@ function updateZombies(delta, elapsed){
     }
     if(z.dying) continue;
     if(z.staggerTimer>0){ z.staggerTimer -= delta; continue; }
-
+ 
     let pulled=false;
     for(const v of vortexFields){
       const vd = Math.hypot(z.group.position.x-v.pos.x, z.group.position.z-v.pos.z);
@@ -204,10 +204,10 @@ function updateZombies(delta, elapsed){
       }
     }
     if(pulled) continue;
-
+ 
     z.pathTimer -= delta;
     if(z.pathTimer<=0){ recomputePath(z); z.pathTimer=1.4+Math.random()*0.6; }
-
+ 
     const distToPlayer = Math.hypot(camera.position.x-z.group.position.x, camera.position.z-z.group.position.z);
     let targetX, targetZ;
     if(z.path && z.pathIndex<z.path.length){
@@ -221,7 +221,7 @@ function updateZombies(delta, elapsed){
       // visibly walking straight into whatever's actually in the way. Next replan will retry.
       targetX=z.group.position.x; targetZ=z.group.position.z;
     }
-
+ 
     if(distToPlayer>1.0){
       z.attacking = false;
       const dx=targetX-z.group.position.x, dz=targetZ-z.group.position.z;
@@ -253,7 +253,7 @@ function updateZombies(delta, elapsed){
           z.movingToward = dot>=0;
         }
       }
-
+ 
       // Stuck detection: if actual displacement over the last ~1.7s is tiny while the zombie
       // should be making progress, something's wrong with its current path (bad coarse-grid
       // route, awkward local geometry, whatever) — force an immediate precise replan instead
@@ -278,10 +278,10 @@ function updateZombies(delta, elapsed){
         if(attackSoundLimiter(elapsed)) playEnemyClip('attack', computePan(z.group.position), 0.6);
       }
     }
-
+ 
     z.groanTimer -= delta;
     if(z.groanTimer<=0 && distToPlayer<24){ playEnemyClip('passive', computePan(z.group.position), 0.4); z.groanTimer=4+Math.random()*5; }
-
+ 
     if(distToPlayer < CALLOUT_RANGE){
       if(!z.wasInCalloutRange){
         if(elapsed - z.calloutLastTime >= CALLOUT_COOLDOWN && calloutSoundLimiter(elapsed)){
@@ -294,7 +294,7 @@ function updateZombies(delta, elapsed){
       z.wasInCalloutRange = false;
     }
   }
-
+ 
   // Unlike normal movement, this push had no wall awareness at all — in a crowded corner or
   // doorway (exactly where stragglers were getting stuck) it could shove a zombie straight
   // into geometry, and once embedded, ordinary collision-checked movement often couldn't work
@@ -318,7 +318,7 @@ function updateZombies(delta, elapsed){
     }
   }
 }
-
+ 
 // Advances each zombie's current animation frame and picks which row to show:
 // dying > attacking (punch, overrides movement) > walking toward/away from the player.
 // Once the (non-looping) death row finishes playing, this performs the actual scene removal —
@@ -328,7 +328,7 @@ function updateZombieAnimations(delta){
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
     const targetRow = z.dying ? ANIM_ROW_DEATH : (z.attacking ? ANIM_ROW_ATTACK : (z.movingToward ? ANIM_ROW_WALK_TOWARD : ANIM_ROW_WALK_AWAY));
-
+ 
     if(targetRow !== z.animRow){
       z.animRow = targetRow;
       z.animFrame = 0;
@@ -336,7 +336,7 @@ function updateZombieAnimations(delta){
       const tex = z.billboard.material.map;
       tex.offset.set(z.animFrame/SPRITE_COLS, 1-(z.animRow+1)/SPRITE_ROWS);
     }
-
+ 
     z.animTimer -= delta;
     while(z.animTimer<=0){
       z.animTimer += ANIM_FRAME_DURATION;
@@ -349,14 +349,14 @@ function updateZombieAnimations(delta){
       const tex = z.billboard.material.map;
       tex.offset.set(z.animFrame/SPRITE_COLS, 1-(z.animRow+1)/SPRITE_ROWS);
     }
-
+ 
     if(z.dying && z.deathAnimDone){
       scene.remove(z.group);
       zombies.splice(i,1);
     }
   }
 }
-
+ 
 function updateStatusEffects(delta, elapsed){
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
@@ -384,7 +384,7 @@ function updateStatusEffects(delta, elapsed){
     }
   }
 }
-
+ 
 function triggerZombieFlash(z){
   z.billboard.material.color.setHex(0xff3030);
   z.flashTimer=0.12; z.flashActive=true;
@@ -436,7 +436,7 @@ function killZombie(z, headshot){
     spawnDropPickup(z.group.position.clone(), drop.type);
   }
 }
-
+ 
 // =================================================================
 // ENEMY DROPS
 // =================================================================
@@ -492,5 +492,5 @@ function updateDrops(delta, elapsed){
     if(dist<1.3){ applyDrop(d.type); soundDropPickup(); scene.remove(d.mesh); drops.splice(i,1); }
   }
 }
-
+ 
 // =================================================================
