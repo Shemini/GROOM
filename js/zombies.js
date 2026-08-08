@@ -100,7 +100,7 @@ function spawnZombie(){
 
   const intensity = statValue('enemyIntensity');
   const hpBase = (55+wave.number*14)*(1+intensity*0.06);
-  const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
+  const speed = (10+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
   const z = {
     group, billboard, blob, hp:hpBase, maxHp:hpBase, speed, dmg:8+Math.min(wave.number,10),
     lastAttack:-999, path:null, pathIndex:0, pathCellSize:FINE_CELL, pathTimer:Math.random()*0.4, groanTimer:1+Math.random()*3,
