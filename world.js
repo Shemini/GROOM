@@ -76,6 +76,7 @@ function loadAssets(){
     if(!envDone || !colDone || !spriteDone) return;
     loadingLabel.textContent = 'Preparing level...';
     setTimeout(()=>{
+      buildCollisionAccel();
       buildNavGrid();
       configureSunShadow();
       placePlayerAtStart();
@@ -90,7 +91,100 @@ function loadAssets(){
 // =================================================================
 // COLLISION / MOVEMENT HELPERS (shared by player and zombies)
 // =================================================================
+// =================================================================
+// COLLISION ACCELERATION
+// three.js has no spatial index, so every raycast tests every triangle in the collision mesh.
+// Floor queries are by far the most frequent thing we do (one per nav-grid cell at load, then
+// one per zombie per frame at runtime), so the triangles get bucketed by XZ once up front.
+// A query then only tests the handful of triangles in its own bucket instead of all of them.
+// =================================================================
+let triVerts = null;        // Float32Array, 9 floats per triangle (3 verts x xyz), world space
+let triBuckets = null;      // array of arrays of triangle indices
+let accelMinX = 0, accelMinZ = 0, accelCell = 4, accelW = 0, accelH = 0;
+
+function buildCollisionAccel(){
+  const box = new THREE.Box3();
+  collisionMeshes.forEach(m=>box.expandByObject(m));
+  if(!isFinite(box.min.x)) return;
+
+  const tris = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  collisionMeshes.forEach(mesh=>{
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position;
+    if(!pos) return;
+    const index = geo.index;
+    const count = index ? index.count : pos.count;
+    for(let i=0;i<count;i+=3){
+      const i0 = index ? index.getX(i)   : i;
+      const i1 = index ? index.getX(i+1) : i+1;
+      const i2 = index ? index.getX(i+2) : i+2;
+      a.fromBufferAttribute(pos,i0).applyMatrix4(mesh.matrixWorld);
+      b.fromBufferAttribute(pos,i1).applyMatrix4(mesh.matrixWorld);
+      c.fromBufferAttribute(pos,i2).applyMatrix4(mesh.matrixWorld);
+      tris.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z);
+    }
+  });
+  triVerts = new Float32Array(tris);
+  const triCount = triVerts.length/9;
+
+  accelMinX = box.min.x-2; accelMinZ = box.min.z-2;
+  accelW = Math.max(1, Math.ceil((box.max.x-box.min.x+4)/accelCell));
+  accelH = Math.max(1, Math.ceil((box.max.z-box.min.z+4)/accelCell));
+  triBuckets = new Array(accelW*accelH);
+  for(let i=0;i<triBuckets.length;i++) triBuckets[i] = null;
+
+  for(let t=0;t<triCount;t++){
+    const o = t*9;
+    const x0=triVerts[o],   z0=triVerts[o+2];
+    const x1=triVerts[o+3], z1=triVerts[o+5];
+    const x2=triVerts[o+6], z2=triVerts[o+8];
+    const minX=Math.min(x0,x1,x2), maxX=Math.max(x0,x1,x2);
+    const minZ=Math.min(z0,z1,z2), maxZ=Math.max(z0,z1,z2);
+    let gx0=Math.floor((minX-accelMinX)/accelCell), gx1=Math.floor((maxX-accelMinX)/accelCell);
+    let gz0=Math.floor((minZ-accelMinZ)/accelCell), gz1=Math.floor((maxZ-accelMinZ)/accelCell);
+    gx0=Math.max(0,gx0); gz0=Math.max(0,gz0);
+    gx1=Math.min(accelW-1,gx1); gz1=Math.min(accelH-1,gz1);
+    for(let gz=gz0; gz<=gz1; gz++){
+      for(let gx=gx0; gx<=gx1; gx++){
+        const bi = gz*accelW+gx;
+        if(!triBuckets[bi]) triBuckets[bi] = [];
+        triBuckets[bi].push(t);
+      }
+    }
+  }
+  console.log('Collision acceleration built: '+triCount+' triangles in '+accelW+'x'+accelH+' buckets.');
+}
+
 function getFloorY(x, z, fromY){
+  if(triBuckets){
+    const gx = Math.floor((x-accelMinX)/accelCell);
+    const gz = Math.floor((z-accelMinZ)/accelCell);
+    if(gx<0||gx>=accelW||gz<0||gz>=accelH) return null;
+    const bucket = triBuckets[gz*accelW+gx];
+    if(!bucket) return null;
+    let best = null;
+    for(let n=0;n<bucket.length;n++){
+      const o = bucket[n]*9;
+      const ax=triVerts[o],   ay=triVerts[o+1], az=triVerts[o+2];
+      const bx=triVerts[o+3], by=triVerts[o+4], bz=triVerts[o+5];
+      const cx=triVerts[o+6], cy=triVerts[o+7], cz=triVerts[o+8];
+      // 2D barycentric containment test in the XZ plane
+      const v0x=cx-ax, v0z=cz-az, v1x=bx-ax, v1z=bz-az, v2x=x-ax, v2z=z-az;
+      const d00=v0x*v0x+v0z*v0z, d01=v0x*v1x+v0z*v1z, d02=v0x*v2x+v0z*v2z;
+      const d11=v1x*v1x+v1z*v1z, d12=v1x*v2x+v1z*v2z;
+      const denom = d00*d11 - d01*d01;
+      if(Math.abs(denom) < 1e-12) continue; // degenerate / edge-on triangle
+      const inv = 1/denom;
+      const u = (d11*d02 - d01*d12)*inv;
+      const v = (d00*d12 - d01*d02)*inv;
+      if(u < -1e-6 || v < -1e-6 || u+v > 1+1e-6) continue;
+      const y = ay + u*(cy-ay) + v*(by-ay);
+      if(y <= fromY && (best===null || y > best)) best = y;
+    }
+    return best;
+  }
+  // Fallback if the acceleration structure isn't available for some reason.
   raycaster.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0,-1,0));
   raycaster.far = 40;
   const hits = raycaster.intersectObjects(collisionMeshes, false);
@@ -244,21 +338,25 @@ function buildGridAtResolution(cellSize, box){
   // routes naturally favour the middle of a corridor rather than scraping along the walls —
   // which is where local collision tends to snag. It's a soft cost, not a hard block, so
   // genuinely tight gaps (doorways) stay passable when there's no better option.
+  // Kernel radius covering ~1.5m of real clearance, whatever the cell size happens to be.
+  const penR = Math.max(1, Math.round(1.5/cellSize));
   const wallPenalty = new Float32Array(gridW*gridH);
   for(let gz=0; gz<gridH; gz++){
     for(let gx=0; gx<gridW; gx++){
       const idx = gz*gridW+gx;
       if(navBlocked[idx]) continue;
-      let blockedNeighbours = 0;
-      for(let dz=-1; dz<=1; dz++){
-        for(let dx=-1; dx<=1; dx++){
+      let blockedNeighbours = 0, sampled = 0;
+      for(let dz=-penR; dz<=penR; dz++){
+        for(let dx=-penR; dx<=penR; dx++){
           if(dx===0 && dz===0) continue;
+          sampled++;
           const nx=gx+dx, nz=gz+dz;
           if(nx<0||nx>=gridW||nz<0||nz>=gridH){ blockedNeighbours++; continue; }
           if(navBlocked[nz*gridW+nx]) blockedNeighbours++;
         }
       }
-      wallPenalty[idx] = blockedNeighbours * 0.2;
+      // Normalised so the penalty means the same thing regardless of resolution.
+      wallPenalty[idx] = sampled>0 ? (blockedNeighbours/sampled) * 1.6 : 0;
     }
   }
   return { cellSize, minX, minZ, maxY, gridW, gridH, navBlocked, navFloorY, wallPenalty };
@@ -373,7 +471,11 @@ let flowField = null;            // Float32Array aligned with navGridFine: cost 
 let flowFieldValid = false;
 let flowFieldCell = { gx:-1, gz:-1 };
 let flowFieldTime = -999;
-const FLOW_FIELD_MAX_COST = 160;      // metres of path distance to solve outward from the player
+// Solve cost scales with (radius / cellSize)^2 — it's the number of cells inside the radius
+// that counts, not the level's total size. Keeping that ratio near ~100 lands at roughly
+// 15-20ms per rebuild. Zombies spawn 10-20m away, so this radius is comfortably generous;
+// anything beyond it steers directly at the player until it enters the field.
+const FLOW_FIELD_MAX_COST = 65;       // metres of path distance to solve outward from the player
 const FLOW_FIELD_MIN_INTERVAL = 0.25; // seconds — floor on rebuild rate
 
 const NEIGH_DX = [1,-1,0,0,1,1,-1,-1];

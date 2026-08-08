@@ -10,7 +10,10 @@ const WALK_SPEED = 15.0;   // tripled for testing — was 5.0
 const RUN_SPEED = 30.0;    // tripled for testing — was 10.0
 const ZOMBIE_SPEED_MULT = 7.5; // tripled for testing — was 2.5
 const GRAVITY = 22;
-const FINE_CELL = 2;      // nav grid cell size (meters) — single resolution, used at all ranges
+// Nav grid cell size in metres. Finer = more faithful to real doorways and pillars (a zombie
+// is only ~0.4m wide, so 2m cells were very coarse). Build cost is no longer the constraint
+// thanks to the collision acceleration structure; what matters is FLOW_FIELD_MAX_COST below.
+const FINE_CELL = 0.6;
 const STEP_SMOOTH_MAX = 1.2; // meters — normal walkable step/slope tolerance
 const LEDGE_DROP_MAX = 4.0;  // meters — max one-way drop zombies/paths will take off a ledge
 const INTERACT_RADIUS = 2.6;
