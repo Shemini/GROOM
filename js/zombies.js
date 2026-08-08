@@ -103,14 +103,14 @@ function spawnZombie(){
   const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
   const z = {
     group, billboard, blob, hp:hpBase, maxHp:hpBase, speed, dmg:8+Math.min(wave.number,10),
-    lastAttack:-999, path:null, pathIndex:0, pathCellSize:FINE_CELL, pathTimer:Math.random()*0.4, groanTimer:1+Math.random()*3,
+    lastAttack:-999, groanTimer:1+Math.random()*3,
+    losTimer:Math.random()*0.3, hasLOS:false, unstickUntil:-999, unstickSign:1,
     flashTimer:0, flashActive:false, staggerTimer:0, dot:null, stain:null, periodicTickTimer:0,
     feetY: pos.y, velY: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
     animRow: ANIM_ROW_WALK_TOWARD, animFrame: 0, animTimer: Math.random()*ANIM_FRAME_DURATION,
     attacking: false, movingToward: true, dying: false, deathAnimDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
-    pathIsNodeBased: false,
   };
   billboard.userData.zombieRef=z;
   zombies.push(z);
@@ -131,43 +131,13 @@ function updateBillboards(){
   }
 }
 
-// Picks the coarse grid for long-distance routing and the fine grid once close to the player,
-// approximating "rough pathing far away, precise pathing up close" without needing splines.
-// Long-distance routing prefers the hand-placed node graph when one covers this route — it's
-// far more reliable than grid inference over real architecture — and only falls back to the
-// coarse grid if NAV_NODES doesn't reach this far yet.
-function recomputePath(z){
-  const dist = z.group.position.distanceTo(camera.position);
 
-  if(dist > FAR_THRESHOLD && NAV_NODES.length>0){
-    const nodePath = findNodePath(z.group.position, camera.position);
-    if(nodePath){
-      z.path = nodePath;
-      z.pathIndex = 0;
-      z.pathCellSize = FINE_CELL; // waypoint-arrival tolerance for node hops
-      z.pathIsNodeBased = true;
-      return;
-    }
-  }
-
-  z.pathIsNodeBased = false;
-  const primaryGrid = dist > FAR_THRESHOLD ? navGridCoarse : navGridFine;
-  let path = findPath(z.group.position, camera.position, primaryGrid);
-  let grid = primaryGrid;
-  if(!path){
-    // Primary grid found no route at all (not just a slow search) — try the other
-    // resolution before giving up, since a tight passage that reads as blocked on one grid
-    // can still be open on the other.
-    const fallbackGrid = primaryGrid===navGridCoarse ? navGridFine : navGridCoarse;
-    const fallbackPath = findPath(z.group.position, camera.position, fallbackGrid);
-    if(fallbackPath){ path = fallbackPath; grid = fallbackGrid; }
-  }
-  z.path = path;
-  z.pathIndex = 0;
-  z.pathCellSize = grid.cellSize;
-}
+// recomputePath() is gone: with a flow field there is no per-zombie route to compute, store
+// or expire. Steering is a per-frame lookup of "which neighbouring cell is closer to the
+// player", which is why the oscillation / backtracking / stalling failures disappear.
 
 function updateZombies(delta, elapsed){
+  updateFlowField(); // one shared solve per frame at most, reused by every zombie below
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
     if(z.flashActive){
@@ -208,25 +178,28 @@ function updateZombies(delta, elapsed){
     }
     if(pulled) continue;
 
-    z.pathTimer -= delta;
-    const pathExhausted = !z.path || z.pathIndex >= z.path.length;
-    if(pathExhausted || z.pathTimer<=0){
-      recomputePath(z);
-      z.pathTimer = z.pathIsNodeBased ? (5+Math.random()*2) : (1.4+Math.random()*0.6);
+    const distToPlayer = Math.hypot(camera.position.x-z.group.position.x, camera.position.z-z.group.position.z);
+
+    // Direct approach whenever there's a clear straight line to the player. This is what
+    // makes the last stretch look natural: the flow field steps cell-to-cell, which reads as
+    // slightly indirect up close, and it also means a zombie never walks "past" the player to
+    // reach a cell centre. Throttled per zombie since it costs a raycast.
+    z.losTimer -= delta;
+    if(z.losTimer<=0){
+      z.losTimer = 0.3+Math.random()*0.2;
+      z.hasLOS = distToPlayer < 30 && canMoveToRadius(
+        z.group.position.x, z.group.position.z,
+        camera.position.x, camera.position.z,
+        z.feetY+0.9, z.collisionRadius||ZOMBIE_RADIUS);
     }
 
-    const distToPlayer = Math.hypot(camera.position.x-z.group.position.x, camera.position.z-z.group.position.z);
     let targetX, targetZ;
-    if(z.path && z.pathIndex<z.path.length){
-      const wp = z.path[z.pathIndex];
-      targetX=wp.x; targetZ=wp.z;
-      if(Math.hypot(targetX-z.group.position.x, targetZ-z.group.position.z)<(z.pathCellSize||FINE_CELL)*0.55) z.pathIndex++;
-    } else if(distToPlayer < 3){
-      targetX=camera.position.x; targetZ=camera.position.z;
+    if(z.hasLOS){
+      targetX = camera.position.x; targetZ = camera.position.z;
     } else {
-      // No path (both grids failed) and the player isn't close — hold position instead of
-      // visibly walking straight into whatever's actually in the way. Next replan will retry.
-      targetX=z.group.position.x; targetZ=z.group.position.z;
+      const step = flowFieldTarget(z.group.position.x, z.group.position.z);
+      if(step){ targetX = step.x; targetZ = step.z; }
+      else { targetX = camera.position.x; targetZ = camera.position.z; }
     }
 
     if(distToPlayer>1.0){
@@ -234,7 +207,15 @@ function updateZombies(delta, elapsed){
       const dx=targetX-z.group.position.x, dz=targetZ-z.group.position.z;
       const d=Math.hypot(dx,dz);
       if(d>0.0001){
-        const nx=dx/d, nz=dz/d;
+        let nx=dx/d, nz=dz/d;
+        // While unsticking, veer ~60 degrees off the intended heading so the zombie slides
+        // out along the surface it's caught on instead of pressing straight into it.
+        if(elapsed < z.unstickUntil){
+          const a = z.unstickSign * Math.PI/3;
+          const ca = Math.cos(a), sa = Math.sin(a);
+          const rx = nx*ca - nz*sa, rz = nx*sa + nz*ca;
+          nx = rx; nz = rz;
+        }
         const chestY = z.feetY+0.9;
         const resolved = resolveSlide(z.group.position.x, z.group.position.z, nx*z.speed*delta, nz*z.speed*delta, chestY, z.collisionRadius||ZOMBIE_RADIUS, z.feetY);
         const px = resolved.x, pz = resolved.z;
@@ -261,19 +242,16 @@ function updateZombies(delta, elapsed){
         }
       }
 
-      // Stuck detection: if actual displacement over the last ~1.7s is tiny while the zombie
-      // should be making progress, something's wrong with its current path (bad coarse-grid
-      // route, awkward local geometry, whatever) — force an immediate precise replan instead
-      // of waiting out the normal timer, rather than trying to diagnose the exact cause.
+      // Stuck detection. There's no per-zombie route to rebuild any more, so a zombie that
+      // isn't progressing is wedged on local geometry rather than mis-routed. Nudge it
+      // sideways for a moment to break the symmetry that's holding it against the surface;
+      // the flow field will resume steering it normally straight afterwards.
       z.stuckCheckTimer -= delta;
       if(z.stuckCheckTimer<=0){
         const progressed = Math.hypot(z.group.position.x-z.stuckCheckPos.x, z.group.position.z-z.stuckCheckPos.z);
         if(progressed < 0.5){
-          z.path = findPath(z.group.position, camera.position, navGridFine);
-          z.pathIndex = 0;
-          z.pathCellSize = FINE_CELL;
-          z.pathIsNodeBased = false;
-          z.pathTimer = 1.4+Math.random()*0.6;
+          z.unstickUntil = elapsed + 0.5;
+          z.unstickSign = Math.random()<0.5 ? -1 : 1;
         }
         z.stuckCheckPos.x = z.group.position.x; z.stuckCheckPos.z = z.group.position.z;
         z.stuckCheckTimer = 1.5+Math.random()*0.4;
