@@ -357,7 +357,7 @@ function findPath(fromWorld, toWorld, grid){
   open.set(gridIndex(grid,start.gx,start.gz), { g:0, f:octileHeuristic(start,end), parent:null, gx:start.gx, gz:start.gz });
   const neighbors = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   let iterations=0;
-  while(open.size>0 && iterations<1600){
+  while(open.size>0 && iterations<4000){
     iterations++;
     let bestIdx=null, best=null;
     for(const [idx,node] of open){ if(best===null||node.f<best.f){best=node;bestIdx=idx;} }
@@ -373,13 +373,24 @@ function findPath(fromWorld, toWorld, grid){
       if(!gridInBounds(grid,ngx,ngz)) continue;
       const nIdx = gridIndex(grid,ngx,ngz);
       if(closed.has(nIdx) || grid.navBlocked[nIdx]) continue;
+      if(dx!==0 && dz!==0){
+        // Diagonal step: require BOTH orthogonal cells forming this corner to also be open.
+        // Without this, the path can cut through a corner that's clear center-to-center but
+        // narrower than the zombie's actual body — a classic grid-pathfinding trap that shows
+        // up exactly as "stuck at a bend," since local collision correctly refuses the squeeze
+        // even though the grid thought the move was valid.
+        const sideAIdx = gridIndex(grid, best.gx+dx, best.gz);
+        const sideBIdx = gridIndex(grid, best.gx, best.gz+dz);
+        if(!gridInBounds(grid,best.gx+dx,best.gz) || grid.navBlocked[sideAIdx]) continue;
+        if(!gridInBounds(grid,best.gx,best.gz+dz) || grid.navBlocked[sideBIdx]) continue;
+      }
       if(!edgeWalkable(grid,best.gx,best.gz,ngx,ngz)) continue;
       const stepCost = (dx!==0&&dz!==0)?Math.SQRT2:1;
       const g = best.g+stepCost;
       const existing = open.get(nIdx);
       if(!existing || g<existing.g) open.set(nIdx, { g, f:g+octileHeuristic({gx:ngx,gz:ngz},end), parent:best, gx:ngx, gz:ngz });
     }
-    if(closed.size>1500) return null;
+    if(closed.size>4000) return null;
   }
   return null;
 }

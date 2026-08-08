@@ -134,8 +134,18 @@ function updateBillboards(){
 // approximating "rough pathing far away, precise pathing up close" without needing splines.
 function recomputePath(z){
   const dist = z.group.position.distanceTo(camera.position);
-  const grid = dist > FAR_THRESHOLD ? navGridCoarse : navGridFine;
-  z.path = findPath(z.group.position, camera.position, grid);
+  const primaryGrid = dist > FAR_THRESHOLD ? navGridCoarse : navGridFine;
+  let path = findPath(z.group.position, camera.position, primaryGrid);
+  let grid = primaryGrid;
+  if(!path){
+    // Primary grid found no route at all (not just a slow search) — try the other
+    // resolution before giving up, since a tight passage that reads as blocked on one grid
+    // can still be open on the other.
+    const fallbackGrid = primaryGrid===navGridCoarse ? navGridFine : navGridCoarse;
+    const fallbackPath = findPath(z.group.position, camera.position, fallbackGrid);
+    if(fallbackPath){ path = fallbackPath; grid = fallbackGrid; }
+  }
+  z.path = path;
   z.pathIndex = 0;
   z.pathCellSize = grid.cellSize;
 }
@@ -190,7 +200,13 @@ function updateZombies(delta, elapsed){
       const wp = z.path[z.pathIndex];
       targetX=wp.x; targetZ=wp.z;
       if(Math.hypot(targetX-z.group.position.x, targetZ-z.group.position.z)<(z.pathCellSize||FINE_CELL)*0.55) z.pathIndex++;
-    } else { targetX=camera.position.x; targetZ=camera.position.z; }
+    } else if(distToPlayer < 3){
+      targetX=camera.position.x; targetZ=camera.position.z;
+    } else {
+      // No path (both grids failed) and the player isn't close — hold position instead of
+      // visibly walking straight into whatever's actually in the way. Next replan will retry.
+      targetX=z.group.position.x; targetZ=z.group.position.z;
+    }
 
     if(distToPlayer>1.0){
       z.attacking = false;
