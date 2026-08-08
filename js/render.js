@@ -405,11 +405,35 @@ function wireSettingsUI(){
     if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(json).catch(()=>{});
   });
 
-  el('btnCopyPos').addEventListener('click', ()=>{
-    const x = camera.position.x.toFixed(2), z = camera.position.z.toFixed(2);
-    const text = `{ id:'node', x:${x}, z:${z} },`;
-    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(()=>{});
+  el('btnAddPoint').addEventListener('click', ()=>{
+    const x = parseFloat(camera.position.x.toFixed(2));
+    const z = parseFloat(camera.position.z.toFixed(2));
+    capturedNodes.push({ id: 'node'+(capturedNodes.length+1), x, z });
+    refreshPointsList();
   });
+  el('btnClearPoints').addEventListener('click', ()=>{
+    capturedNodes = [];
+    refreshPointsList();
+  });
+  el('btnExportPoints').addEventListener('click', ()=>{
+    if(capturedNodes.length===0) return;
+    const body = capturedNodes.map(n=>`  { id:'${n.id}', x:${n.x}, z:${n.z} },`).join('\n');
+    const text = `const NAV_NODES = [\n${body}\n];\n`;
+    const blob = new Blob([text], {type:'text/javascript'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'nav_nodes.js';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
+let capturedNodes = [];
+function refreshPointsList(){
+  const box = document.getElementById('pointsOut');
+  const countEl = document.getElementById('pointCount');
+  if(countEl) countEl.textContent = capturedNodes.length;
+  if(box) box.value = capturedNodes.map(n=>`{ id:'${n.id}', x:${n.x}, z:${n.z} },`).join('\n');
 }
 
 function updatePosReadout(){
