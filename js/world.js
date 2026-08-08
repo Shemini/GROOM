@@ -491,18 +491,28 @@ function computeDistancesToTarget(targetId){
 let cachedPlayerNode = null;
 let cachedPlayerNodePos = { x: Infinity, z: Infinity };
 let cachedNodeDistances = null; // Map(nodeId -> graph distance to cachedPlayerNode)
+let lastPlayerNodeRecomputeTime = -999;
 const PLAYER_NODE_CACHE_DIST = 3; // meters — only recompute once the player has moved this far
+const PLAYER_NODE_MIN_INTERVAL = 0.35; // seconds — hard cap on recompute rate regardless of movement speed
 
 // The player's nearest node — and the distance table from every other node to it — is the
 // same for every zombie at any given moment. Computing it once per player movement instead of
 // once per zombie per replan is most of why this used to be so expensive with many zombies.
+// The time floor matters because the distance check alone scales with speed: at higher
+// movement speeds the 3m threshold gets crossed far more often per second, which would
+// otherwise quietly reintroduce the same "too much expensive recompute" problem this cache
+// exists to avoid.
 function getCachedPlayerNode(){
   const dx = camera.position.x - cachedPlayerNodePos.x;
   const dz = camera.position.z - cachedPlayerNodePos.z;
-  if(cachedPlayerNode===null || Math.hypot(dx,dz) > PLAYER_NODE_CACHE_DIST){
+  const now = clock.getElapsedTime();
+  const movedEnough = Math.hypot(dx,dz) > PLAYER_NODE_CACHE_DIST;
+  const enoughTimePassed = (now-lastPlayerNodeRecomputeTime) >= PLAYER_NODE_MIN_INTERVAL;
+  if(cachedPlayerNode===null || (movedEnough && enoughTimePassed)){
     cachedPlayerNode = nearestReachableNode(camera.position);
     cachedPlayerNodePos = { x: camera.position.x, z: camera.position.z };
     cachedNodeDistances = cachedPlayerNode ? computeDistancesToTarget(cachedPlayerNode.id) : null;
+    lastPlayerNodeRecomputeTime = now;
   }
   return cachedPlayerNode;
 }

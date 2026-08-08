@@ -209,7 +209,8 @@ function updateZombies(delta, elapsed){
     if(pulled) continue;
 
     z.pathTimer -= delta;
-    if(z.pathTimer<=0){
+    const pathExhausted = !z.path || z.pathIndex >= z.path.length;
+    if(pathExhausted || z.pathTimer<=0){
       recomputePath(z);
       z.pathTimer = z.pathIsNodeBased ? (5+Math.random()*2) : (1.4+Math.random()*0.6);
     }
