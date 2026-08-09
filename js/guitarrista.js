@@ -22,6 +22,7 @@ let guitarristaHitThisShot = false; // one registered hit per trigger pull (shot
 let musicEl = null, musicGain = null, musicPan = null;
 let musicBag = [];                  // shuffle bag: no repeats until every track has played
 let musicCurrentTitle = '';
+let emptyPlaylistWarned = false;
 
 function initMusicChain(){
   if(musicEl || !audioCtx) return;
@@ -41,13 +42,23 @@ function initMusicChain(){
 function startNextTrack(){
   if(!guitarrista) return;
   if(guitarrista.state!=='home_playing' && guitarrista.state!=='following') return;
-  if(GUITARRISTA_TRACKS.length===0) return; // nothing declared in GUITARRISTA_TRACKS yet
+  if(GUITARRISTA_TRACKS.length===0){
+    if(!emptyPlaylistWarned){
+      emptyPlaylistWarned = true;
+      console.warn('Guitarrista: GUITARRISTA_TRACKS in config.js is empty, so there is nothing to play. ' +
+                   'A browser cannot list a folder, so each track has to be declared there.');
+    }
+    return;
+  }
   initMusicChain();
   if(!musicEl) return;
   if(musicBag.length===0) musicBag = shuffle(GUITARRISTA_TRACKS.slice());
   const track = musicBag.pop();
   musicCurrentTitle = track.title || track.file;
-  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/Canciones/${track.file}.${AUDIO_EXT}`;
+  // Filenames may contain accents or spaces (e.g. 'Sombras_de_Jaén'), which have to be
+  // percent-encoded to survive the round trip to the server reliably.
+  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/Canciones/${encodeURIComponent(track.file)}.${AUDIO_EXT}`;
+  console.log('Guitarrista: playing "' + musicCurrentTitle + '" -> ' + musicEl.src);
   musicEl.play().catch(()=>{
     console.warn('Guitarrista: could not play track ' + track.file);
     musicCurrentTitle = '';
