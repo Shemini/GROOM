@@ -106,7 +106,7 @@ function spawnZombie(){
     lastAttack:-999, groanTimer:1+Math.random()*3,
     losTimer:Math.random()*0.3, hasLOS:false, unstickUntil:-999, unstickSign:1,
     flashTimer:0, flashActive:false, staggerTimer:0, dot:null, stain:null, periodicTickTimer:0,
-    feetY: pos.y, velY: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
+    feetY: pos.y, velY: 0, airborne: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
     animRow: ANIM_ROW_WALK_TOWARD, animFrame: 0, animTimer: Math.random()*ANIM_FRAME_DURATION,
     attacking: false, movingToward: true, dying: false, deathAnimDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
@@ -136,6 +136,7 @@ function updateBillboards(){
 // or expire. Steering is a per-frame lookup of "which neighbouring cell is closer to the
 // player", which is why the oscillation / backtracking / stalling failures disappear.
 
+let fellThroughWarnings = 0;
 function updateZombies(delta, elapsed){
   updateFlowField(); // one shared solve per frame at most, reused by every zombie below
   for(let i=zombies.length-1;i>=0;i--){
@@ -179,6 +180,10 @@ function updateZombies(delta, elapsed){
     if(pulled) continue;
 
     const distToPlayer = Math.hypot(camera.position.x-z.group.position.x, camera.position.z-z.group.position.z);
+    // Melee needs vertical proximity too. Measuring range on the horizontal plane alone meant
+    // anything directly below or above the player could still land hits from any depth.
+    const vertGap = Math.abs(z.feetY - feetY);
+    const inMeleeRange = distToPlayer <= 1.0 && vertGap < 2.0;
 
     // Direct approach whenever there's a clear straight line to the player. This is what
     // makes the last stretch look natural: the flow field steps cell-to-cell, which reads as
@@ -202,7 +207,7 @@ function updateZombies(delta, elapsed){
       else { targetX = camera.position.x; targetZ = camera.position.z; }
     }
 
-    if(distToPlayer>1.0){
+    if(!inMeleeRange){
       z.attacking = false;
       const dx=targetX-z.group.position.x, dz=targetZ-z.group.position.z;
       const d=Math.hypot(dx,dz);
@@ -218,15 +223,38 @@ function updateZombies(delta, elapsed){
         }
         const chestY = z.feetY+0.9;
         const resolved = resolveSlide(z.group.position.x, z.group.position.z, nx*z.speed*delta, nz*z.speed*delta, chestY, z.collisionRadius||ZOMBIE_RADIUS, z.feetY);
-        const px = resolved.x, pz = resolved.z;
-        const fy = getFloorY(px,pz, z.feetY+2.2);
+        let px = resolved.x, pz = resolved.z;
+        // Floor resolution with fall-through protection. The raycast only looks 2.2m above
+        // the zombie's feet, so a single frame where it finds nothing used to begin an
+        // unrecoverable fall: once it dropped past that reach, the floor was permanently out
+        // of range and it fell forever — invisible beneath the map, yet still chasing and
+        // attacking, because range is measured horizontally. The nav grid holds a verified
+        // floor height per open cell, so it stands in whenever the ray comes up empty.
+        let fy = getFloorY(px,pz, z.feetY+2.2);
+        if(fy===null) fy = navFloorAt(px,pz);
         if(fy!==null && (z.feetY-fy) <= STEP_SMOOTH_MAX){
           z.feetY += (fy-z.feetY)*Math.min(1,delta*10);
-          z.velY = 0;
+          z.velY = 0; z.airborne = 0;
         } else {
           z.velY = (z.velY||0) - GRAVITY*delta;
           z.feetY += z.velY*delta;
-          if(fy!==null && z.feetY<=fy){ z.feetY = fy; z.velY = 0; }
+          if(fy!==null && z.feetY<=fy){ z.feetY = fy; z.velY = 0; z.airborne = 0; }
+          else {
+            // Legitimate ledge drops land well inside this window (a 4m fall takes ~0.6s),
+            // so exceeding it means it has left the world rather than jumped down something.
+            z.airborne = (z.airborne||0) + delta;
+            if(z.airborne > 1.5){
+              const rescue = nearestNavFloor(z.group.position.x, z.group.position.z);
+              if(rescue){
+                px = rescue.x; pz = rescue.z;
+                z.feetY = rescue.y; z.velY = 0; z.airborne = 0;
+                if(fellThroughWarnings < 5){
+                  fellThroughWarnings++;
+                  console.warn('Zombie fell out of the world and was returned to the nav mesh.');
+                }
+              }
+            }
+          }
         }
         z.group.position.set(px, z.feetY, pz);
         z.facingAngle = Math.atan2(nx,nz); // stored for future facing-based texture selection; billboard rotation is independent

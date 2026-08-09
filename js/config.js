@@ -217,6 +217,7 @@ let pendingSwapTarget = null;
 let boxState = 'idle';
 let feetY = 0;
 let playerVelY = 0;
+let playerAirborne = 0;
 let playerStart = null;
 
 let audioCtx = null, masterGain = null, muted = false;

@@ -297,18 +297,34 @@ function updateMovement(delta){
   const chestResult = resolveSlide(camera.position.x, camera.position.z, dx, dz, chestY, PLAYER_RADIUS, feetY);
   const kneeResult = resolveSlide(camera.position.x, camera.position.z,
     chestResult.x-camera.position.x, chestResult.z-camera.position.z, kneeY, PLAYER_RADIUS, feetY);
-  const nx = kneeResult.x, nz = kneeResult.z;
+  let nx = kneeResult.x, nz = kneeResult.z;
 
-  const floorY = getFloorY(nx, nz, feetY+2.2);
+  // Same fall-through protection as the zombies: a single frame where the downward ray finds
+  // nothing would otherwise start an unrecoverable fall, since the ray only reaches 2.2m above
+  // the player's feet.
+  let floorY = getFloorY(nx, nz, feetY+2.2);
+  if(floorY===null) floorY = navFloorAt(nx, nz);
   if(floorY!==null && (feetY-floorY) <= STEP_SMOOTH_MAX){
     // grounded, or a normal step/slope — smooth snap, no falling physics needed
     feetY += (floorY-feetY)*Math.min(1, delta*12);
     playerVelY = 0;
+    playerAirborne = 0;
   } else {
     // airborne (walked off a ledge, or no floor found below at all) — actually fall
     playerVelY -= GRAVITY*delta;
     feetY += playerVelY*delta;
-    if(floorY!==null && feetY<=floorY){ feetY = floorY; playerVelY = 0; }
+    if(floorY!==null && feetY<=floorY){ feetY = floorY; playerVelY = 0; playerAirborne = 0; }
+    else {
+      playerAirborne += delta;
+      if(playerAirborne > 2.5){
+        const rescue = nearestNavFloor(nx, nz);
+        if(rescue){
+          nx = rescue.x; nz = rescue.z;
+          feetY = rescue.y; playerVelY = 0; playerAirborne = 0;
+          console.warn('Player fell out of the world and was returned to the nav mesh.');
+        }
+      }
+    }
   }
 
   camera.position.set(nx, feetY+EYE_HEIGHT, nz);
@@ -698,6 +714,30 @@ function flowFieldTarget(worldX, worldZ){
   return sampleField(navGridCoarse, flowFieldCoarse, worldX, worldZ);
 }
 
+
+// The nav grid already stores a verified floor height for every open cell, which makes it a
+// reliable fallback whenever a live downward raycast comes up empty (a gap in the scanned
+// mesh, a numerical miss at a triangle seam, or a genuine hole such as a building interior).
+function navFloorAt(x, z){
+  if(!navGridFine) return null;
+  const c = gridWorldToCell(navGridFine, x, z);
+  if(!gridInBounds(navGridFine, c.gx, c.gz)) return null;
+  const idx = gridIndex(navGridFine, c.gx, c.gz);
+  if(navGridFine.navBlocked[idx]) return null;
+  return navGridFine.navFloorY[idx];
+}
+
+// Nearest walkable spot to (x,z), for recovering anything that has fallen out of the world.
+// Returns the cell centre as well as its height, since the position it fell through may itself
+// be a hole — putting it back at the same x/z would just drop it through again.
+function nearestNavFloor(x, z){
+  if(!navGridFine) return null;
+  const c = gridWorldToCell(navGridFine, x, z);
+  const open = nearestOpenCell(navGridFine, c.gx, c.gz);
+  if(!open) return null;
+  const w = gridCellToWorld(navGridFine, open.gx, open.gz);
+  return { x:w.x, z:w.z, y: navGridFine.navFloorY[gridIndex(navGridFine, open.gx, open.gz)] };
+}
 
 // =================================================================
 // STATIONS + BOX — randomly placed on the collision mesh
