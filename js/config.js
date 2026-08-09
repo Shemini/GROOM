@@ -303,7 +303,14 @@ const GUITARRISTA_INSULTOS_COUNT = 5;
 
 const GUITARRISTA_HIRE_COST = 50;
 const GUITARRISTA_FOLLOW_RADIUS = 10;        // metres — hangs back once this close
-const GUITARRISTA_HEAR_RADIUS = 30;          // metres — music fades to nothing past this
+// Metres at which the music fades to nothing. Wider once he's hired, since he's meant to be
+// your travelling companion rather than a landmark you stumble across.
+const GUITARRISTA_HEAR_RADIUS_IDLE = 60;     // not hired (2x the original 30m)
+const GUITARRISTA_HEAR_RADIUS_HIRED = 90;    // hired (3x the original 30m)
+// Exponent on the distance falloff. 1 = linear. The previous value was effectively 2, which
+// meant half the radius gave only a quarter of the volume — a large part of why he sounded
+// audible only up close. Raise it above 1 if you want the fade to bite sooner.
+const GUITARRISTA_MUSIC_FALLOFF_EXP = 1.0;
 const GUITARRISTA_MUSIC_VOLUME = 0.55;       // gain when standing right next to him
 const GUITARRISTA_SKIP_DELAY = 2.0;          // seconds between being shot and the next song
 const GUITARRISTA_DISMISS_HITS = 3;          // hits within the window below to send him home

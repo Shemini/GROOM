@@ -85,8 +85,10 @@ function updateMusicVolume(){
   const dx = camera.position.x - guitarrista.group.position.x;
   const dz = camera.position.z - guitarrista.group.position.z;
   const dist = Math.hypot(dx, dz);
-  const falloff = THREE.MathUtils.clamp(1 - dist/GUITARRISTA_HEAR_RADIUS, 0, 1);
-  musicGain.gain.value = falloff * falloff * GUITARRISTA_MUSIC_VOLUME; // squared = more natural rolloff
+  const radius = (guitarrista.state==='following')
+    ? GUITARRISTA_HEAR_RADIUS_HIRED : GUITARRISTA_HEAR_RADIUS_IDLE;
+  const falloff = THREE.MathUtils.clamp(1 - dist/radius, 0, 1);
+  musicGain.gain.value = Math.pow(falloff, GUITARRISTA_MUSIC_FALLOFF_EXP) * GUITARRISTA_MUSIC_VOLUME;
   if(musicPan) musicPan.pan.value = computePan(guitarrista.group.position);
 }
 
