@@ -106,21 +106,27 @@ function spawnGuitarrista(){
   const floorY = getFloorY(home.x, home.z, levelMaxY);
   const feetY = floorY!==null ? floorY : 0;
 
+  const hasOwnSheet = !!guitarristaSpriteTexture;
+  const sheet = hasOwnSheet ? guitarristaSpriteTexture : zombieSpriteTexture;
+  const cols = hasOwnSheet ? GUITARRISTA_SPRITE_COLS : SPRITE_COLS;
+  const rows = hasOwnSheet ? GUITARRISTA_SPRITE_ROWS : SPRITE_ROWS;
+
   const height = AVG_ZOMBIE_HEIGHT * 1.02;
-  const aspect = (zombieSpriteTexture.image.width/SPRITE_COLS) / (zombieSpriteTexture.image.height/SPRITE_ROWS);
+  // The art was squeezed horizontally to fit its cell, so widen it back out.
+  const aspect = ((sheet.image.width/cols) / (sheet.image.height/rows)) * (hasOwnSheet ? GUITARRISTA_WIDTH_STRETCH : 1);
   const width = AVG_ZOMBIE_HEIGHT * aspect;
 
   const group = new THREE.Group();
-  const tex = zombieSpriteTexture.clone();
+  const tex = sheet.clone();
   tex.needsUpdate = true;
-  tex.repeat.set(1/SPRITE_COLS, 1/SPRITE_ROWS);
-  tex.offset.set(0, 1-1/SPRITE_ROWS);
-  // Borrows the TrajeA walk rows for now, mirrored and warm-tinted so he reads as a different
-  // character at a glance until he has art of his own.
+  tex.repeat.set(1/cols, 1/rows);
+  tex.offset.set(0, 1-1/rows);
+  // With his own sheet he needs no disguise; without it he borrows TrajeA's, mirrored and
+  // warm-tinted so he still reads as a different character.
   const mat = new THREE.MeshLambertMaterial({ map:tex, transparent:true, alphaTest:0.5,
-    color:0xffc46b, side:THREE.DoubleSide });
+    color: hasOwnSheet ? 0xffffff : 0xffc46b, side:THREE.DoubleSide });
   const billboard = new THREE.Mesh(getBillboardGeometry(), mat);
-  billboard.scale.set(-width, height, 1); // negative X mirrors him
+  billboard.scale.set(hasOwnSheet ? width : -width, height, 1); // mirrored only in fallback
   billboard.position.y = height/2;
   billboard.castShadow = true;
   billboard.frustumCulled = false;
@@ -143,8 +149,8 @@ function spawnGuitarrista(){
   guitarrista = {
     group, billboard, blob, home, feetY, velY:0, airborne:0,
     height, width, collisionRadius:(width*HITBOX_WIDTH_FRACTION)/2,
-    state:'home_playing',
-    animRow: ANIM_ROW_WALK_TOWARD, animFrame:0, animTimer:0,
+    state:'home_playing', hasOwnSheet, cols, rows,
+    animForward:true, animFrame:0, animTimer:0,
     hitTimes:[], resumeAt:-999,
   };
   billboard.userData.guitarristaRef = guitarrista;
@@ -294,14 +300,33 @@ function updateGuitarrista(delta, elapsed){
   const bdz = camera.position.z - g.group.position.z;
   g.billboard.rotation.y = Math.atan2(bdx, bdz);
 
-  // walk-toward while approaching, walk-away otherwise, so he reads as animated when idle too
-  const row = moving ? ANIM_ROW_WALK_TOWARD : ANIM_ROW_WALK_AWAY;
-  if(row !== g.animRow){ g.animRow = row; g.animFrame = 0; g.animTimer = 0; }
+  // Facing: "forward" means walking toward the camera (we see his front). Compare his heading
+  // against the direction to the player, exactly as the enemies do; standing still keeps him
+  // facing us, since he's playing to the player rather than away from them.
+  let forward = true;
+  if(moving && targetX!==null){
+    const mvx = targetX-g.group.position.x, mvz = targetZ-g.group.position.z;
+    const mvLen = Math.hypot(mvx,mvz);
+    const toPx = camera.position.x-g.group.position.x, toPz = camera.position.z-g.group.position.z;
+    const toPLen = Math.hypot(toPx,toPz);
+    if(mvLen>0.0001 && toPLen>0.0001){
+      forward = ((mvx/mvLen)*(toPx/toPLen) + (mvz/mvLen)*(toPz/toPLen)) >= 0;
+    }
+  }
+  if(forward !== g.animForward){ g.animForward = forward; g.animFrame = 0; g.animTimer = 0; }
+
+  const frameCount = g.hasOwnSheet ? GUITARRISTA_ANIM_FRAMES : SPRITE_COLS;
+  const frameDur = g.hasOwnSheet ? (GUITARRISTA_ANIM_DURATION/GUITARRISTA_ANIM_FRAMES) : ANIM_FRAME_DURATION;
   g.animTimer -= delta;
   while(g.animTimer <= 0){
-    g.animTimer += ANIM_FRAME_DURATION;
-    g.animFrame = (g.animFrame+1) % SPRITE_COLS;
-    g.billboard.material.map.offset.set(g.animFrame/SPRITE_COLS, 1-(g.animRow+1)/SPRITE_ROWS);
+    g.animTimer += frameDur;
+    g.animFrame = (g.animFrame+1) % frameCount;
+    // His animations span two rows of eight, so the frame index has to be unwrapped into a
+    // (row, column) pair rather than mapping straight onto a single row like TrajeA's do.
+    const baseRow = g.animForward ? 0 : (g.hasOwnSheet ? 2 : 1);
+    const row = g.hasOwnSheet ? (baseRow + Math.floor(g.animFrame/g.cols)) : baseRow;
+    const col = g.animFrame % g.cols;
+    g.billboard.material.map.offset.set(col/g.cols, 1-(row+1)/g.rows);
   }
 
   updateMusicVolume();

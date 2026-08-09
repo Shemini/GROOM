@@ -31,7 +31,7 @@ function loadModel(name, onDone, onProgress, onFail){
 
 // =================================================================
 function loadAssets(){
-  let envDone=false, colDone=false, spriteDone=false, envProgress=0, colProgress=0;
+  let envDone=false, colDone=false, spriteDone=false, guitarSpriteDone=false, envProgress=0, colProgress=0;
 
   function updateBar(){
     const pct = Math.round(((envProgress+colProgress)/2)*100);
@@ -48,6 +48,21 @@ function loadAssets(){
     spriteDone = true;
     tryFinishLoading();
   }, undefined, err=>{ console.error('Enemy sprite load failed', err); loadingLabel.textContent='Failed to load enemy sprite (TrajeA.png) — see console.'; });
+
+  new THREE.TextureLoader().load('./Guitarrista.png', tex=>{
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false; // mipmaps blur neighbouring spritesheet frames at a distance
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    guitarristaSpriteTexture = tex;
+    guitarSpriteDone = true;
+    tryFinishLoading();
+  }, undefined, err=>{
+    console.warn('Guitarrista.png not found — falling back to the TrajeA sheet for him.', err);
+    guitarristaSpriteTexture = null;
+    guitarSpriteDone = true;
+    tryFinishLoading();
+  });
 
   loadMinimap(); // doesn't gate game start — the minimap just stays blank until it's ready
   loadMinimapImage();
@@ -73,7 +88,7 @@ function loadAssets(){
   err=>{ console.error('Environment load failed', err); loadingLabel.textContent='Failed to load environment — see console.'; });
 
   function tryFinishLoading(){
-    if(!envDone || !colDone || !spriteDone) return;
+    if(!envDone || !colDone || !spriteDone || !guitarSpriteDone) return;
     loadingLabel.textContent = 'Preparing level...';
     setTimeout(()=>{
       buildCollisionAccel();

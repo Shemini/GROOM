@@ -211,6 +211,7 @@ let damageNumbers = [];
 let drops = [];
 let flashLight;
 let zombieSpriteTexture = null;
+let guitarristaSpriteTexture = null;
 let navGridFine = null, navGridCoarse = null, levelMaxY = 10;
 let sunLight = null, ambientLight = null, levelBox = null;
 let minimapTransform = null, minimapCanvasEl = null, minimapCtx = null, minimapBgCanvas = null;
@@ -310,6 +311,16 @@ const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';
 const GUITARRISTA_FELICITACIONES_COUNT = 5;
 const GUITARRISTA_INSULTOS_COUNT = 5;
 
+// Guitarrista spritesheet: 2048x2048, 8 columns x 4 rows, each frame 256x512.
+// Unlike TrajeA's one-row-per-animation layout, each of his animations is 16 frames spanning
+// TWO rows: rows 0-1 walk toward the camera, rows 2-3 walk away.
+const GUITARRISTA_SPRITE_COLS = 8;
+const GUITARRISTA_SPRITE_ROWS = 4;
+const GUITARRISTA_ANIM_FRAMES = 16;          // frames per animation (two rows of eight)
+const GUITARRISTA_ANIM_DURATION = 1.5;       // seconds for one full loop
+// The art was squeezed to fit the cell, so widen it back out. A 256x512 frame is 1:2; at 1.1
+// this renders it as roughly 1:1.8. (Note 1:2.2 would be *narrower* than the source, not wider.)
+const GUITARRISTA_WIDTH_STRETCH = 1.1;
 const GUITARRISTA_HIRE_COST = 50;
 const GUITARRISTA_FOLLOW_RADIUS = 10;        // metres — hangs back once this close
 // Metres at which the music fades to nothing. Wider once he's hired, since he's meant to be
