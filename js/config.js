@@ -308,4 +308,4 @@ const GUITARRISTA_DISMISS_WINDOW = 2.0;      // seconds
 const GUITARRISTA_SPEED = 7.0;               // metres/sec while following
 // Fixed home spot. Leave null to have him placed on a random valid floor point at load; set
 // to {x:.., z:..} (use COPY POSITION in the settings panel) to pin him somewhere specific.
-const GUITARRISTA_HOME = null;
+const GUITARRISTA_HOME = { x: 106.58, z: 61.34 };
