@@ -64,10 +64,37 @@ function isSpawnPointHidden(x,z){
 
 function findSpawnPosition(){
   const camPos = camera.position;
-  const minR=10, maxR=20;
-  for(let i=0;i<24;i++){
+
+  // Preferred path: pick from the hand-authored spawn zones, restricted to the allowed
+  // distance band around the player and, where possible, out of their line of sight.
+  if(spawnPoints && spawnPoints.length>0){
+    const candidates = [];
+    for(let i=0;i<spawnPoints.length;i++){
+      const p = spawnPoints[i];
+      const d = Math.hypot(p.x-camPos.x, p.z-camPos.z);
+      if(d>=SPAWN_MIN_DIST && d<=SPAWN_MAX_DIST && !isPositionBlocked(p.x,p.z)) candidates.push(p);
+    }
+    if(candidates.length>0){
+      let fallback = null;
+      for(let t=0;t<12;t++){
+        const p = candidates[Math.floor(Math.random()*candidates.length)];
+        if(fallback===null) fallback = p;
+        if(isSpawnPointHidden(p.x,p.z)){
+          const fy = getFloorY(p.x,p.z, levelMaxY);
+          return new THREE.Vector3(p.x, fy!==null?fy:p.y, p.z);
+        }
+      }
+      // Nothing hidden came up in a reasonable number of tries — use whatever we found.
+      const fy = getFloorY(fallback.x, fallback.z, levelMaxY);
+      return new THREE.Vector3(fallback.x, fy!==null?fy:fallback.y, fallback.z);
+    }
+    // No zone point in range (player far from any alleyway) — fall through to rings below.
+  }
+
+  // Fallback: sample rings around the player, honouring the same distance band.
+  for(let i=0;i<32;i++){
     const angle = Math.random()*Math.PI*2;
-    const r = minR+Math.random()*(maxR-minR);
+    const r = SPAWN_MIN_DIST+Math.random()*(SPAWN_MAX_DIST-SPAWN_MIN_DIST);
     const x = camPos.x+Math.cos(angle)*r, z = camPos.z+Math.sin(angle)*r;
     const fy = getFloorY(x,z, levelMaxY);
     if(fy===null) continue;
@@ -75,7 +102,7 @@ function findSpawnPosition(){
   }
   const forward = new THREE.Vector3();
   camera.getWorldDirection(forward); forward.y=0; forward.normalize();
-  const x = camPos.x-forward.x*14, z = camPos.z-forward.z*14;
+  const x = camPos.x-forward.x*SPAWN_MIN_DIST, z = camPos.z-forward.z*SPAWN_MIN_DIST;
   const fy = getFloorY(x,z, levelMaxY);
   return new THREE.Vector3(x, fy!==null?fy:camPos.y-EYE_HEIGHT, z);
 }

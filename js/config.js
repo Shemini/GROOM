@@ -6,9 +6,9 @@ const EYE_HEIGHT = 1.68;
 const SCALE_CORRECTION = 1; // confirmed correct at 1:1 against the reference box
 const PLAYER_RADIUS = 0.35;
 const ZOMBIE_RADIUS = 0.4;
-const WALK_SPEED = 5.0;
-const RUN_SPEED = 10.0;
-const ZOMBIE_SPEED_MULT = 2.5;
+const WALK_SPEED = 7.5;    // 1.5x the original 5.0
+const RUN_SPEED = 15.0;    // 1.5x the original 10.0
+const ZOMBIE_SPEED_MULT = 3.75; // 1.5x the original 2.5
 
 // Sprint stamina. Drain is 1 unit/sec so STAMINA_MAX reads directly as "seconds of sprinting".
 const PLAYER_STAMINA_MAX = 10;      // seconds of continuous sprinting
@@ -39,6 +39,12 @@ const DROP_LIFETIME = 15;
 const DROP_TYPES = ['ammo','health','double','instakill'];
 const DROP_COLORS = { ammo:0xe8b24d, health:0x6fef7d, double:0xfff2b0, instakill:0xc81e2c };
 const BOX_COST = 1500;
+
+// Enemy spawning. Points come from an optional SpawnZones model (see below); without it the
+// game falls back to sampling rings around the player as before.
+const SPAWN_MIN_DIST = 20;      // metres — never closer than this to the player
+const SPAWN_MAX_DIST = 100;     // metres — never further than this
+const SPAWN_POINT_DENSITY = 4;  // roughly one candidate point per this many square metres
 
 // Sprite-based enemy sizing. Fractions are relative to the 128x256 reference sheet, so they
 // carry over unchanged once the real (animated) spritesheet replaces this static test image.
@@ -346,7 +352,7 @@ const GUITARRISTA_MUSIC_VOLUME = 0.55;       // gain when standing right next to
 const GUITARRISTA_SKIP_DELAY = 2.0;          // seconds between being shot and the next song
 const GUITARRISTA_DISMISS_HITS = 3;          // hits within the window below to send him home
 const GUITARRISTA_DISMISS_WINDOW = 2.0;      // seconds
-const GUITARRISTA_SPEED = 7.0;               // metres/sec while following
+const GUITARRISTA_SPEED = 10.5;              // metres/sec while following (1.5x, so he keeps up)
 // Fixed home spot. Leave null to have him placed on a random valid floor point at load; set
 // to {x:.., z:..} (use COPY POSITION in the settings panel) to pin him somewhere specific.
 const GUITARRISTA_HOME = { x: 106.58, z: 61.34 };

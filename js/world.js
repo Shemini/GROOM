@@ -65,6 +65,18 @@ function loadAssets(){
   });
 
   loadMinimap(); // doesn't gate game start — the minimap just stays blank until it's ready
+
+  // Optional: a model whose floor polygons mark where enemies are allowed to appear. Never
+  // added to the scene — it's sampled into candidate points and then discarded.
+  loadModel('SpawnZones', root=>{
+    root.scale.set(SCALE_CORRECTION, SCALE_CORRECTION, SCALE_CORRECTION);
+    root.updateMatrixWorld(true);
+    spawnPoints = buildSpawnPoints(root);
+    console.log('Spawn zones loaded: ' + spawnPoints.length + ' candidate points.');
+  }, ()=>{}, ()=>{
+    console.warn('SpawnZones model not found — enemies will spawn on rings around the player instead.');
+    spawnPoints = [];
+  });
   loadMinimapImage();
 
   loadModel('Collision', root=>{
@@ -874,4 +886,44 @@ function buildFixedTargetField(x, z){
   const ok = computeFieldInto(navGridCoarse, field, Infinity,
                               STEP_SMOOTH_MAX*COARSE_FACTOR*0.7, LEDGE_DROP_MAX*1.5, x, z);
   return ok ? field : null;
+}
+
+// =================================================================
+// SPAWN ZONES
+// Samples the floor polygons of the SpawnZones model into candidate spawn points, spread
+// evenly by area so large alleyways get proportionally more of them than small ones.
+// =================================================================
+let spawnPoints = [];
+
+function buildSpawnPoints(root){
+  const pts = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  root.traverse(o=>{
+    if(!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    o.updateMatrixWorld(true);
+    const pos = o.geometry.attributes.position;
+    const index = o.geometry.index;
+    const count = index ? index.count : pos.count;
+    for(let i=0;i<count;i+=3){
+      const i0 = index ? index.getX(i)   : i;
+      const i1 = index ? index.getX(i+1) : i+1;
+      const i2 = index ? index.getX(i+2) : i+2;
+      a.fromBufferAttribute(pos,i0).applyMatrix4(o.matrixWorld);
+      b.fromBufferAttribute(pos,i1).applyMatrix4(o.matrixWorld);
+      c.fromBufferAttribute(pos,i2).applyMatrix4(o.matrixWorld);
+      // Footprint area, so vertical faces (if any slipped into the model) contribute nothing.
+      const area = Math.abs((b.x-a.x)*(c.z-a.z) - (c.x-a.x)*(b.z-a.z)) * 0.5;
+      const n = Math.max(1, Math.round(area/SPAWN_POINT_DENSITY));
+      for(let k=0;k<n;k++){
+        let u = Math.random(), v = Math.random();
+        if(u+v > 1){ u = 1-u; v = 1-v; }   // reflect into the triangle for a uniform spread
+        pts.push({
+          x: a.x + u*(b.x-a.x) + v*(c.x-a.x),
+          y: a.y + u*(b.y-a.y) + v*(c.y-a.y),
+          z: a.z + u*(b.z-a.z) + v*(c.z-a.z),
+        });
+      }
+    }
+  });
+  return pts;
 }
