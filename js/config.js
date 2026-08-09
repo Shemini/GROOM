@@ -293,11 +293,13 @@ const AUDIO_EXT = 'ogg';
 // A browser can't list a directory, so the tracklist has to be declared here rather than
 // discovered automatically. Add one line per song: `file` is the filename without extension,
 // `title` is what shows in the HUD while it plays.
+// `file` must match the filename on disk EXACTLY (minus the extension). These use spaces, not
+// underscores — the code percent-encodes them for the URL, so spaces and accents are fine.
 const GUITARRISTA_TRACKS = [
-  { file:'Sombras_de_Jaén',    title:'Sombras de Jaén' },
-  { file:'Tango_Down',         title:'Tango Down' },
-  { file:'Caricias_de_Arena',  title:'Caricias de Arena' },
-  { file:'Taranta_Allegra',    title:'Taranta Allegra' },
+  { file:'Sombras de Jaén',   title:'Sombras de Jaén' },
+  { file:'Tango Down',        title:'Tango Down' },
+  { file:'Caricias de Arena', title:'Caricias de Arena' },
+  { file:'Taranta Allegra',   title:'Taranta Allegra' },
 ];
 // Folder names are case-sensitive once deployed (Linux servers) even though Windows treats
 // them as interchangeable — a folder called 'canciones' will 404 when the code asks for
