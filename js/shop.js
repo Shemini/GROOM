@@ -20,8 +20,17 @@ function updateInteractables(delta, elapsed){
     const dBox = Math.hypot(camera.position.x-boxPos.x, camera.position.z-boxPos.z);
     if(dBox<bestDist){ bestDist=dBox; best={type:'box'}; }
   }
+  if(guitarrista && guitarrista.state!=='returning'){
+    const dG = Math.hypot(camera.position.x-guitarrista.group.position.x, camera.position.z-guitarrista.group.position.z);
+    if(dG<bestDist){ bestDist=dG; best={type:'guitarrista'}; }
+  }
   currentInteractable = best;
   if(!best){ interactPromptEl.style.visibility='hidden'; return; }
+  if(best.type==='guitarrista'){
+    interactPromptEl.textContent = guitarristaInteractLabel();
+    interactPromptEl.style.visibility='visible';
+    return;
+  }
 
   if(best.type==='station'){
     const idx = best.station.weaponIndex, w = ALL_WEAPONS[idx], owned = ownsWeapon(idx);

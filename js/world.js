@@ -76,10 +76,12 @@ function loadAssets(){
     if(!envDone || !colDone || !spriteDone) return;
     loadingLabel.textContent = 'Preparing level...';
     setTimeout(()=>{
+      buildCollisionAccel();
       buildNavGrid();
       configureSunShadow();
       placePlayerAtStart();
       placeStationsAndBox();
+      spawnGuitarrista();
       gameState = 'menu';
       loadingLabel.textContent = 'Ready';
       startBtn.classList.remove('hidden');
@@ -90,7 +92,101 @@ function loadAssets(){
 // =================================================================
 // COLLISION / MOVEMENT HELPERS (shared by player and zombies)
 // =================================================================
+// =================================================================
+// COLLISION ACCELERATION
+// three.js has no spatial index, so every raycast tests every triangle in the collision mesh.
+// Floor queries are by far the most frequent thing we do (one per nav-grid cell at load, then
+// one per zombie per frame at runtime), so the triangles get bucketed by XZ once up front.
+// A query then only tests the handful of triangles in its own bucket instead of all of them.
+// =================================================================
+let triVerts = null;        // Float32Array, 9 floats per triangle (3 verts x xyz), world space
+let triBuckets = null;      // array of arrays of triangle indices
+let accelMinX = 0, accelMinZ = 0, accelCell = 4, accelW = 0, accelH = 0;
+
+function buildCollisionAccel(){
+  console.log('buildCollisionAccel: starting, collisionMeshes.length=' + collisionMeshes.length);
+  const box = new THREE.Box3();
+  collisionMeshes.forEach(m=>box.expandByObject(m));
+  if(!isFinite(box.min.x)){ console.error('buildCollisionAccel: aborted, bounding box is not finite.'); return; }
+
+  const tris = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  collisionMeshes.forEach(mesh=>{
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position;
+    if(!pos) return;
+    const index = geo.index;
+    const count = index ? index.count : pos.count;
+    for(let i=0;i<count;i+=3){
+      const i0 = index ? index.getX(i)   : i;
+      const i1 = index ? index.getX(i+1) : i+1;
+      const i2 = index ? index.getX(i+2) : i+2;
+      a.fromBufferAttribute(pos,i0).applyMatrix4(mesh.matrixWorld);
+      b.fromBufferAttribute(pos,i1).applyMatrix4(mesh.matrixWorld);
+      c.fromBufferAttribute(pos,i2).applyMatrix4(mesh.matrixWorld);
+      tris.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z);
+    }
+  });
+  triVerts = new Float32Array(tris);
+  const triCount = triVerts.length/9;
+
+  accelMinX = box.min.x-2; accelMinZ = box.min.z-2;
+  accelW = Math.max(1, Math.ceil((box.max.x-box.min.x+4)/accelCell));
+  accelH = Math.max(1, Math.ceil((box.max.z-box.min.z+4)/accelCell));
+  triBuckets = new Array(accelW*accelH);
+  for(let i=0;i<triBuckets.length;i++) triBuckets[i] = null;
+
+  for(let t=0;t<triCount;t++){
+    const o = t*9;
+    const x0=triVerts[o],   z0=triVerts[o+2];
+    const x1=triVerts[o+3], z1=triVerts[o+5];
+    const x2=triVerts[o+6], z2=triVerts[o+8];
+    const minX=Math.min(x0,x1,x2), maxX=Math.max(x0,x1,x2);
+    const minZ=Math.min(z0,z1,z2), maxZ=Math.max(z0,z1,z2);
+    let gx0=Math.floor((minX-accelMinX)/accelCell), gx1=Math.floor((maxX-accelMinX)/accelCell);
+    let gz0=Math.floor((minZ-accelMinZ)/accelCell), gz1=Math.floor((maxZ-accelMinZ)/accelCell);
+    gx0=Math.max(0,gx0); gz0=Math.max(0,gz0);
+    gx1=Math.min(accelW-1,gx1); gz1=Math.min(accelH-1,gz1);
+    for(let gz=gz0; gz<=gz1; gz++){
+      for(let gx=gx0; gx<=gx1; gx++){
+        const bi = gz*accelW+gx;
+        if(!triBuckets[bi]) triBuckets[bi] = [];
+        triBuckets[bi].push(t);
+      }
+    }
+  }
+  console.log('Collision acceleration built: '+triCount+' triangles in '+accelW+'x'+accelH+' buckets.');
+}
+
 function getFloorY(x, z, fromY){
+  if(triBuckets){
+    const gx = Math.floor((x-accelMinX)/accelCell);
+    const gz = Math.floor((z-accelMinZ)/accelCell);
+    if(gx<0||gx>=accelW||gz<0||gz>=accelH) return null;
+    const bucket = triBuckets[gz*accelW+gx];
+    if(!bucket) return null;
+    let best = null;
+    for(let n=0;n<bucket.length;n++){
+      const o = bucket[n]*9;
+      const ax=triVerts[o],   ay=triVerts[o+1], az=triVerts[o+2];
+      const bx=triVerts[o+3], by=triVerts[o+4], bz=triVerts[o+5];
+      const cx=triVerts[o+6], cy=triVerts[o+7], cz=triVerts[o+8];
+      // 2D barycentric containment test in the XZ plane
+      const v0x=cx-ax, v0z=cz-az, v1x=bx-ax, v1z=bz-az, v2x=x-ax, v2z=z-az;
+      const d00=v0x*v0x+v0z*v0z, d01=v0x*v1x+v0z*v1z, d02=v0x*v2x+v0z*v2z;
+      const d11=v1x*v1x+v1z*v1z, d12=v1x*v2x+v1z*v2z;
+      const denom = d00*d11 - d01*d01;
+      if(Math.abs(denom) < 1e-12) continue; // degenerate / edge-on triangle
+      const inv = 1/denom;
+      const u = (d11*d02 - d01*d12)*inv;
+      const v = (d00*d12 - d01*d02)*inv;
+      if(u < -1e-6 || v < -1e-6 || u+v > 1+1e-6) continue;
+      const y = ay + u*(cy-ay) + v*(by-ay);
+      if(y <= fromY && (best===null || y > best)) best = y;
+    }
+    return best;
+  }
+  // Fallback if the acceleration structure isn't available for some reason.
   raycaster.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0,-1,0));
   raycaster.far = 40;
   const hits = raycaster.intersectObjects(collisionMeshes, false);
@@ -202,18 +298,34 @@ function updateMovement(delta){
   const chestResult = resolveSlide(camera.position.x, camera.position.z, dx, dz, chestY, PLAYER_RADIUS, feetY);
   const kneeResult = resolveSlide(camera.position.x, camera.position.z,
     chestResult.x-camera.position.x, chestResult.z-camera.position.z, kneeY, PLAYER_RADIUS, feetY);
-  const nx = kneeResult.x, nz = kneeResult.z;
+  let nx = kneeResult.x, nz = kneeResult.z;
 
-  const floorY = getFloorY(nx, nz, feetY+2.2);
+  // Same fall-through protection as the zombies: a single frame where the downward ray finds
+  // nothing would otherwise start an unrecoverable fall, since the ray only reaches 2.2m above
+  // the player's feet.
+  let floorY = getFloorY(nx, nz, feetY+2.2);
+  if(floorY===null) floorY = navFloorAt(nx, nz);
   if(floorY!==null && (feetY-floorY) <= STEP_SMOOTH_MAX){
     // grounded, or a normal step/slope — smooth snap, no falling physics needed
     feetY += (floorY-feetY)*Math.min(1, delta*12);
     playerVelY = 0;
+    playerAirborne = 0;
   } else {
     // airborne (walked off a ledge, or no floor found below at all) — actually fall
     playerVelY -= GRAVITY*delta;
     feetY += playerVelY*delta;
-    if(floorY!==null && feetY<=floorY){ feetY = floorY; playerVelY = 0; }
+    if(floorY!==null && feetY<=floorY){ feetY = floorY; playerVelY = 0; playerAirborne = 0; }
+    else {
+      playerAirborne += delta;
+      if(playerAirborne > 2.5){
+        const rescue = nearestNavFloor(nx, nz);
+        if(rescue){
+          nx = rescue.x; nz = rescue.z;
+          feetY = rescue.y; playerVelY = 0; playerAirborne = 0;
+          console.warn('Player fell out of the world and was returned to the nav mesh.');
+        }
+      }
+    }
   }
 
   camera.position.set(nx, feetY+EYE_HEIGHT, nz);
@@ -240,7 +352,32 @@ function buildGridAtResolution(cellSize, box){
       else { navBlocked[idx]=0; navFloorY[idx]=fy; }
     }
   }
-  return { cellSize, minX, minZ, maxY, gridW, gridH, navBlocked, navFloorY };
+  // Wall-proximity penalty: cells with blocked neighbours cost more to travel through, so
+  // routes naturally favour the middle of a corridor rather than scraping along the walls —
+  // which is where local collision tends to snag. It's a soft cost, not a hard block, so
+  // genuinely tight gaps (doorways) stay passable when there's no better option.
+  // Kernel radius covering ~1.5m of real clearance, whatever the cell size happens to be.
+  const penR = Math.max(1, Math.round(1.5/cellSize));
+  const wallPenalty = new Float32Array(gridW*gridH);
+  for(let gz=0; gz<gridH; gz++){
+    for(let gx=0; gx<gridW; gx++){
+      const idx = gz*gridW+gx;
+      if(navBlocked[idx]) continue;
+      let blockedNeighbours = 0, sampled = 0;
+      for(let dz=-penR; dz<=penR; dz++){
+        for(let dx=-penR; dx<=penR; dx++){
+          if(dx===0 && dz===0) continue;
+          sampled++;
+          const nx=gx+dx, nz=gz+dz;
+          if(nx<0||nx>=gridW||nz<0||nz>=gridH){ blockedNeighbours++; continue; }
+          if(navBlocked[nz*gridW+nx]) blockedNeighbours++;
+        }
+      }
+      // Normalised so the penalty means the same thing regardless of resolution.
+      wallPenalty[idx] = sampled>0 ? (blockedNeighbours/sampled) * 1.6 : 0;
+    }
+  }
+  return { cellSize, minX, minZ, maxY, gridW, gridH, navBlocked, navFloorY, wallPenalty };
 }
 
 function buildNavGrid(){
@@ -250,15 +387,67 @@ function buildNavGrid(){
     // Defensive: if the collision mesh failed to load/parse, don't let an Infinity bounding
     // box crash the game with an invalid typed-array length — fall back to a 1x1 empty grid.
     console.error('Collision mesh bounding box is invalid — nav grid skipped (collisionMeshes.length=' + collisionMeshes.length + ').');
-    const empty = { cellSize:FINE_CELL, minX:0, minZ:0, maxY:10, gridW:1, gridH:1, navBlocked:new Uint8Array([1]), navFloorY:new Float32Array([0]) };
-    navGridFine = empty; navGridCoarse = empty; levelMaxY = 10;
+    navGridFine = { cellSize:FINE_CELL, minX:0, minZ:0, maxY:10, gridW:1, gridH:1,
+      navBlocked:new Uint8Array([1]), navFloorY:new Float32Array([0]), wallPenalty:new Float32Array([0]) };
+    levelMaxY = 10;
     levelBox = box;
     return;
   }
   levelBox = box;
   levelMaxY = box.max.y+8;
   navGridFine = buildGridAtResolution(FINE_CELL, box);
-  navGridCoarse = buildGridAtResolution(COARSE_CELL, box);
+  navGridCoarse = downsampleGrid(navGridFine, COARSE_FACTOR);
+  console.log('Nav grids built: fine '+navGridFine.gridW+'x'+navGridFine.gridH+
+              ' @'+FINE_CELL+'m, coarse '+navGridCoarse.gridW+'x'+navGridCoarse.gridH+
+              ' @'+navGridCoarse.cellSize.toFixed(1)+'m');
+}
+
+// Builds the coarse grid from the fine one instead of re-sampling the geometry. A coarse cell
+// is open when ANY fine cell inside it is open, so narrow streets survive the downsample —
+// sampling coarse cell centres directly (as the old coarse grid did) made them disappear and
+// broke long-distance routes, which is exactly the failure we're trying not to repeat.
+function downsampleGrid(fine, factor){
+  const cellSize = fine.cellSize*factor;
+  const gridW = Math.max(1, Math.ceil(fine.gridW/factor));
+  const gridH = Math.max(1, Math.ceil(fine.gridH/factor));
+  const navBlocked = new Uint8Array(gridW*gridH);
+  const navFloorY = new Float32Array(gridW*gridH);
+  const wallPenalty = new Float32Array(gridW*gridH);
+
+  for(let gz=0; gz<gridH; gz++){
+    for(let gx=0; gx<gridW; gx++){
+      let open=0, sumY=0;
+      const fz1 = Math.min((gz+1)*factor, fine.gridH), fx1 = Math.min((gx+1)*factor, fine.gridW);
+      for(let fz=gz*factor; fz<fz1; fz++){
+        for(let fx=gx*factor; fx<fx1; fx++){
+          const fi = fz*fine.gridW+fx;
+          if(!fine.navBlocked[fi]){ open++; sumY += fine.navFloorY[fi]; }
+        }
+      }
+      const idx = gz*gridW+gx;
+      if(open===0){ navBlocked[idx]=1; navFloorY[idx]=0; }
+      else { navBlocked[idx]=0; navFloorY[idx]=sumY/open; }
+    }
+  }
+
+  for(let gz=0; gz<gridH; gz++){
+    for(let gx=0; gx<gridW; gx++){
+      const idx = gz*gridW+gx;
+      if(navBlocked[idx]) continue;
+      let blocked=0, sampled=0;
+      for(let dz=-1; dz<=1; dz++){
+        for(let dx=-1; dx<=1; dx++){
+          if(dx===0&&dz===0) continue;
+          sampled++;
+          const nx=gx+dx, nz=gz+dz;
+          if(nx<0||nx>=gridW||nz<0||nz>=gridH){ blocked++; continue; }
+          if(navBlocked[nz*gridW+nx]) blocked++;
+        }
+      }
+      wallPenalty[idx] = sampled>0 ? (blocked/sampled)*1.6 : 0;
+    }
+  }
+  return { cellSize, minX: fine.minX, minZ: fine.minZ, maxY: fine.maxY, gridW, gridH, navBlocked, navFloorY, wallPenalty };
 }
 
 // Positions the sun along -SUN_DIRECTION from the level's center, aimed back at it, and fits
@@ -327,61 +516,230 @@ function isPositionBlocked(x, z){
   return !!navGridFine.navBlocked[gridIndex(navGridFine, c.gx, c.gz)];
 }
 
-// Directional: moving FROM (gx1,gz1) TO (gx2,gz2). A drop greater than the normal step
-// tolerance but within the safe ledge-drop range is allowed one-way (downhill only) — calling
-// this the other direction will naturally see a negative height difference and reject it.
-function edgeWalkable(grid, gx1,gz1,gx2,gz2){
-  const idx1 = gridIndex(grid,gx1,gz1), idx2 = gridIndex(grid,gx2,gz2);
-  if(grid.navBlocked[idx1] || grid.navBlocked[idx2]) return false;
-  const h1 = grid.navFloorY[idx1], h2 = grid.navFloorY[idx2];
-  const dh = h1-h2; // positive = stepping down from cell1 to cell2
-  if(dh > STEP_SMOOTH_MAX) return dh <= LEDGE_DROP_MAX;
-  if(-dh > STEP_SMOOTH_MAX) return false;
-  const p1 = gridCellToWorld(grid,gx1,gz1), p2 = gridCellToWorld(grid,gx2,gz2);
-  const y = Math.max(h1,h2)+1.2;
-  return canMoveToRadius(p1.x,p1.z,p2.x,p2.z, y, ZOMBIE_RADIUS);
+// Two fields are maintained. Both are gradients toward the same target, which is why the
+// hand-off between them is safe — unlike the old grid/waypoint hybrid, where the two halves
+// disagreed about where to go and the seam between them caused the oscillation and
+// backtracking. Here a zombie always walks downhill on whichever field covers it, and both
+// slopes lead to the player.
+//
+//  - FINE (FINE_CELL): solved outward from the player to a bounded path distance. Faithful
+//    enough to represent real doorways and pillars, used for everything nearby.
+//  - COARSE (FINE_CELL * COARSE_FACTOR): solved over the ENTIRE level with no distance cap.
+//    Cheap because the walkable area of a street network is a small fraction of the map.
+//    Used by anything too far out to be covered by the fine field.
+//
+// The coarse grid is DOWNSAMPLED from the fine one rather than re-sampled from the geometry:
+// a coarse cell counts as open when any fine cell inside it is open. That preserves
+// connectivity by construction, which is what the previous coarse grid got wrong — sampling
+// coarse cell centres directly made narrow streets vanish and broke long-distance routes.
+let flowFieldFine = null, flowFieldCoarse = null;
+let flowValid = false;
+let flowCell = { gx:-1, gz:-1 };
+let flowTime = -999;
+const FLOW_FIELD_FINE_RADIUS = 120;   // metres of PATH distance (not straight-line) for the fine field
+const FLOW_FIELD_MIN_INTERVAL = 0.25; // seconds — floor on rebuild rate
+
+const NEIGH_DX = [1,-1,0,0,1,1,-1,-1];
+const NEIGH_DZ = [0,0,1,-1,1,-1,1,-1];
+
+// --- minimal binary min-heap over (cellIndex, cost) pairs ---
+const heapCell = [];
+const heapCost = [];
+function heapClear(){ heapCell.length = 0; heapCost.length = 0; }
+function heapPush(cell, cost){
+  let i = heapCell.length;
+  heapCell.push(cell); heapCost.push(cost);
+  while(i>0){
+    const p = (i-1)>>1;
+    if(heapCost[p] <= heapCost[i]) break;
+    const tc=heapCell[p]; heapCell[p]=heapCell[i]; heapCell[i]=tc;
+    const tk=heapCost[p]; heapCost[p]=heapCost[i]; heapCost[i]=tk;
+    i = p;
+  }
+}
+function heapPop(){
+  const topCell = heapCell[0], topCost = heapCost[0];
+  const lastCell = heapCell.pop(), lastCost = heapCost.pop();
+  if(heapCell.length>0){
+    heapCell[0]=lastCell; heapCost[0]=lastCost;
+    let i=0;
+    for(;;){
+      const l=2*i+1, r=l+1;
+      let s=i;
+      if(l<heapCost.length && heapCost[l]<heapCost[s]) s=l;
+      if(r<heapCost.length && heapCost[r]<heapCost[s]) s=r;
+      if(s===i) break;
+      const tc=heapCell[s]; heapCell[s]=heapCell[i]; heapCell[i]=tc;
+      const tk=heapCost[s]; heapCost[s]=heapCost[i]; heapCost[i]=tk;
+      i=s;
+    }
+  }
+  return { cell: topCell, cost: topCost };
 }
 
-function octileHeuristic(a,b){
-  const dx=Math.abs(a.gx-b.gx), dz=Math.abs(a.gz-b.gz);
-  return Math.max(dx,dz)+(Math.SQRT2-1)*Math.min(dx,dz);
-}
-function findPath(fromWorld, toWorld, grid){
-  const start = gridWorldToCell(grid, fromWorld.x, fromWorld.z);
-  const end = gridWorldToCell(grid, toWorld.x, toWorld.z);
-  if(!gridInBounds(grid,start.gx,start.gz) || !gridInBounds(grid,end.gx,end.gz)) return null;
-  if(grid.navBlocked[gridIndex(grid,end.gx,end.gz)]) return null;
-  const endIdx = gridIndex(grid,end.gx,end.gz);
-  const open = new Map();
-  const closed = new Set();
-  open.set(gridIndex(grid,start.gx,start.gz), { g:0, f:octileHeuristic(start,end), parent:null, gx:start.gx, gz:start.gz });
-  const neighbors = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-  let iterations=0;
-  while(open.size>0 && iterations<1600){
-    iterations++;
-    let bestIdx=null, best=null;
-    for(const [idx,node] of open){ if(best===null||node.f<best.f){best=node;bestIdx=idx;} }
-    if(bestIdx===endIdx){
-      const path=[]; let n=best;
-      while(n){ path.push(gridCellToWorld(grid,n.gx,n.gz)); n=n.parent; }
-      path.reverse();
-      return path.length>1 ? path.slice(1) : path;
+// If the player is standing on a cell the grid considers blocked (sampling gaps do happen on
+// a scanned mesh), spiral outward for the nearest open one so the field still has a source.
+function nearestOpenCell(grid, gx, gz){
+  if(gridInBounds(grid,gx,gz) && !grid.navBlocked[gridIndex(grid,gx,gz)]) return {gx,gz};
+  for(let r=1;r<=8;r++){
+    for(let dz=-r; dz<=r; dz++){
+      for(let dx=-r; dx<=r; dx++){
+        if(Math.max(Math.abs(dx),Math.abs(dz))!==r) continue;
+        const nx=gx+dx, nz=gz+dz;
+        if(!gridInBounds(grid,nx,nz)) continue;
+        if(!grid.navBlocked[gridIndex(grid,nx,nz)]) return {gx:nx, gz:nz};
+      }
     }
-    open.delete(bestIdx); closed.add(bestIdx);
-    for(const [dx,dz] of neighbors){
-      const ngx=best.gx+dx, ngz=best.gz+dz;
-      if(!gridInBounds(grid,ngx,ngz)) continue;
-      const nIdx = gridIndex(grid,ngx,ngz);
-      if(closed.has(nIdx) || grid.navBlocked[nIdx]) continue;
-      if(!edgeWalkable(grid,best.gx,best.gz,ngx,ngz)) continue;
-      const stepCost = (dx!==0&&dz!==0)?Math.SQRT2:1;
-      const g = best.g+stepCost;
-      const existing = open.get(nIdx);
-      if(!existing || g<existing.g) open.set(nIdx, { g, f:g+octileHeuristic({gx:ngx,gz:ngz},end), parent:best, gx:ngx, gz:ngz });
-    }
-    if(closed.size>1500) return null;
   }
   return null;
+}
+
+// Dijkstra outward from the player over `grid`, writing costs into `field`.
+// stepTol scales with resolution: a coarse cell averages the heights inside it, so it needs a
+// more forgiving step rule than the fine grid or legitimate slopes read as walls.
+function computeFieldInto(grid, field, maxCost, stepTol, ledgeMax, srcX, srcZ){
+  if(!grid || grid.gridW<2) return false;
+  field.fill(Infinity);
+
+  const sx = (srcX===undefined) ? camera.position.x : srcX;
+  const sz = (srcZ===undefined) ? camera.position.z : srcZ;
+  const raw = gridWorldToCell(grid, sx, sz);
+  const start = nearestOpenCell(grid, raw.gx, raw.gz);
+  if(!start) return false;
+
+  const W = grid.gridW, H = grid.gridH;
+  const startIdx = gridIndex(grid, start.gx, start.gz);
+  field[startIdx] = 0;
+  heapClear();
+  heapPush(startIdx, 0);
+
+  while(heapCell.length>0){
+    const top = heapPop();
+    const cIdx = top.cell, cCost = top.cost;
+    if(cCost > field[cIdx]) continue;   // stale heap entry, already improved
+    if(cCost > maxCost) break;          // far enough out; the rest is beyond interest
+    const cgx = cIdx % W, cgz = (cIdx / W) | 0;
+    const cH = grid.navFloorY[cIdx];
+    for(let k=0;k<8;k++){
+      const dx = NEIGH_DX[k], dz = NEIGH_DZ[k];
+      const ngx = cgx+dx, ngz = cgz+dz;
+      if(ngx<0||ngx>=W||ngz<0||ngz>=H) continue;
+      const nIdx = ngz*W+ngx;
+      if(grid.navBlocked[nIdx]) continue;
+      if(dx!==0 && dz!==0){
+        // don't let a diagonal cut through a corner that isn't genuinely open
+        if(grid.navBlocked[cgz*W + (cgx+dx)]) continue;
+        if(grid.navBlocked[(cgz+dz)*W + cgx]) continue;
+      }
+      // A zombie travels neighbour -> current (i.e. toward the player), so the height rule is
+      // evaluated in that direction: dropping off a ledge is allowed, climbing it is not.
+      const drop = grid.navFloorY[nIdx] - cH;
+      if(drop > stepTol){ if(drop > ledgeMax) continue; }
+      else if(-drop > stepTol) continue;
+      const stepLen = ((dx!==0&&dz!==0) ? Math.SQRT2 : 1) * grid.cellSize;
+      const cost = cCost + stepLen * (1 + grid.wallPenalty[nIdx]);
+      // Push the value as it is actually stored: field is a Float32Array, so writing a double
+      // rounds it slightly. Pushing the unrounded double would make the stale-entry check
+      // above reject this node when popped, leaving the field only partially filled — which
+      // looks exactly like zombies freezing beyond some distance for no visible reason.
+      if(cost < field[nIdx]){ field[nIdx] = cost; heapPush(nIdx, field[nIdx]); }
+    }
+  }
+  return true;
+}
+
+// Rebuilt only when the player has actually moved to a different fine cell, and never more
+// often than the interval — so it costs nothing while the player is standing still.
+function updateFlowField(){
+  if(!navGridFine || !navGridCoarse) return;
+  const now = clock.getElapsedTime();
+  if(flowValid && (now - flowTime) < FLOW_FIELD_MIN_INTERVAL) return;
+  const c = gridWorldToCell(navGridFine, camera.position.x, camera.position.z);
+  if(flowValid && c.gx===flowCell.gx && c.gz===flowCell.gz) return;
+
+  const n1 = navGridFine.gridW*navGridFine.gridH;
+  if(!flowFieldFine || flowFieldFine.length!==n1) flowFieldFine = new Float32Array(n1);
+  const n2 = navGridCoarse.gridW*navGridCoarse.gridH;
+  if(!flowFieldCoarse || flowFieldCoarse.length!==n2) flowFieldCoarse = new Float32Array(n2);
+
+  const okFine = computeFieldInto(navGridFine, flowFieldFine, FLOW_FIELD_FINE_RADIUS, STEP_SMOOTH_MAX, LEDGE_DROP_MAX);
+  const okCoarse = computeFieldInto(navGridCoarse, flowFieldCoarse, Infinity, STEP_SMOOTH_MAX*COARSE_FACTOR*0.7, LEDGE_DROP_MAX*1.5);
+
+  flowValid = okFine || okCoarse;
+  flowCell = { gx:c.gx, gz:c.gz };
+  flowTime = now;
+}
+
+// Best next cell centre on a given grid/field pair, or null if this position has no usable
+// value there.
+function sampleField(grid, field, worldX, worldZ){
+  if(!grid || !field) return null;
+  const c = gridWorldToCell(grid, worldX, worldZ);
+  if(!gridInBounds(grid, c.gx, c.gz)) return null;
+  const W = grid.gridW, H = grid.gridH;
+  const here = field[gridIndex(grid, c.gx, c.gz)];
+
+  if(!isFinite(here)){
+    // On a cell the field never reached: aim for the best finite neighbour so it can rejoin.
+    let bestVal=Infinity, bgx=-1, bgz=-1;
+    for(let k=0;k<8;k++){
+      const ngx=c.gx+NEIGH_DX[k], ngz=c.gz+NEIGH_DZ[k];
+      if(ngx<0||ngx>=W||ngz<0||ngz>=H) continue;
+      const v = field[ngz*W+ngx];
+      if(v < bestVal){ bestVal=v; bgx=ngx; bgz=ngz; }
+    }
+    if(bgx<0) return null;
+    return gridCellToWorld(grid, bgx, bgz);
+  }
+
+  let bestVal = here, bgx=-1, bgz=-1;
+  for(let k=0;k<8;k++){
+    const dx=NEIGH_DX[k], dz=NEIGH_DZ[k];
+    const ngx=c.gx+dx, ngz=c.gz+dz;
+    if(ngx<0||ngx>=W||ngz<0||ngz>=H) continue;
+    const nIdx=ngz*W+ngx;
+    if(grid.navBlocked[nIdx]) continue;
+    if(dx!==0 && dz!==0){
+      if(grid.navBlocked[c.gz*W + ngx]) continue;
+      if(grid.navBlocked[ngz*W + c.gx]) continue;
+    }
+    if(field[nIdx] < bestVal){ bestVal = field[nIdx]; bgx=ngx; bgz=ngz; }
+  }
+  if(bgx<0) return null; // nothing lower nearby — effectively already at the player
+  return gridCellToWorld(grid, bgx, bgz);
+}
+
+// Prefer the fine field; fall back to the coarse one for anything beyond its range.
+function flowFieldTarget(worldX, worldZ){
+  if(!flowValid) return null;
+  const fine = sampleField(navGridFine, flowFieldFine, worldX, worldZ);
+  if(fine) return fine;
+  return sampleField(navGridCoarse, flowFieldCoarse, worldX, worldZ);
+}
+
+
+// The nav grid already stores a verified floor height for every open cell, which makes it a
+// reliable fallback whenever a live downward raycast comes up empty (a gap in the scanned
+// mesh, a numerical miss at a triangle seam, or a genuine hole such as a building interior).
+function navFloorAt(x, z){
+  if(!navGridFine) return null;
+  const c = gridWorldToCell(navGridFine, x, z);
+  if(!gridInBounds(navGridFine, c.gx, c.gz)) return null;
+  const idx = gridIndex(navGridFine, c.gx, c.gz);
+  if(navGridFine.navBlocked[idx]) return null;
+  return navGridFine.navFloorY[idx];
+}
+
+// Nearest walkable spot to (x,z), for recovering anything that has fallen out of the world.
+// Returns the cell centre as well as its height, since the position it fell through may itself
+// be a hole — putting it back at the same x/z would just drop it through again.
+function nearestNavFloor(x, z){
+  if(!navGridFine) return null;
+  const c = gridWorldToCell(navGridFine, x, z);
+  const open = nearestOpenCell(navGridFine, c.gx, c.gz);
+  if(!open) return null;
+  const w = gridCellToWorld(navGridFine, open.gx, open.gz);
+  return { x:w.x, z:w.z, y: navGridFine.navFloorY[gridIndex(navGridFine, open.gx, open.gz)] };
 }
 
 // =================================================================
@@ -464,3 +822,14 @@ function buildTrajectoryMarker(){
 }
 
 // =================================================================
+
+// A one-off coarse field toward a FIXED point (not the player). Used so the Guitarrista can
+// actually walk home when dismissed instead of teleporting — the target never moves, so this
+// is computed once and reused for the rest of the session.
+function buildFixedTargetField(x, z){
+  if(!navGridCoarse) return null;
+  const field = new Float32Array(navGridCoarse.gridW*navGridCoarse.gridH);
+  const ok = computeFieldInto(navGridCoarse, field, Infinity,
+                              STEP_SMOOTH_MAX*COARSE_FACTOR*0.7, LEDGE_DROP_MAX*1.5, x, z);
+  return ok ? field : null;
+}

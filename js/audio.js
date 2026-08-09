@@ -18,7 +18,7 @@ function computePan(worldPos){
 }
 
 // =================================================================
-// ENEMY FILE-BASED AUDIO — folder layout: ./Audio/<EnemyType>/<Category>/<EnemyType>_<Category>_<N>.mp3
+// FILE-BASED AUDIO — folder layout: ./Audio/<Actor>/<Category>/<Actor>_<Category>_<N>.ogg
 // Files are entirely optional: a missing file just means that attempt produces no sound
 // (cached after the first failure so we don't keep re-requesting a known-404 file).
 // =================================================================
@@ -53,7 +53,7 @@ function playEnemyClip(categoryKey, pan, volume){
   const cat = AUDIO_CATEGORIES[categoryKey];
   if(!cat || !audioCtx) return;
   const idx = pickRareLastIndex(cat.count, cat.rareProb);
-  const url = `./Audio/${ENEMY_AUDIO_TYPE}/${cat.folder}/${ENEMY_AUDIO_TYPE}_${cat.folder}_${idx}.mp3`;
+  const url = `./Audio/${ENEMY_AUDIO_TYPE}/${cat.folder}/${ENEMY_AUDIO_TYPE}_${cat.folder}_${idx}.${AUDIO_EXT}`;
   if(audioMissingCache.has(url)) return;
   try{
     const audioEl = new Audio(url);
@@ -125,3 +125,27 @@ function soundBoxWin(){ [500,700,900,1200,1500].forEach((f,i)=>setTimeout(()=>pl
 function soundDropPickup(){ [700,1000,1300].forEach((f,i)=>setTimeout(()=>playTone(f,0.12,'sine',0.25), i*60)); }
 
 // =================================================================
+
+// Plays a specific named file, for clips that aren't part of a numbered set
+// (e.g. Guitarrista_Quejas_Quiebrodeguitarra). Missing files fail silently and are cached
+// as missing so we don't keep re-requesting a known 404.
+function playNamedClip(actor, folder, name, pan, volume){
+  if(!audioCtx) return;
+  const url = `./Audio/${actor}/${folder}/${name}.${AUDIO_EXT}`;
+  if(audioMissingCache.has(url)) return;
+  try{
+    const audioEl = new Audio(url);
+    const source = audioCtx.createMediaElementSource(audioEl);
+    const gain = audioCtx.createGain(); gain.gain.value = volume;
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = pan;
+    source.connect(gain).connect(panner).connect(masterGain);
+    audioEl.play().catch(()=>{ audioMissingCache.add(url); });
+  } catch(e){ audioMissingCache.add(url); }
+}
+
+// Numbered clip from any actor/folder: <Actor>_<Folder>_<N>.ogg
+function playNumberedClip(actor, folder, count, pan, volume, rareProb){
+  if(!audioCtx || count<1) return;
+  const idx = pickRareLastIndex(count, rareProb||0);
+  playNamedClip(actor, folder, `${actor}_${folder}_${idx}`, pan, volume);
+}

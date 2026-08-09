@@ -12,6 +12,7 @@ function animate(){
     finishReloadIfDue(elapsed);
     updateZombies(delta, elapsed);
     updateZombieAnimations(delta);
+    updateGuitarrista(delta, elapsed);
     updateBillboards();
     updateMinimap();
     updateStatusEffects(delta, elapsed);
@@ -28,7 +29,10 @@ function animate(){
     updateHUD();
   }
 
-  if(gameState!=='loading') renderFrame();
+  if(gameState!=='loading'){
+    updatePosReadout();
+    renderFrame();
+  }
 }
 
 init();

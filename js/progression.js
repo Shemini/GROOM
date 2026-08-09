@@ -138,6 +138,7 @@ function updateWave(delta, elapsed){
     addMoney(bonus);
     showWaveBanner('WAVE '+wave.number+' CLEAR', '+$'+bonus+' — next wave incoming');
     soundWaveClear();
+    guitarristaOnWaveClear();
     wave.betweenWaves=true; wave.betweenTimer=6;
   }
 }

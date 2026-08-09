@@ -155,6 +155,7 @@ function tryShoot(elapsed){
   if(elapsed-player.lastShotTime < getShotCooldown(wIdx)) return;
   if(ammo.mag<=0){ if(!mods.noReload && ammo.reserve>0) startReload(); return; }
   player.lastShotTime = elapsed; ammo.mag--;
+  guitarristaHitThisShot = false; // one Guitarrista hit per trigger pull, not per pellet
   if(wIdx===1 && player.weaponEvolved[1]){ const st=player.burstState[1]; st.phase = st.phase===0?1:0; }
 
   const dmgMult = 1+statValue('damage');
@@ -190,7 +191,15 @@ function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
     dir.x+=(Math.random()-0.5)*spread; dir.y+=(Math.random()-0.5)*spread; dir.z+=(Math.random()-0.5)*spread;
     dir.normalize();
     raycaster.set(camera.position, dir); raycaster.far=60;
-    const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+    const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
     let tracerEnd = camera.position.clone().addScaledVector(dir,40);
     if(hits.length>0){
       const hit=hits[0]; tracerEnd=hit.point;
@@ -212,7 +221,15 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
   if(hits.length===0){ spawnBolt(camera.position, camera.position.clone().addScaledVector(forward,40), 0x8fe8ff); return; }
   const first = hits[0];
   spawnBolt(camera.position, first.point, 0x8fe8ff);
@@ -243,7 +260,15 @@ function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
   if(hits.length===0){ spawnBolt(camera.position, camera.position.clone().addScaledVector(forward,40), 0xd9a3ff); return; }
   const first = hits[0];
   spawnBolt(camera.position, first.point, 0xd9a3ff);
@@ -296,7 +321,15 @@ function firePierce(wIdx, dmgMult, isCrit, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=80;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
   let dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
   const falloff = effectivePierceFalloff(wIdx);
   let pierces=0, anyHit=false, anyHeadshot=false;
@@ -320,7 +353,15 @@ function firePierceLiar(wIdx, dmgMult, isCrit, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=100;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
   const baseDmg = mods.evolvedBaseDamage*dmgMult*(isCrit?critMultVal:1);
   let hitIndex=0, anyHit=false, anyHeadshot=false;
   let tracerEnd = camera.position.clone().addScaledVector(forward,100);
@@ -342,7 +383,15 @@ function fireHeadhunter(wIdx, dmgMult, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
   let tracerEnd = camera.position.clone().addScaledVector(forward,40);
   if(hits.length>0){
     const hit=hits[0]; tracerEnd=hit.point;
@@ -365,7 +414,15 @@ function fireHellgun(wIdx, dmgMult, isCrit, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const zombieMeshes=[]; zombies.forEach(z=>zombieMeshes.push(z.billboard));
   raycaster.set(camera.position, forward); raycaster.far=60;
-  const hits = raycaster.intersectObjects([...zombieMeshes, ...environmentMeshes], true);
+  const hits = raycaster.intersectObjects([...zombieMeshes, ...guitarristaTargets(), ...environmentMeshes], true);
+  // Primary ray only: shooting the Guitarrista skips his song rather than doing damage,
+  // and absorbs the shot. Explosions, chain jumps, pierce follow-throughs and DoT never
+  // reach this path, so they can't trigger it.
+  if(hits.length>0 && hits[0].object.userData.guitarristaRef){
+    spawnTracer(camera.position, hits[0].point, 0xfff2b0);
+    guitarristaOnShot();
+    return;
+  }
   let tracerEnd = camera.position.clone().addScaledVector(forward,40);
   if(hits.length===0){ spawnTracer(camera.position, tracerEnd, 0xff5050); return; }
   const hit=hits[0]; tracerEnd=hit.point;
