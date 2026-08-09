@@ -3,6 +3,7 @@
 // =================================================================
 function init(){
   player.xpToNext = xpForLevel(player.level);
+  playerStamina = PLAYER_STAMINA_MAX;
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 500);

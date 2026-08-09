@@ -317,6 +317,20 @@ function updateGuitarrista(delta, elapsed){
 
   const frameCount = g.hasOwnSheet ? GUITARRISTA_ANIM_FRAMES : SPRITE_COLS;
   const frameDur = g.hasOwnSheet ? (GUITARRISTA_ANIM_DURATION/GUITARRISTA_ANIM_FRAMES) : ANIM_FRAME_DURATION;
+
+  // Standing still means standing still: hold a single frame rather than cycling a walk cycle
+  // on the spot. Applies whenever he isn't actually travelling, including while he's hired but
+  // already close enough to the player not to need to move.
+  if(!moving){
+    if(g.animFrame!==0 || g.animTimer!==0){
+      g.animFrame = 0; g.animTimer = 0;
+      const row = g.animForward ? 0 : (g.hasOwnSheet ? 2 : 1);
+      g.billboard.material.map.offset.set(0, 1-(row+1)/g.rows);
+    }
+    updateMusicVolume();
+    return;
+  }
+
   g.animTimer -= delta;
   while(g.animTimer <= 0){
     g.animTimer += frameDur;

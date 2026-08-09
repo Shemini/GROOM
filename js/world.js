@@ -321,7 +321,18 @@ function updateMovement(delta){
   move.addScaledVector(right, mx);
   if(move.lengthSq()>0) move.normalize();
 
-  const speed = ((keys['ShiftLeft']||keys['ShiftRight']) ? RUN_SPEED : WALK_SPEED) * (1+statValue('moveSpeed'));
+  // Sprinting only counts while actually moving, so holding shift while standing still doesn't
+  // burn stamina.
+  const wantSprint = (keys['ShiftLeft']||keys['ShiftRight']) && move.lengthSq()>0;
+  const sprinting = wantSprint && !playerExhausted && playerStamina>0;
+  if(sprinting){
+    playerStamina -= PLAYER_STAMINA_DRAIN*delta;
+    if(playerStamina<=0){ playerStamina = 0; playerExhausted = true; }
+  } else {
+    playerStamina = Math.min(PLAYER_STAMINA_MAX, playerStamina + PLAYER_STAMINA_RECOVER*delta);
+    if(playerExhausted && playerStamina >= PLAYER_STAMINA_RESUME) playerExhausted = false;
+  }
+  const speed = (sprinting ? RUN_SPEED : WALK_SPEED) * (1+statValue('moveSpeed'));
   const dx = move.x*speed*delta, dz = move.z*speed*delta;
   const chestY = feetY+1.3, kneeY = feetY+0.4;
 

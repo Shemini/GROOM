@@ -6,9 +6,18 @@ const EYE_HEIGHT = 1.68;
 const SCALE_CORRECTION = 1; // confirmed correct at 1:1 against the reference box
 const PLAYER_RADIUS = 0.35;
 const ZOMBIE_RADIUS = 0.4;
-const WALK_SPEED = 15.0;   // tripled for testing — was 5.0
-const RUN_SPEED = 30.0;    // tripled for testing — was 10.0
-const ZOMBIE_SPEED_MULT = 7.5; // tripled for testing — was 2.5
+const WALK_SPEED = 5.0;
+const RUN_SPEED = 10.0;
+const ZOMBIE_SPEED_MULT = 2.5;
+
+// Sprint stamina. Drain is 1 unit/sec so STAMINA_MAX reads directly as "seconds of sprinting".
+const PLAYER_STAMINA_MAX = 10;      // seconds of continuous sprinting
+const PLAYER_STAMINA_DRAIN = 1;     // units per second while sprinting
+const PLAYER_STAMINA_RECOVER = 2;   // units per second while not sprinting (full refill in 5s)
+// Once fully drained, sprinting stays locked until this much has come back. Without it, the
+// bar would flicker between empty and one frame's worth of recovery, letting you stutter-sprint
+// indefinitely at zero stamina.
+const PLAYER_STAMINA_RESUME = 2;
 const GRAVITY = 22;
 // Nav grid cell size in metres. Finer = more faithful to real doorways and pillars (a zombie
 // is only ~0.4m wide, so 2m cells were very coarse). Build cost is no longer the constraint
@@ -222,6 +231,8 @@ let boxState = 'idle';
 let feetY = 0;
 let playerVelY = 0;
 let playerAirborne = 0;
+let playerStamina = 10;      // set from PLAYER_STAMINA_MAX at init
+let playerExhausted = false;
 let playerStart = null;
 
 let audioCtx = null, masterGain = null, muted = false;

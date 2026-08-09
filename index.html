@@ -51,6 +51,10 @@
   #healthLabel{font-size:11px;color:var(--dim);letter-spacing:2px;margin-bottom:4px;}
   #healthBarOuter{width:100%;height:20px;background:#1c1c20;border:1px solid var(--panel-line);position:relative;}
   #healthBarInner{height:100%;width:100%;background:linear-gradient(90deg,#4a9c4f,var(--toxic));transition:width .2s;}
+  #staminaBarOuter{width:100%;height:7px;background:#1c1c20;border:1px solid var(--panel-line);
+    border-top:none;position:relative;}
+  #staminaBarInner{height:100%;width:100%;background:linear-gradient(90deg,#3d7fb0,var(--xp));}
+  #staminaBarInner.exhausted{background:linear-gradient(90deg,#7a3a1e,#c8621e);}
   #healthNum{position:absolute;right:6px;top:1px;font-size:12px;color:var(--bone);}
 
   #ammoWrap{position:absolute;right:24px;bottom:24px;text-align:right;}
@@ -175,6 +179,7 @@
   <div id="healthWrap">
     <div id="healthLabel">HEALTH</div>
     <div id="healthBarOuter"><div id="healthBarInner"></div><div id="healthNum">100</div></div>
+    <div id="staminaBarOuter"><div id="staminaBarInner"></div></div>
   </div>
 
   <div id="ammoWrap">
