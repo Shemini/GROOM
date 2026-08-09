@@ -249,12 +249,16 @@ const keys = {};
 let mouseDown = false;
 const raycaster = new THREE.Raycaster();
 
-const settings = {
-  brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:4, lutStrength:1,
-  skyColor:'#3a5f8a', horizonColor:'#e8c9a0', horizonSharpness:2.0,
+// Single source of truth for the look. The panel's controls, the RESET button and the values
+// the game boots with all read from here — previously these were duplicated across config,
+// the reset handler and the HTML input attributes, which is how they drifted out of sync.
+const DEFAULT_SETTINGS = {
+  brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:6, lutStrength:1,
+  skyColor:'#3a5f8a', horizonColor:'#ccf0ff', horizonSharpness:2.0,
   sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
   contactShadowColor:'#000000', contactShadowOpacity:0.45,
 };
+const settings = Object.assign({}, DEFAULT_SETTINGS);
 
 function createDefaultMods(){
   return {

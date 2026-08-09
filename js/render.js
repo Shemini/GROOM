@@ -76,6 +76,7 @@ function init(){
   });
 
   wireSettingsUI();
+  applySettingsToUI();
   loadAssets();
   updateHUD();
   animate();
@@ -305,6 +306,52 @@ function renderFrame(){
 // =================================================================
 // SETTINGS UI
 // =================================================================
+
+function applySettingsToUI(){
+  const setRange = (id, val, labelId, fmt) => {
+    const input = el(id); if(input) input.value = val;
+    if(labelId){ const lab = el(labelId); if(lab) lab.textContent = fmt ? fmt(val) : val.toFixed(2); }
+  };
+  setRange('brightness', settings.brightness, 'vBrightness');
+  setRange('contrast', settings.contrast, 'vContrast');
+  setRange('hue', settings.hue, 'vHue', v=>Math.round(v)+'\u00b0');
+  setRange('saturation', settings.saturation, 'vSaturation');
+  setRange('pixelSize', settings.pixelSize, 'vPixelSize', v=>String(Math.round(v)));
+  setRange('lutStrength', settings.lutStrength, 'vLutStrength');
+  setRange('horizonSharpness', settings.horizonSharpness, 'vHorizonSharpness', v=>v.toFixed(1));
+  setRange('sunIntensity', settings.sunIntensity, 'vSunIntensity');
+  setRange('ambientIntensity', settings.ambientIntensity, 'vAmbientIntensity');
+  setRange('contactShadowOpacity', settings.contactShadowOpacity, 'vContactShadowOpacity');
+  if(el('tintR')) el('tintR').value = settings.tintR;
+  if(el('tintG')) el('tintG').value = settings.tintG;
+  if(el('tintB')) el('tintB').value = settings.tintB;
+  if(el('skyColor')) el('skyColor').value = settings.skyColor;
+  if(el('horizonColor')) el('horizonColor').value = settings.horizonColor;
+  if(el('sunColor')) el('sunColor').value = settings.sunColor;
+  if(el('ambientColor')) el('ambientColor').value = settings.ambientColor;
+  if(el('contactShadowColor')) el('contactShadowColor').value = settings.contactShadowColor;
+
+  if(quadMaterial){
+    quadMaterial.uniforms.brightness.value = settings.brightness;
+    quadMaterial.uniforms.contrast.value = settings.contrast;
+    quadMaterial.uniforms.hue.value = settings.hue;
+    quadMaterial.uniforms.saturation.value = settings.saturation;
+    quadMaterial.uniforms.tint.value.set(settings.tintR, settings.tintG, settings.tintB);
+    quadMaterial.uniforms.lutStrength.value = settings.lutStrength;
+  }
+  if(skyMaterial){
+    skyMaterial.uniforms.skyColor.value.set(settings.skyColor);
+    skyMaterial.uniforms.horizonColor.value.set(settings.horizonColor);
+    skyMaterial.uniforms.horizonSharpness.value = settings.horizonSharpness;
+  }
+  if(sunLight){ sunLight.color.set(settings.sunColor); sunLight.intensity = settings.sunIntensity; }
+  if(ambientLight){ ambientLight.color.set(settings.ambientColor); ambientLight.intensity = settings.ambientIntensity; }
+  if(typeof zombies !== 'undefined'){
+    zombies.forEach(z=>{ z.blob.material.color.set(settings.contactShadowColor); z.blob.material.opacity = settings.contactShadowOpacity; });
+  }
+  rebuildRenderTarget();
+}
+
 function wireSettingsUI(){
   const bind = (id, uniformKey, fmt) => {
     const input = el(id), label = el('v'+id.charAt(0).toUpperCase()+id.slice(1));
@@ -371,33 +418,8 @@ function wireSettingsUI(){
   });
 
   el('btnReset').addEventListener('click', ()=>{
-    const d = { brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:4, lutStrength:1,
-      skyColor:'#3a5f8a', horizonColor:'#e8c9a0', horizonSharpness:2.0,
-      sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
-      contactShadowColor:'#000000', contactShadowOpacity:0.45 };
-    Object.assign(settings, d);
-    el('brightness').value=0; el('vBrightness').textContent='0.00';
-    el('contrast').value=0; el('vContrast').textContent='0.00';
-    el('hue').value=0; el('vHue').textContent='0°';
-    el('saturation').value=1; el('vSaturation').textContent='1.00';
-    el('tintR').value=1; el('tintG').value=1; el('tintB').value=1;
-    el('pixelSize').value=4; el('vPixelSize').textContent='4';
-    el('lutStrength').value=1; el('vLutStrength').textContent='1.00';
-    el('skyColor').value=d.skyColor; el('horizonColor').value=d.horizonColor;
-    el('horizonSharpness').value=2.0; el('vHorizonSharpness').textContent='2.0';
-    el('sunColor').value=d.sunColor; el('sunIntensity').value=d.sunIntensity; el('vSunIntensity').textContent=d.sunIntensity.toFixed(2);
-    el('ambientColor').value=d.ambientColor; el('ambientIntensity').value=d.ambientIntensity; el('vAmbientIntensity').textContent=d.ambientIntensity.toFixed(2);
-    el('contactShadowColor').value=d.contactShadowColor; el('contactShadowOpacity').value=d.contactShadowOpacity; el('vContactShadowOpacity').textContent=d.contactShadowOpacity.toFixed(2);
-    quadMaterial.uniforms.brightness.value=0; quadMaterial.uniforms.contrast.value=0;
-    quadMaterial.uniforms.hue.value=0; quadMaterial.uniforms.saturation.value=1;
-    quadMaterial.uniforms.tint.value.set(1,1,1); quadMaterial.uniforms.lutStrength.value=1;
-    skyMaterial.uniforms.skyColor.value.set(d.skyColor);
-    skyMaterial.uniforms.horizonColor.value.set(d.horizonColor);
-    skyMaterial.uniforms.horizonSharpness.value=2.0;
-    sunLight.color.set(d.sunColor); sunLight.intensity=d.sunIntensity;
-    ambientLight.color.set(d.ambientColor); ambientLight.intensity=d.ambientIntensity;
-    zombies.forEach(z=>{ z.blob.material.color.set(d.contactShadowColor); z.blob.material.opacity=d.contactShadowOpacity; });
-    rebuildRenderTarget();
+    Object.assign(settings, DEFAULT_SETTINGS);
+    applySettingsToUI();
   });
 
   el('btnCopy').addEventListener('click', ()=>{
