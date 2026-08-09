@@ -185,6 +185,16 @@ function buildSky(){
 // =================================================================
 // POST PROCESS: pixelation + color grading + LUT, sky excluded via depth
 // =================================================================
+// Steps per channel for a given total colour depth. Green gets the extra bit where there is
+// one, matching how human vision is most sensitive to it — the same reasoning behind the
+// classic RGB565 and RGB332 layouts.
+function colorLevelsFor(depth){
+  if(depth <= 4)  return new THREE.Vector3(2, 4, 2);        // 1/2/1 bits  = 16 colours
+  if(depth <= 8)  return new THREE.Vector3(8, 8, 4);        // 3/3/2 bits  = 256 colours
+  if(depth <= 16) return new THREE.Vector3(32, 64, 32);     // 5/6/5 bits  = 65,536 colours
+  return new THREE.Vector3(256, 256, 256);                  // 8/8/8 bits  = full, no banding
+}
+
 function buildPostProcess(){
   quadScene = new THREE.Scene();
   quadCamera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
@@ -206,6 +216,8 @@ function buildPostProcess(){
       saturation: { value: settings.saturation },
       tint: { value: new THREE.Vector3(settings.tintR, settings.tintG, settings.tintB) },
       lutStrength: { value: settings.lutStrength },
+      colorLevels: { value: colorLevelsFor(settings.colorDepth) },
+      lowResSize: { value: new THREE.Vector2(1,1) },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -217,6 +229,8 @@ function buildPostProcess(){
       uniform sampler2D tLUT;
       uniform float brightness, contrast, hue, saturation, lutStrength;
       uniform vec3 tint;
+      uniform vec3 colorLevels;   // steps per channel, e.g. 32/64/32 for 16-bit RGB565
+      uniform vec2 lowResSize;
       varying vec2 vUv;
 
       vec3 rgb2hsv(vec3 c){
@@ -247,13 +261,27 @@ function buildPostProcess(){
         return mix(c0, c1, mixF);
       }
 
+      // Ordered 4x4 Bayer, built from a 2x2 pattern arithmetically. Without dithering the low
+      // depths band badly across gradients like the sky; with it they read as intentional
+      // texture instead. Computed on the LOW-RES texel grid, not screen pixels, so the dither
+      // pattern scales with the pixelation rather than crawling underneath it.
+      float bayer2(vec2 a){ a = floor(a); return fract(a.x*0.5 + a.y*a.y*0.75); }
+      vec3 quantize(vec3 c, vec2 uv){
+        vec2 cell = floor(uv * lowResSize);
+        float d = (bayer2(0.5*cell)*0.25 + bayer2(cell)) - 0.5;
+        vec3 steps = max(colorLevels - 1.0, vec3(1.0));
+        c = clamp(c + d/steps, 0.0, 1.0);
+        return floor(c*steps + 0.5)/steps;
+      }
+
       void main(){
         vec3 raw = texture2D(tDiffuse, vUv).rgb;
         float depth = texture2D(tDepth, vUv).r;
 
         if(depth > 0.9999){
-          // sky / background — left ungraded
-          gl_FragColor = vec4(raw, 1.0);
+          // sky / background — left ungraded, but still quantised so the whole frame shares
+          // one colour depth rather than the sky staying smooth against a banded world
+          gl_FragColor = vec4(quantize(raw, vUv), 1.0);
           return;
         }
 
@@ -271,7 +299,7 @@ function buildPostProcess(){
         vec3 graded = applyLUT(color);
         color = mix(color, graded, lutStrength);
 
-        gl_FragColor = vec4(clamp(color,0.0,1.0), 1.0);
+        gl_FragColor = vec4(quantize(clamp(color,0.0,1.0), vUv), 1.0);
       }
     `
   });
@@ -292,6 +320,7 @@ function rebuildRenderTarget(){
     depthTexture: depthTexture, depthBuffer: true,
   });
   quadMaterial.uniforms.tDiffuse.value = renderTarget.texture;
+  quadMaterial.uniforms.lowResSize.value.set(w, h);
   quadMaterial.uniforms.tDepth.value = depthTexture;
 }
 
@@ -322,6 +351,7 @@ function applySettingsToUI(){
   setRange('sunIntensity', settings.sunIntensity, 'vSunIntensity');
   setRange('ambientIntensity', settings.ambientIntensity, 'vAmbientIntensity');
   setRange('contactShadowOpacity', settings.contactShadowOpacity, 'vContactShadowOpacity');
+  if(el('colorDepth')) el('colorDepth').value = String(settings.colorDepth);
   if(el('tintR')) el('tintR').value = settings.tintR;
   if(el('tintG')) el('tintG').value = settings.tintG;
   if(el('tintB')) el('tintB').value = settings.tintB;
@@ -338,6 +368,7 @@ function applySettingsToUI(){
     quadMaterial.uniforms.saturation.value = settings.saturation;
     quadMaterial.uniforms.tint.value.set(settings.tintR, settings.tintG, settings.tintB);
     quadMaterial.uniforms.lutStrength.value = settings.lutStrength;
+    quadMaterial.uniforms.colorLevels.value.copy(colorLevelsFor(settings.colorDepth));
   }
   if(skyMaterial){
     skyMaterial.uniforms.skyColor.value.set(settings.skyColor);
@@ -371,6 +402,11 @@ function wireSettingsUI(){
       settings[id] = parseFloat(el(id).value);
       quadMaterial.uniforms.tint.value.set(settings.tintR, settings.tintG, settings.tintB);
     });
+  });
+
+  el('colorDepth').addEventListener('change', ()=>{
+    settings.colorDepth = parseInt(el('colorDepth').value, 10);
+    quadMaterial.uniforms.colorLevels.value.copy(colorLevelsFor(settings.colorDepth));
   });
 
   el('skyColor').addEventListener('input', ()=>{
