@@ -57,7 +57,7 @@ function startNextTrack(){
   musicCurrentTitle = track.title || track.file;
   // Filenames may contain accents or spaces (e.g. 'Sombras_de_Jaén'), which have to be
   // percent-encoded to survive the round trip to the server reliably.
-  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/Canciones/${encodeURIComponent(track.file)}.${AUDIO_EXT}`;
+  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/${GUITARRISTA_FOLDER_CANCIONES}/${encodeURIComponent(track.file)}.${AUDIO_EXT}`;
   console.log('Guitarrista: playing "' + musicCurrentTitle + '" -> ' + musicEl.src);
   musicEl.play().catch(()=>{
     console.warn('Guitarrista: could not play track ' + track.file);
@@ -271,7 +271,7 @@ function updateGuitarrista(delta, elapsed){
       let fy = getFloorY(px,pz, g.feetY+2.2);
       if(fy===null) fy = navFloorAt(px,pz);
       if(fy!==null && (g.feetY-fy) <= STEP_SMOOTH_MAX){
-        g.feetY += (fy-g.feetY)*Math.min(1,delta*10);
+        g.feetY += (fy-g.feetY)*((fy > g.feetY) ? Math.min(1,delta*40) : Math.min(1,delta*10));
         g.velY = 0; g.airborne = 0;
       } else {
         g.velY -= GRAVITY*delta;

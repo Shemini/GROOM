@@ -233,7 +233,7 @@ function updateZombies(delta, elapsed){
         let fy = getFloorY(px,pz, z.feetY+2.2);
         if(fy===null) fy = navFloorAt(px,pz);
         if(fy!==null && (z.feetY-fy) <= STEP_SMOOTH_MAX){
-          z.feetY += (fy-z.feetY)*Math.min(1,delta*10);
+          z.feetY += (fy-z.feetY)*((fy > z.feetY) ? Math.min(1,delta*40) : Math.min(1,delta*10));
           z.velY = 0; z.airborne = 0;
         } else {
           z.velY = (z.velY||0) - GRAVITY*delta;

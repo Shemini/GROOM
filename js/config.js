@@ -18,6 +18,9 @@ const FINE_CELL = 0.6;
 // the fine grid, and its flow field covers the WHOLE level with no distance cap — cheap,
 // because a street network's walkable area is only a small share of the map's footprint.
 const COARSE_FACTOR = 4;
+// Minimum upward component of a surface normal for it to count as walkable ground rather than
+// a wall. 0.5 allows slopes up to ~60 degrees; lower it if steep ramps should still block.
+const WALKABLE_NORMAL_Y = 0.5;
 const STEP_SMOOTH_MAX = 1.2; // meters — normal walkable step/slope tolerance
 const LEDGE_DROP_MAX = 4.0;  // meters — max one-way drop zombies/paths will take off a ledge
 const INTERACT_RADIUS = 2.6;
@@ -296,6 +299,10 @@ const GUITARRISTA_TRACKS = [
   { file:'Caricias_de_Arena',  title:'Caricias de Arena' },
   { file:'Taranta_Allegra',    title:'Taranta Allegra' },
 ];
+// Folder names are case-sensitive once deployed (Linux servers) even though Windows treats
+// them as interchangeable — a folder called 'canciones' will 404 when the code asks for
+// 'Canciones'. Set these to match exactly what is on disk.
+const GUITARRISTA_FOLDER_CANCIONES = 'Canciones';
 const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (excludes the sting below)
 const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';
 const GUITARRISTA_FELICITACIONES_COUNT = 5;
