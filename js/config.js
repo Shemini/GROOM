@@ -18,6 +18,9 @@ const FINE_CELL = 0.6;
 // the fine grid, and its flow field covers the WHOLE level with no distance cap — cheap,
 // because a street network's walkable area is only a small share of the map's footprint.
 const COARSE_FACTOR = 4;
+// Minimum upward component of a surface normal for it to count as walkable ground rather than
+// a wall. 0.5 allows slopes up to ~60 degrees; lower it if steep ramps should still block.
+const WALKABLE_NORMAL_Y = 0.5;
 const STEP_SMOOTH_MAX = 1.2; // meters — normal walkable step/slope tolerance
 const LEDGE_DROP_MAX = 4.0;  // meters — max one-way drop zombies/paths will take off a ledge
 const INTERACT_RADIUS = 2.6;
@@ -290,12 +293,18 @@ const AUDIO_EXT = 'ogg';
 // A browser can't list a directory, so the tracklist has to be declared here rather than
 // discovered automatically. Add one line per song: `file` is the filename without extension,
 // `title` is what shows in the HUD while it plays.
+// `file` must match the filename on disk EXACTLY (minus the extension). These use spaces, not
+// underscores — the code percent-encodes them for the URL, so spaces and accents are fine.
 const GUITARRISTA_TRACKS = [
-  { file:'Sombras_de_Jaén',    title:'Sombras de Jaén' },
-  { file:'Tango_Down',         title:'Tango Down' },
-  { file:'Caricias_de_Arena',  title:'Caricias de Arena' },
-  { file:'Taranta_Allegra',    title:'Taranta Allegra' },
+  { file:'Sombras de Jaén',   title:'Sombras de Jaén' },
+  { file:'Tango Down',        title:'Tango Down' },
+  { file:'Caricias de Arena', title:'Caricias de Arena' },
+  { file:'Taranta Allegra',   title:'Taranta Allegra' },
 ];
+// Folder names are case-sensitive once deployed (Linux servers) even though Windows treats
+// them as interchangeable — a folder called 'canciones' will 404 when the code asks for
+// 'Canciones'. Set these to match exactly what is on disk.
+const GUITARRISTA_FOLDER_CANCIONES = 'Canciones';
 const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (excludes the sting below)
 const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';
 const GUITARRISTA_FELICITACIONES_COUNT = 5;
@@ -303,7 +312,14 @@ const GUITARRISTA_INSULTOS_COUNT = 5;
 
 const GUITARRISTA_HIRE_COST = 50;
 const GUITARRISTA_FOLLOW_RADIUS = 10;        // metres — hangs back once this close
-const GUITARRISTA_HEAR_RADIUS = 30;          // metres — music fades to nothing past this
+// Metres at which the music fades to nothing. Wider once he's hired, since he's meant to be
+// your travelling companion rather than a landmark you stumble across.
+const GUITARRISTA_HEAR_RADIUS_IDLE = 60;     // not hired (2x the original 30m)
+const GUITARRISTA_HEAR_RADIUS_HIRED = 90;    // hired (3x the original 30m)
+// Exponent on the distance falloff. 1 = linear. The previous value was effectively 2, which
+// meant half the radius gave only a quarter of the volume — a large part of why he sounded
+// audible only up close. Raise it above 1 if you want the fade to bite sooner.
+const GUITARRISTA_MUSIC_FALLOFF_EXP = 1.0;
 const GUITARRISTA_MUSIC_VOLUME = 0.55;       // gain when standing right next to him
 const GUITARRISTA_SKIP_DELAY = 2.0;          // seconds between being shot and the next song
 const GUITARRISTA_DISMISS_HITS = 3;          // hits within the window below to send him home

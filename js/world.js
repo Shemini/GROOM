@@ -202,7 +202,9 @@ function canMoveToRadius(fromX, fromZ, toX, toZ, height, radius){
   raycaster.set(new THREE.Vector3(fromX,height,fromZ), dir);
   raycaster.far = dist + radius;
   const hits = raycaster.intersectObjects(collisionMeshes, false);
-  return !(hits.length>0 && hits[0].distance < dist+radius);
+  const minWallY = height - 1.3 - STEP_SMOOTH_MAX;
+  const blocking = hits.find(h => h.distance < dist+radius && isBlockingHit(h, minWallY));
+  return !blocking;
 }
 // Shared by the player and zombies. Two improvements over a single-bounce version:
 // 1) Height-aware hit filtering — a horizontal ray can't tell "a real wall" from "the
@@ -212,6 +214,19 @@ function canMoveToRadius(fromX, fromZ, toX, toZ, height, radius){
 // 2) Two bounce iterations — a single slide-and-recheck gives up entirely in concave corners
 //    (two walls meeting near 90°), which is exactly where zombies were getting stuck. This
 //    tries a second slide off the second wall's tangent before conceding no movement at all.
+// Decides whether a horizontal ray hit should stop movement. Height alone can't tell a wall
+// from a slope: a horizontal ray hits both at roughly its own height. What separates them is
+// the surface NORMAL — a walkable slope faces upward, a wall faces sideways. Testing only the
+// hit height (as this used to) meant a slope rising even a few centimetres ahead registered
+// as a wall, which is why gentle slopes behaved like solid barriers.
+function isBlockingHit(h, minWallY){
+  if(h.point.y <= minWallY) return false;                 // below foot level: a ledge to walk off
+  if(!h.face) return true;
+  const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+  if(n.y > WALKABLE_NORMAL_Y) return false;                // ground or a walkable slope
+  return true;
+}
+
 function resolveSlide(fromX, fromZ, dx, dz, height, radius, feetYRef){
   const minWallY = (feetYRef===undefined ? height-1.3 : feetYRef) - STEP_SMOOTH_MAX;
   let moveX = dx, moveZ = dz;
@@ -223,7 +238,7 @@ function resolveSlide(fromX, fromZ, dx, dz, height, radius, feetYRef){
     raycaster.set(new THREE.Vector3(fromX,height,fromZ), new THREE.Vector3(dirX,0,dirZ));
     raycaster.far = dist+radius;
     const hits = raycaster.intersectObjects(collisionMeshes, false);
-    const blocking = hits.find(h => h.distance < dist+radius && h.point.y > minWallY);
+    const blocking = hits.find(h => h.distance < dist+radius && isBlockingHit(h, minWallY));
     if(!blocking){
       return { x: fromX+moveX, z: fromZ+moveZ };
     }
@@ -244,7 +259,7 @@ function resolveSlide(fromX, fromZ, dx, dz, height, radius, feetYRef){
   raycaster.set(new THREE.Vector3(fromX,height,fromZ), new THREE.Vector3(fdirX,0,fdirZ));
   raycaster.far = finalDist+radius;
   const finalHits = raycaster.intersectObjects(collisionMeshes, false);
-  const finalBlocking = finalHits.find(h => h.distance < finalDist+radius && h.point.y > minWallY);
+  const finalBlocking = finalHits.find(h => h.distance < finalDist+radius && isBlockingHit(h, minWallY));
   if(finalBlocking) return { x:fromX, z:fromZ };
   return { x: fromX+moveX, z: fromZ+moveZ };
 }
@@ -307,7 +322,8 @@ function updateMovement(delta){
   if(floorY===null) floorY = navFloorAt(nx, nz);
   if(floorY!==null && (feetY-floorY) <= STEP_SMOOTH_MAX){
     // grounded, or a normal step/slope — smooth snap, no falling physics needed
-    feetY += (floorY-feetY)*Math.min(1, delta*12);
+    const rate = (floorY > feetY) ? Math.min(1, delta*40) : Math.min(1, delta*12);
+    feetY += (floorY-feetY)*rate;
     playerVelY = 0;
     playerAirborne = 0;
   } else {
