@@ -291,10 +291,10 @@ const AUDIO_EXT = 'ogg';
 // discovered automatically. Add one line per song: `file` is the filename without extension,
 // `title` is what shows in the HUD while it plays.
 const GUITARRISTA_TRACKS = [
-  // { file:'Taranta Allegra', title:'Taranta Allegra' },
-  // { file:'Sombras de Jaén', title:'Sombras de Jaén' },
-  // { file:'Tango Down', title:'Tango Down' },
-  // { file:'Caricias de Arena', title:'Caricias de Arena' },
+  { file:'Taranta Allegra', title:'Taranta Allegra' },
+  { file:'Sombras de Jaén', title:'Sombras de Jaén' },
+  { file:'Tango Down', title:'Tango Down' },
+  { file:'Caricias de Arena', title:'Caricias de Arena' },
 ];
 const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (excludes the sting below)
 const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';
