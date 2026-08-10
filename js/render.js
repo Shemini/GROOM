@@ -324,7 +324,19 @@ function rebuildRenderTarget(){
   quadMaterial.uniforms.tDepth.value = depthTexture;
 }
 
+let lastAppliedColorDepth = null;
+// Keeps the shader in step with settings.colorDepth no matter what changed it — the dropdown,
+// the RESET button, or a console tweak. Relying on the change event alone meant a single
+// missed listener left the shader stuck on whatever it booted with.
+function syncColorDepthUniform(){
+  if(!quadMaterial) return;
+  if(settings.colorDepth === lastAppliedColorDepth) return;
+  lastAppliedColorDepth = settings.colorDepth;
+  quadMaterial.uniforms.colorLevels.value.copy(colorLevelsFor(settings.colorDepth));
+}
+
 function renderFrame(){
+  syncColorDepthUniform();
   skyMesh.position.copy(camera.position);
   renderer.setRenderTarget(renderTarget);
   renderer.render(scene, camera);
@@ -368,7 +380,6 @@ function applySettingsToUI(){
     quadMaterial.uniforms.saturation.value = settings.saturation;
     quadMaterial.uniforms.tint.value.set(settings.tintR, settings.tintG, settings.tintB);
     quadMaterial.uniforms.lutStrength.value = settings.lutStrength;
-    quadMaterial.uniforms.colorLevels.value.copy(colorLevelsFor(settings.colorDepth));
   }
   if(skyMaterial){
     skyMaterial.uniforms.skyColor.value.set(settings.skyColor);
@@ -404,10 +415,12 @@ function wireSettingsUI(){
     });
   });
 
-  el('colorDepth').addEventListener('change', ()=>{
-    settings.colorDepth = parseInt(el('colorDepth').value, 10);
-    quadMaterial.uniforms.colorLevels.value.copy(colorLevelsFor(settings.colorDepth));
-  });
+  const onColorDepth = ()=>{
+    const v = parseInt(el('colorDepth').value, 10);
+    if(!isNaN(v)) settings.colorDepth = v;
+  };
+  el('colorDepth').addEventListener('change', onColorDepth);
+  el('colorDepth').addEventListener('input', onColorDepth); // some browsers only emit one of these
 
   el('skyColor').addEventListener('input', ()=>{
     settings.skyColor = el('skyColor').value;
