@@ -114,10 +114,21 @@ function onPointerLockChange(){
 
 function onMouseMove(e){
   if(!isLocked) return;
-  const sens = 0.0022;
+  const sens = settings.mouseSensitivity;
+
+  // Clamp the per-event delta. Browsers coalesce pointer movement during a frame hitch and
+  // then deliver it as one enormous value, which snaps the view instantly — the jumpiness is
+  // that, not the sensitivity. Capping the step keeps a stall costing a bit of view rotation
+  // instead of flinging the camera somewhere unrecoverable.
+  let mx = e.movementX, my = e.movementY;
+  if(!isFinite(mx) || !isFinite(my)) return;
+  const cap = MOUSE_DELTA_CAP;
+  if(mx >  cap) mx =  cap; else if(mx < -cap) mx = -cap;
+  if(my >  cap) my =  cap; else if(my < -cap) my = -cap;
+
   euler.setFromQuaternion(camera.quaternion);
-  euler.y -= e.movementX * sens;
-  euler.x -= e.movementY * sens;
+  euler.y -= mx * sens;
+  euler.x -= my * sens;
   euler.x = Math.max(-Math.PI/2+0.02, Math.min(Math.PI/2-0.02, euler.x));
   camera.quaternion.setFromEuler(euler);
 }
@@ -353,6 +364,7 @@ function applySettingsToUI(){
     const input = el(id); if(input) input.value = val;
     if(labelId){ const lab = el(labelId); if(lab) lab.textContent = fmt ? fmt(val) : val.toFixed(2); }
   };
+  setRange('mouseSensitivity', settings.mouseSensitivity, 'vMouseSensitivity', v=>v.toFixed(4));
   setRange('brightness', settings.brightness, 'vBrightness');
   setRange('contrast', settings.contrast, 'vContrast');
   setRange('hue', settings.hue, 'vHue', v=>Math.round(v)+'\u00b0');
@@ -405,6 +417,7 @@ function wireSettingsUI(){
       if(label) label.textContent = fmt ? fmt(v) : v.toFixed(2);
     });
   };
+  bind('mouseSensitivity', null, v=>v.toFixed(4));
   bind('brightness'); bind('contrast'); bind('hue', 'hue', v=>Math.round(v)+'°');
   bind('saturation'); bind('pixelSize', null, v=>Math.round(v)); bind('lutStrength');
 

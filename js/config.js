@@ -252,7 +252,12 @@ const raycaster = new THREE.Raycaster();
 // Single source of truth for the look. The panel's controls, the RESET button and the values
 // the game boots with all read from here — previously these were duplicated across config,
 // the reset handler and the HTML input attributes, which is how they drifted out of sync.
+// Largest per-event mouse delta we'll act on, in raw movement units. Normal movement is well
+// under this; only coalesced bursts after a stall exceed it.
+const MOUSE_DELTA_CAP = 120;
+
 const DEFAULT_SETTINGS = {
+  mouseSensitivity:0.0022,
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:6, lutStrength:1,
   colorDepth:16,   // 4 / 8 / 16 / 24 — note the renderer itself is 24-bit, so 24 = no quantisation
   skyColor:'#3a5f8a', horizonColor:'#ccf0ff', horizonSharpness:2.0,
