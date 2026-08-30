@@ -386,6 +386,17 @@ function updateZombies(delta, elapsed){
 // always gets to play out fully first.
 // Sets the texture window for a given frame of a given animation. Frames run along a row and
 // continue onto the next, so a 16-frame animation on an 8-wide sheet covers two rows.
+// z.group never rotates (only its position tracks feet), so this world-space angle can be
+// assigned directly to the billboard's local rotation with no parent-rotation compensation —
+// movement facing is tracked separately via z.facingAngle, decoupled from this entirely.
+function updateBillboards(){
+  for(const z of zombies){
+    const dx = camera.position.x - z.group.position.x;
+    const dz = camera.position.z - z.group.position.z;
+    z.billboard.rotation.y = Math.atan2(dx, dz);
+  }
+}
+
 // Headshot test. The raycast's uv is the quad's own 0..1 coordinate (unaffected by the
 // texture offset that selects the animation frame), so the top slice of the sprite is the head
 // regardless of which frame is showing. The fraction is per-type.
