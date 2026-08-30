@@ -59,7 +59,73 @@ const HEAD_HEIGHT_FRACTION = 40/256;         // top portion counted as the head,
 // 2 = attack/punch (looping, overrides walk while in range), 3 = death (plays once).
 const SPRITE_COLS = 8, SPRITE_ROWS = 4;
 const ANIM_FRAME_DURATION = 1/8; // 8 frames per second -> a full 8-frame cycle takes 1s
-const ANIM_ROW_WALK_TOWARD = 0, ANIM_ROW_WALK_AWAY = 1, ANIM_ROW_ATTACK = 2, ANIM_ROW_DEATH = 3;
+const ANIM_WALK_TOWARD = 'walkToward', ANIM_WALK_AWAY = 'walkAway', ANIM_ATTACK = 'attack', ANIM_DEATH = 'death';
+
+// =================================================================
+// ENEMY TYPES
+// Everything that varies between enemies lives here, so adding a new one means adding a table
+// entry rather than editing the spawning, animation, combat and reward code in turn.
+//
+// Animations are declared as {startRow, frames, duration} and may span several rows: frames
+// run left-to-right along a row and continue onto the next, so a 16-frame attack on an 8-wide
+// sheet occupies two rows. `duration` is the length of one full cycle in seconds.
+//
+// Sizing fractions are relative to a single frame's pixel dimensions, so they stay correct
+// whatever the sheet's overall size.
+//
+// Rewards are expressed as a multiplier on the shared base values below, so the whole economy
+// can be retuned from one place while keeping each enemy's relative worth intact.
+// =================================================================
+const BASE_MONEY_REWARD = 10;      // plus a small random spread, see killZombie()
+const BASE_MONEY_HEADSHOT_BONUS = 8;
+const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie()
+
+const ENEMY_TYPES = {
+  TrajeA: {
+    id:'TrajeA',
+    texture:'./TrajeA.png',
+    cols:8, rows:4,
+    anims:{
+      walkToward:{ startRow:0, frames:8,  duration:1.0 },
+      walkAway:  { startRow:1, frames:8,  duration:1.0 },
+      attack:    { startRow:2, frames:8,  duration:1.0 },
+      death:     { startRow:3, frames:8,  duration:1.0 },
+    },
+    heightMult:1.0,          // relative to AVG_ZOMBIE_HEIGHT
+    widthStretch:1.0,        // render wider than the frame's true aspect
+    hitboxWidthFraction:100/256,
+    headHeightFraction:80/512,
+    hpMult:1.0, speedMult:1.0, damageMult:1.0, rewardMult:1.0,
+    minWave:1,
+    spawnWeight:1.0,         // relative share of each wave's spawns
+    slowField:null,
+    deathExplosion:null,
+  },
+  TrajeB: {
+    id:'TrajeB',
+    texture:'./TrajeB.png',
+    cols:8, rows:6,
+    anims:{
+      walkToward:{ startRow:0, frames:8,  duration:1.0 },
+      walkAway:  { startRow:1, frames:8,  duration:1.0 },
+      attack:    { startRow:2, frames:16, duration:1.5 },  // rows 2-3
+      death:     { startRow:4, frames:16, duration:2.0 },  // rows 4-5
+    },
+    heightMult:1.05,
+    widthStretch:1.25,
+    hitboxWidthFraction:150/256,
+    headHeightFraction:80/512,
+    hpMult:4.0, speedMult:1.0, damageMult:2.0, rewardMult:3.0,
+    minWave:4,               // "after round 3"
+    spawnWeight:0.22,        // markedly rarer than TrajeA
+    // Drags the player down while close: full speed beyond `radius`, easing to `minMult` at
+    // `innerRadius` and no worse below that.
+    slowField:{ radius:15, innerRadius:4, minMult:0.6 },
+    // On death, damages every OTHER enemy nearby for a share of his own maximum health.
+    deathExplosion:{ radius:4.5, healthFraction:0.10 },
+  },
+};
+const DEFAULT_ENEMY_TYPE = 'TrajeA';
 
 // Sun light-travel direction, converted from the 3ds Max (-0.29, 0.222, -0.916) Z-up vector
 // to three.js's Y-up convention via the same (x,y,z) -> (x,z,-y) mapping used for the
@@ -225,7 +291,8 @@ let blackHoles = [];
 let damageNumbers = [];
 let drops = [];
 let flashLight;
-let zombieSpriteTexture = null;
+let zombieSpriteTexture = null;          // TrajeA's sheet; kept for the Guitarrista fallback
+const enemyTextures = {};               // enemy type id -> THREE.Texture
 let guitarristaSpriteTexture = null;
 let navGridFine = null, navGridCoarse = null, levelMaxY = 10;
 let sunLight = null, ambientLight = null, levelBox = null;

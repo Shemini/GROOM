@@ -205,7 +205,7 @@ function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
       const hit=hits[0]; tracerEnd=hit.point;
       const ref = hit.object.userData.zombieRef;
       if(ref){
-        const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+        const headshot = isHeadshotHit(hit);
         const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
         damageZombie(ref, dmg, {headshot, crit:isCrit, stagger, knockFrom:camera.position});
         anyHit=true; if(headshot) anyHeadshot=true;
@@ -235,7 +235,7 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
   spawnBolt(camera.position, first.point, 0x8fe8ff);
   const ref = first.object.userData.zombieRef;
   if(!ref) return;
-  const headshot = (!!(first.uv && first.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+  const headshot = isHeadshotHit(first);
   const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const hitSet = new Set([ref]);
   damageZombie(ref, dmg, {headshot, crit:isCrit});
@@ -274,7 +274,7 @@ function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
   spawnBolt(camera.position, first.point, 0xd9a3ff);
   const ref = first.object.userData.zombieRef;
   if(!ref) return;
-  const headshot = (!!(first.uv && first.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+  const headshot = isHeadshotHit(first);
   const dmg = mods.evoDamage*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const hitSet = new Set([ref]); const chainOrder=[ref];
   damageZombie(ref, dmg, {headshot, crit:isCrit});
@@ -337,7 +337,7 @@ function firePierce(wIdx, dmgMult, isCrit, critMultVal){
   for(const hit of hits){
     const ref = hit.object.userData.zombieRef;
     if(!ref){ tracerEnd=hit.point; break; }
-    const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+    const headshot = isHeadshotHit(hit);
     const hitDmg = dmg*(headshot?2:1);
     damageZombie(ref, hitDmg, {headshot, crit:isCrit, stagger:true, knockFrom:camera.position});
     anyHit=true; if(headshot) anyHeadshot=true;
@@ -368,7 +368,7 @@ function firePierceLiar(wIdx, dmgMult, isCrit, critMultVal){
   for(const hit of hits){
     const ref = hit.object.userData.zombieRef;
     if(!ref){ tracerEnd=hit.point; break; }
-    const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+    const headshot = isHeadshotHit(hit);
     const hitDmg = (baseDmg*(1+hitIndex*mods.incrementPercent))*(headshot?2:1);
     damageZombie(ref, hitDmg, {headshot, crit:isCrit, stagger:true, knockFrom:camera.position});
     anyHit=true; if(headshot) anyHeadshot=true;
@@ -397,7 +397,7 @@ function fireHeadhunter(wIdx, dmgMult, critMultVal){
     const hit=hits[0]; tracerEnd=hit.point;
     const ref = hit.object.userData.zombieRef;
     if(ref){
-      const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+      const headshot = isHeadshotHit(hit);
       const effCrit = statValue('critChance')+(headshot?mods.critBonus:0);
       const isCrit = Math.random()<effCrit;
       const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
@@ -429,7 +429,7 @@ function fireHellgun(wIdx, dmgMult, isCrit, critMultVal){
   spawnTracer(camera.position, tracerEnd, 0xff5050);
   const ref = hit.object.userData.zombieRef;
   if(!ref) return;
-  const headshot = (!!(hit.uv && hit.uv.y > (1-HEAD_HEIGHT_FRACTION)));
+  const headshot = isHeadshotHit(hit);
   const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const primaryKilled = damageZombie(ref, dmg, {headshot, crit:isCrit});
   soundHit(headshot, isCrit);

@@ -39,15 +39,28 @@ function loadAssets(){
     loadingLabel.textContent = pct+'%' + (envDone && !colDone ? ' — collision mesh' : (!envDone ? ' — environment' : ''));
   }
 
-  new THREE.TextureLoader().load('./TrajeA.png', tex=>{
-    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false; // mipmaps would blur in neighboring spritesheet frames at a distance
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    zombieSpriteTexture = tex;
-    spriteDone = true;
-    tryFinishLoading();
-  }, undefined, err=>{ console.error('Enemy sprite load failed', err); loadingLabel.textContent='Failed to load enemy sprite (TrajeA.png) — see console.'; });
+  // One sheet per enemy type. Loading is driven by the ENEMY_TYPES table, so a new enemy needs
+  // no changes here. A type whose texture is missing is simply skipped at spawn time rather
+  // than blocking the level.
+  const typeIds = Object.keys(ENEMY_TYPES);
+  let texturesPending = typeIds.length;
+  const onTextureSettled = ()=>{ if(--texturesPending === 0){ spriteDone = true; tryFinishLoading(); } };
+  typeIds.forEach(id=>{
+    const def = ENEMY_TYPES[id];
+    new THREE.TextureLoader().load(def.texture, tex=>{
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.generateMipmaps = false; // mipmaps would blur neighbouring spritesheet frames at a distance
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      enemyTextures[id] = tex;
+      if(id === DEFAULT_ENEMY_TYPE) zombieSpriteTexture = tex;
+      onTextureSettled();
+    }, undefined, err=>{
+      console.error('Enemy sprite failed to load for type ' + id + ' (' + def.texture + ')', err);
+      if(id === DEFAULT_ENEMY_TYPE) loadingLabel.textContent = 'Failed to load ' + def.texture + ' — see console.';
+      onTextureSettled();
+    });
+  });
 
   new THREE.TextureLoader().load('./Guitarrista.png', tex=>{
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -344,7 +357,9 @@ function updateMovement(delta){
     playerStamina = Math.min(PLAYER_STAMINA_MAX, playerStamina + PLAYER_STAMINA_RECOVER*delta);
     if(playerExhausted && playerStamina >= PLAYER_STAMINA_RESUME) playerExhausted = false;
   }
-  const speed = (sprinting ? RUN_SPEED : WALK_SPEED) * (1+statValue('moveSpeed'));
+  // playerSlowMult is recomputed each frame by updateZombies() from any nearby slow fields.
+  const speed = (sprinting ? RUN_SPEED : WALK_SPEED) * (1+statValue('moveSpeed'))
+                * (typeof playerSlowMult === 'number' ? playerSlowMult : 1);
   const dx = move.x*speed*delta, dz = move.z*speed*delta;
   const chestY = feetY+1.3, kneeY = feetY+0.4;
 

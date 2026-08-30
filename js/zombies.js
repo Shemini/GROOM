@@ -16,15 +16,16 @@ function getBlobShadowGeometry(){
 // THREE.Sprite, which always fully faces the camera on all axes and therefore could never
 // show a side/back view). This is also what makes shadow casting/receiving possible at all —
 // Sprite objects are excluded from three.js's shadow map pass entirely.
-function createZombieVisual(heightWorld, widthWorld){
+function createZombieVisual(def, heightWorld, widthWorld){
   const group = new THREE.Group();
   // Each zombie needs its own Texture instance (not the shared source) since offset/repeat
   // drive its individual animation frame — cloning is cheap, it references the same
   // already-uploaded image data rather than duplicating it.
-  const tex = zombieSpriteTexture.clone();
+  const tex = enemyTextures[def.id].clone();
   tex.needsUpdate = true;
-  tex.repeat.set(1/SPRITE_COLS, 1/SPRITE_ROWS);
-  tex.offset.set(0, 1-1/SPRITE_ROWS); // row 0 ("walk toward"), frame 0
+  tex.repeat.set(1/def.cols, 1/def.rows);
+  const first = def.anims.walkToward;
+  tex.offset.set(0, 1-(first.startRow+1)/def.rows);
   const mat = new THREE.MeshLambertMaterial({ map: tex, transparent:true, alphaTest:0.5, color:0xffffff, side:THREE.DoubleSide });
   const billboard = new THREE.Mesh(getBillboardGeometry(), mat);
   billboard.scale.set(widthWorld, heightWorld, 1);
@@ -107,18 +108,39 @@ function findSpawnPosition(){
   return new THREE.Vector3(x, fy!==null?fy:camPos.y-EYE_HEIGHT, z);
 }
 
+// Which types may appear this wave, weighted by their spawnWeight. A type whose texture
+// failed to load is skipped so a missing file degrades to "that enemy never shows up" rather
+// than breaking spawning entirely.
+function pickEnemyType(){
+  const eligible = [];
+  let total = 0;
+  for(const id in ENEMY_TYPES){
+    const def = ENEMY_TYPES[id];
+    if(wave.number < def.minWave) continue;
+    if(!enemyTextures[id]) continue;
+    eligible.push(def); total += def.spawnWeight;
+  }
+  if(eligible.length===0) return ENEMY_TYPES[DEFAULT_ENEMY_TYPE];
+  let r = Math.random()*total;
+  for(const def of eligible){ r -= def.spawnWeight; if(r<=0) return def; }
+  return eligible[eligible.length-1];
+}
+
 function spawnZombie(){
+  const def = pickEnemyType();
+  if(!enemyTextures[def.id]) return;
   const pos = findSpawnPosition();
 
   const heightMult = 1 + (Math.random()-0.5)*ZOMBIE_HEIGHT_VARIATION;
-  const zHeight = AVG_ZOMBIE_HEIGHT*heightMult;
-  const spriteAspect = (zombieSpriteTexture && zombieSpriteTexture.image)
-    ? (zombieSpriteTexture.image.width/SPRITE_COLS) / (zombieSpriteTexture.image.height/SPRITE_ROWS)
-    : 0.5;
-  const zWidth = AVG_ZOMBIE_HEIGHT*spriteAspect; // width stays fixed — only height varies per zombie
-  const collisionRadius = (zWidth*HITBOX_WIDTH_FRACTION)/2;
+  const zHeight = AVG_ZOMBIE_HEIGHT*def.heightMult*heightMult;
+  const img = enemyTextures[def.id].image;
+  const frameAspect = img ? (img.width/def.cols)/(img.height/def.rows) : 0.5;
+  // Width is based on the type's average height, not this individual's, so only height varies.
+  const zWidth = AVG_ZOMBIE_HEIGHT*def.heightMult*frameAspect*def.widthStretch;
+  // The hitbox fraction refers to the artwork, so it must not include the extra render stretch.
+  const collisionRadius = (zWidth/def.widthStretch*def.hitboxWidthFraction)/2;
 
-  const { group, billboard, blob } = createZombieVisual(zHeight, zWidth);
+  const { group, billboard, blob } = createZombieVisual(def, zHeight, zWidth);
   group.position.copy(pos);
   scene.add(group);
   const blobRadius = collisionRadius*1.6;
@@ -126,15 +148,19 @@ function spawnZombie(){
   blob.position.set(0, 0.02, 0);
 
   const intensity = statValue('enemyIntensity');
-  const hpBase = (55+wave.number*14)*(1+intensity*0.06);
-  const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT;
+  const hpBase = (55+wave.number*14)*(1+intensity*0.06)*def.hpMult;
+  const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT*def.speedMult;
+  const firstAnim = def.anims.walkToward;
   const z = {
-    group, billboard, blob, hp:hpBase, maxHp:hpBase, speed, dmg:8+Math.min(wave.number,10),
+    def,
+    group, billboard, blob, hp:hpBase, maxHp:hpBase, speed,
+    dmg:(8+Math.min(wave.number,10))*def.damageMult,
     lastAttack:-999, groanTimer:1+Math.random()*3,
     losTimer:Math.random()*0.3, hasLOS:false, unstickUntil:-999, unstickSign:1,
     flashTimer:0, flashActive:false, staggerTimer:0, dot:null, stain:null, periodicTickTimer:0,
     feetY: pos.y, velY: 0, airborne: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
-    animRow: ANIM_ROW_WALK_TOWARD, animFrame: 0, animTimer: Math.random()*ANIM_FRAME_DURATION,
+    animKey: ANIM_WALK_TOWARD, animFrame: 0,
+    animTimer: Math.random()*(firstAnim.duration/firstAnim.frames),
     attacking: false, movingToward: true, dying: false, deathAnimDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
@@ -144,28 +170,13 @@ function spawnZombie(){
   wave.spawned++;
 }
 
-// Keeps every zombie's flat billboard facing the camera around the vertical axis only
-// (cylindrical billboarding) so it always reads as a proper sprite instead of going edge-on,
-// and keeps the ground contact-shadow decal glued to its feet.
-// z.group never rotates (only its position tracks feet), so this world-space angle can be
-// assigned directly to the billboard's local rotation with no parent-rotation compensation —
-// movement facing is tracked separately via z.facingAngle, decoupled from this entirely.
-function updateBillboards(){
-  for(const z of zombies){
-    const dx = camera.position.x - z.group.position.x;
-    const dz = camera.position.z - z.group.position.z;
-    z.billboard.rotation.y = Math.atan2(dx, dz);
-  }
-}
+// Strongest slow field the player is standing in, as a speed multiplier (1 = unaffected).
+// Fields don't stack: the worst one wins, so a crowd can't multiply the player to a standstill.
+let playerSlowMult = 1;
 
-
-// recomputePath() is gone: with a flow field there is no per-zombie route to compute, store
-// or expire. Steering is a per-frame lookup of "which neighbouring cell is closer to the
-// player", which is why the oscillation / backtracking / stalling failures disappear.
-
-let fellThroughWarnings = 0;
 function updateZombies(delta, elapsed){
-  updateFlowField(); // one shared solve per frame at most, reused by every zombie below
+  updateFlowField();
+  playerSlowMult = 1; // one shared solve per frame at most, reused by every zombie below
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
     if(z.flashActive){
@@ -209,6 +220,14 @@ function updateZombies(delta, elapsed){
     const distToPlayer = Math.hypot(camera.position.x-z.group.position.x, camera.position.z-z.group.position.z);
     // Melee needs vertical proximity too. Measuring range on the horizontal plane alone meant
     // anything directly below or above the player could still land hits from any depth.
+    const sf = z.def.slowField;
+    if(sf && !z.dying){
+      // Full speed at `radius`, easing down to `minMult` at `innerRadius` and no worse inside.
+      const t = THREE.MathUtils.clamp((sf.radius - distToPlayer)/(sf.radius - sf.innerRadius), 0, 1);
+      const mult = 1 - (1-sf.minMult)*t;
+      if(mult < playerSlowMult) playerSlowMult = mult;
+    }
+
     const vertGap = Math.abs(z.feetY - feetY);
     const inMeleeRange = distToPlayer <= 1.0 && vertGap < 2.0;
 
@@ -365,30 +384,52 @@ function updateZombies(delta, elapsed){
 // Once the (non-looping) death row finishes playing, this performs the actual scene removal —
 // killZombie() only marks a zombie as dying, it doesn't remove it, so the death animation
 // always gets to play out fully first.
+// Sets the texture window for a given frame of a given animation. Frames run along a row and
+// continue onto the next, so a 16-frame animation on an 8-wide sheet covers two rows.
+// Headshot test. The raycast's uv is the quad's own 0..1 coordinate (unaffected by the
+// texture offset that selects the animation frame), so the top slice of the sprite is the head
+// regardless of which frame is showing. The fraction is per-type.
+function isHeadshotHit(hit){
+  if(!hit || !hit.uv) return false;
+  const ref = hit.object.userData.zombieRef;
+  const frac = (ref && ref.def) ? ref.def.headHeightFraction : HEAD_HEIGHT_FRACTION;
+  return hit.uv.y > (1-frac);
+}
+
+function setEnemyFrame(z, anim, frame){
+  const def = z.def;
+  const row = anim.startRow + Math.floor(frame/def.cols);
+  const col = frame % def.cols;
+  z.billboard.material.map.offset.set(col/def.cols, 1-(row+1)/def.rows);
+}
+
 function updateZombieAnimations(delta){
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
-    const targetRow = z.dying ? ANIM_ROW_DEATH : (z.attacking ? ANIM_ROW_ATTACK : (z.movingToward ? ANIM_ROW_WALK_TOWARD : ANIM_ROW_WALK_AWAY));
+    const def = z.def;
+    const targetKey = z.dying ? ANIM_DEATH
+                    : (z.attacking ? ANIM_ATTACK
+                    : (z.movingToward ? ANIM_WALK_TOWARD : ANIM_WALK_AWAY));
+    const anim = def.anims[targetKey] || def.anims.walkToward;
 
-    if(targetRow !== z.animRow){
-      z.animRow = targetRow;
+    if(targetKey !== z.animKey){
+      z.animKey = targetKey;
       z.animFrame = 0;
       z.animTimer = 0;
-      const tex = z.billboard.material.map;
-      tex.offset.set(z.animFrame/SPRITE_COLS, 1-(z.animRow+1)/SPRITE_ROWS);
+      setEnemyFrame(z, anim, 0);
     }
 
+    const frameDur = anim.duration/anim.frames;
     z.animTimer -= delta;
     while(z.animTimer<=0){
-      z.animTimer += ANIM_FRAME_DURATION;
-      if(z.animRow===ANIM_ROW_DEATH){
-        if(z.animFrame<SPRITE_COLS-1) z.animFrame++;
+      z.animTimer += frameDur;
+      if(targetKey === ANIM_DEATH){
+        if(z.animFrame < anim.frames-1) z.animFrame++;
         else { z.deathAnimDone = true; break; }
       } else {
-        z.animFrame = (z.animFrame+1) % SPRITE_COLS;
+        z.animFrame = (z.animFrame+1) % anim.frames;
       }
-      const tex = z.billboard.material.map;
-      tex.offset.set(z.animFrame/SPRITE_COLS, 1-(z.animRow+1)/SPRITE_ROWS);
+      setEnemyFrame(z, anim, z.animFrame);
     }
 
     if(z.dying && z.deathAnimDone){
@@ -397,6 +438,7 @@ function updateZombieAnimations(delta){
     }
   }
 }
+
 
 function updateStatusEffects(delta, elapsed){
   for(let i=zombies.length-1;i>=0;i--){
@@ -465,11 +507,26 @@ function killZombie(z, headshot){
   if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
     playEnemyClip('dying', computePan(z.group.position), 0.55);
   }
-  const rewardMult = 1+statValue('enemyIntensity')*0.15;
-  addMoney((10+Math.floor(Math.random()*8)+(headshot?8:0))*rewardMult);
-  addXP((14+wave.number*1.4)*rewardMult);
+  const rewardMult = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult;
+  addMoney((BASE_MONEY_REWARD+Math.floor(Math.random()*8)+(headshot?BASE_MONEY_HEADSHOT_BONUS:0))*rewardMult);
+  addXP((BASE_XP_REWARD+wave.number*1.4)*rewardMult);
   player.kills++;
   wave.killedThisWave++;
+  // Some enemies detonate on death, hurting the rest of the horde but never the player.
+  const boom = z.def.deathExplosion;
+  if(boom){
+    const dmg = z.maxHp*boom.healthFraction;
+    const pos = z.group.position.clone();
+    spawnExplosionVisual(pos, boom.radius);
+    soundExplosion(computePan(pos));
+    for(let i=zombies.length-1;i>=0;i--){
+      const other = zombies[i];
+      if(other===z || other.dying) continue;
+      const d = Math.hypot(other.group.position.x-pos.x, other.group.position.z-pos.z);
+      if(d<=boom.radius) damageZombie(other, dmg, {stagger:true, knockFrom:pos});
+    }
+  }
+
   const dropIdx = wave.dropSchedule.findIndex(d=>d.killIndex===wave.killedThisWave);
   if(dropIdx!==-1){
     const drop = wave.dropSchedule[dropIdx];
