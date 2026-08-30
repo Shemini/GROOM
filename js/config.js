@@ -96,6 +96,9 @@ const ENEMY_TYPES = {
     hitboxWidthFraction:100/256,
     headHeightFraction:80/512,
     hpMult:1.0, speedMult:1.0, damageMult:1.0, rewardMult:1.0,
+    // Frame numbers below are 1-based, matching how the frames are counted in the art.
+    attackDamageFrame:5,     // damage lands on this frame of the attack animation
+    attackSpeedMult:1.0,     // movement speed while the attack animation is playing
     minWave:1,
     spawnWeight:1.0,         // relative share of each wave's spawns
     slowField:null,
@@ -116,13 +119,15 @@ const ENEMY_TYPES = {
     hitboxWidthFraction:150/256,
     headHeightFraction:80/512,
     hpMult:4.0, speedMult:1.0, damageMult:2.0, rewardMult:3.0,
+    attackDamageFrame:11,    // his swing is long, so the hit lands well into it
+    attackSpeedMult:0.5,     // he lumbers while winding up
     minWave:4,               // "after round 3"
     spawnWeight:0.22,        // markedly rarer than TrajeA
     // Drags the player down while close: full speed beyond `radius`, easing to `minMult` at
     // `innerRadius` and no worse below that.
     slowField:{ radius:15, innerRadius:4, minMult:0.6 },
     // On death, damages every OTHER enemy nearby for a share of his own maximum health.
-    deathExplosion:{ radius:4.5, healthFraction:0.10 },
+    deathExplosion:{ radius:4.5, healthFraction:0.10, frame:13 },
   },
 };
 const DEFAULT_ENEMY_TYPE = 'TrajeA';

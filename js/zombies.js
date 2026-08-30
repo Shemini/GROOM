@@ -161,7 +161,8 @@ function spawnZombie(){
     feetY: pos.y, velY: 0, airborne: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
     animKey: ANIM_WALK_TOWARD, animFrame: 0,
     animTimer: Math.random()*(firstAnim.duration/firstAnim.frames),
-    attacking: false, movingToward: true, dying: false, deathAnimDone: false,
+    attacking: false, attackDamageDone: false, movingToward: true, dying: false, deathAnimDone: false,
+    explosionDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
   };
@@ -254,7 +255,7 @@ function updateZombies(delta, elapsed){
     }
 
     if(!inMeleeRange){
-      z.attacking = false;
+      const moveSpeed = z.speed * (z.attacking ? (z.def.attackSpeedMult!==undefined ? z.def.attackSpeedMult : 1) : 1);
       const dx=targetX-z.group.position.x, dz=targetZ-z.group.position.z;
       const d=Math.hypot(dx,dz);
       if(d>0.0001){
@@ -268,7 +269,7 @@ function updateZombies(delta, elapsed){
           nx = rx; nz = rz;
         }
         const chestY = z.feetY+0.9;
-        const resolved = resolveSlide(z.group.position.x, z.group.position.z, nx*z.speed*delta, nz*z.speed*delta, chestY, z.collisionRadius||ZOMBIE_RADIUS, z.feetY);
+        const resolved = resolveSlide(z.group.position.x, z.group.position.z, nx*moveSpeed*delta, nz*moveSpeed*delta, chestY, z.collisionRadius||ZOMBIE_RADIUS, z.feetY);
         let px = resolved.x, pz = resolved.z;
         // Floor resolution with fall-through protection. The raycast only looks 2.2m above
         // the zombie's feet, so a single frame where it finds nothing used to begin an
@@ -330,13 +331,17 @@ function updateZombies(delta, elapsed){
         z.stuckCheckPos.x = z.group.position.x; z.stuckCheckPos.z = z.group.position.z;
         z.stuckCheckTimer = 1.5+Math.random()*0.4;
       }
-    } else {
+    }
+
+    // Attacks are committed: once the swing starts it plays to completion, and the damage
+    // lands on a specific frame rather than on a timer. Backing away mid-swing no longer
+    // cancels the hit, so how often an enemy can hurt the player is governed by the length of
+    // its attack animation — which is what makes a slow, heavy attacker meaningfully
+    // different from a fast one rather than just a numbers change.
+    if(!z.attacking && inMeleeRange){
       z.attacking = true;
-      if(elapsed-z.lastAttack>1.0){
-        z.lastAttack = elapsed;
-        takeDamage(z.dmg);
-        if(attackSoundLimiter(elapsed)) playEnemyClip('attack', computePan(z.group.position), 0.6);
-      }
+      z.attackDamageDone = false;
+      z.animKey = null; // force the animation driver to restart the attack cycle from frame 0
     }
 
     z.groanTimer -= delta;
@@ -428,6 +433,9 @@ function updateZombieAnimations(delta){
       z.animFrame = 0;
       z.animTimer = 0;
       setEnemyFrame(z, anim, 0);
+      // Frame 0 can itself be the trigger frame, so check it on entry rather than only when
+      // advancing — otherwise an event scheduled on frame 1 would never fire.
+      fireFrameEvents(z, targetKey, 0);
     }
 
     const frameDur = anim.duration/anim.frames;
@@ -436,17 +444,77 @@ function updateZombieAnimations(delta){
       z.animTimer += frameDur;
       if(targetKey === ANIM_DEATH){
         if(z.animFrame < anim.frames-1) z.animFrame++;
-        else { z.deathAnimDone = true; break; }
+        else {
+          // Safety net: if the configured explosion frame sits beyond the animation's length
+          // it would otherwise never fire, so make sure it still happens before removal.
+          if(def.deathExplosion && !z.explosionDone){
+            z.explosionDone = true;
+            detonateEnemy(z, def.deathExplosion);
+          }
+          z.deathAnimDone = true; break;
+        }
+      } else if(targetKey === ANIM_ATTACK){
+        if(z.animFrame < anim.frames-1){
+          z.animFrame++;
+        } else {
+          // Swing finished. Releasing the commitment here lets it start another one next
+          // frame if the player is still in range, so attacks chain at the animation's pace.
+          z.attacking = false;
+          z.animKey = null;
+          break;
+        }
       } else {
         z.animFrame = (z.animFrame+1) % anim.frames;
       }
       setEnemyFrame(z, anim, z.animFrame);
+      fireFrameEvents(z, targetKey, z.animFrame);
     }
 
     if(z.dying && z.deathAnimDone){
       scene.remove(z.group);
       zombies.splice(i,1);
     }
+  }
+}
+
+// Events tied to a specific frame of an animation. Frame numbers in ENEMY_TYPES are 1-based
+// (as an artist counts them); animFrame is 0-based, hence the -1.
+function fireFrameEvents(z, key, frame){
+  const def = z.def;
+
+  if(key === ANIM_ATTACK && !z.attackDamageDone){
+    const dmgFrame = (def.attackDamageFrame || 1) - 1;
+    if(frame >= dmgFrame){
+      z.attackDamageDone = true;
+      z.lastAttack = clock.getElapsedTime();
+      // Deliberately no range re-check: the swing was committed when it started, so stepping
+      // out of reach mid-animation doesn't save the player.
+      takeDamage(z.dmg);
+      if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', computePan(z.group.position), 0.6);
+    }
+  }
+
+  if(key === ANIM_DEATH && def.deathExplosion && !z.explosionDone){
+    const boom = def.deathExplosion;
+    const boomFrame = (boom.frame || 1) - 1;
+    if(frame >= boomFrame){
+      z.explosionDone = true;
+      detonateEnemy(z, boom);
+    }
+  }
+}
+
+// Damages every OTHER enemy nearby for a share of this one's maximum health. Never the player.
+function detonateEnemy(z, boom){
+  const dmg = z.maxHp*boom.healthFraction;
+  const pos = z.group.position.clone();
+  spawnExplosionVisual(pos, boom.radius);
+  soundExplosion(computePan(pos));
+  for(let i=zombies.length-1;i>=0;i--){
+    const other = zombies[i];
+    if(other===z || other.dying) continue;
+    const d = Math.hypot(other.group.position.x-pos.x, other.group.position.z-pos.z);
+    if(d<=boom.radius) damageZombie(other, dmg, {stagger:true, knockFrom:pos});
   }
 }
 
@@ -523,21 +591,6 @@ function killZombie(z, headshot){
   addXP((BASE_XP_REWARD+wave.number*1.4)*rewardMult);
   player.kills++;
   wave.killedThisWave++;
-  // Some enemies detonate on death, hurting the rest of the horde but never the player.
-  const boom = z.def.deathExplosion;
-  if(boom){
-    const dmg = z.maxHp*boom.healthFraction;
-    const pos = z.group.position.clone();
-    spawnExplosionVisual(pos, boom.radius);
-    soundExplosion(computePan(pos));
-    for(let i=zombies.length-1;i>=0;i--){
-      const other = zombies[i];
-      if(other===z || other.dying) continue;
-      const d = Math.hypot(other.group.position.x-pos.x, other.group.position.z-pos.z);
-      if(d<=boom.radius) damageZombie(other, dmg, {stagger:true, knockFrom:pos});
-    }
-  }
-
   const dropIdx = wave.dropSchedule.findIndex(d=>d.killIndex===wave.killedThisWave);
   if(dropIdx!==-1){
     const drop = wave.dropSchedule[dropIdx];
