@@ -112,7 +112,7 @@ const ENEMY_TYPES = {
       walkToward:{ startRow:0, frames:8,  duration:1.0 },
       walkAway:  { startRow:1, frames:8,  duration:1.0 },
       attack:    { startRow:2, frames:16, duration:1.5 },  // rows 2-3
-      death:     { startRow:4, frames:16, duration:2.0 },  // rows 4-5
+      death:     { startRow:4, frames:16, duration:1.25 }, // rows 4-5
     },
     heightMult:1.05,
     widthStretch:1.25,
@@ -125,7 +125,7 @@ const ENEMY_TYPES = {
     spawnWeight:0.22,        // markedly rarer than TrajeA
     // Drags the player down while close: full speed beyond `radius`, easing to `minMult` at
     // `innerRadius` and no worse below that.
-    slowField:{ radius:15, innerRadius:4, minMult:0.6 },
+    slowField:{ radius:15, innerRadius:4, minMult:0.75 },
     // On death, damages every OTHER enemy nearby for a share of his own maximum health.
     deathExplosion:{ radius:4.5, healthFraction:0.10, frame:13 },
   },
