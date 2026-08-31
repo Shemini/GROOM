@@ -15,6 +15,7 @@ function animate(){
     updateGuitarrista(delta, elapsed);
     updateBillboards();
     updateMinimap();
+    updateFace(delta);
     updateStatusEffects(delta, elapsed);
     updateWave(delta, elapsed);
     updateInteractables(delta, elapsed);

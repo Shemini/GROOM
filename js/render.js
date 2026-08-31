@@ -77,6 +77,7 @@ function init(){
 
   wireSettingsUI();
   applySettingsToUI();
+  loadFace();
   loadAssets();
   updateHUD();
   animate();
@@ -365,6 +366,7 @@ function applySettingsToUI(){
     if(labelId){ const lab = el(labelId); if(lab) lab.textContent = fmt ? fmt(val) : val.toFixed(2); }
   };
   setRange('mouseSensitivity', settings.mouseSensitivity, 'vMouseSensitivity', v=>v.toFixed(4));
+  setRange('faceAnimSpeed', settings.faceAnimSpeed, 'vFaceAnimSpeed');
   setRange('brightness', settings.brightness, 'vBrightness');
   setRange('contrast', settings.contrast, 'vContrast');
   setRange('hue', settings.hue, 'vHue', v=>Math.round(v)+'\u00b0');
@@ -418,6 +420,7 @@ function wireSettingsUI(){
     });
   };
   bind('mouseSensitivity', null, v=>v.toFixed(4));
+  bind('faceAnimSpeed');
   bind('brightness'); bind('contrast'); bind('hue', 'hue', v=>Math.round(v)+'°');
   bind('saturation'); bind('pixelSize', null, v=>Math.round(v)); bind('lutStrength');
 

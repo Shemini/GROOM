@@ -5,6 +5,7 @@ function takeDamage(amount){
   if(gameState!=='playing') return;
   player.health -= amount;
   soundHurt();
+  faceOnHit();
   damageFlashEl.style.opacity=0.55;
   setTimeout(()=>{ damageFlashEl.style.opacity=0; },150);
   if(player.health<=0){ player.health=0; triggerGameOver(); }
@@ -116,6 +117,7 @@ function startWave(){
   wave.spawned=0; wave.spawnTimer=0;
   wave.spawnInterval = Math.max(0.45, 1.2-wave.number*0.05);
   scheduleDrops();
+  cycleFaceMoodForWave(wave.number); // temporary: cycles moods so each can be seen
   showWaveBanner('WAVE '+wave.number, 'Zombies incoming');
   soundWaveStart();
 }

@@ -330,6 +330,7 @@ const MOUSE_DELTA_CAP = 120;
 
 const DEFAULT_SETTINGS = {
   mouseSensitivity:0.0022,
+  faceAnimSpeed:1.0,   // global multiplier for tuning the portrait's animation speed live
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:6, lutStrength:1,
   colorDepth:16,   // 4 / 8 / 16 / 24 — note the renderer itself is 24-bit, so 24 = no quantisation
   skyColor:'#3a5f8a', horizonColor:'#ccf0ff', horizonSharpness:2.0,
@@ -438,3 +439,49 @@ const GUITARRISTA_SPEED = 10.5;              // metres/sec while following (1.5x
 // Fixed home spot. Leave null to have him placed on a random valid floor point at load; set
 // to {x:.., z:..} (use COPY POSITION in the settings panel) to pin him somewhere specific.
 const GUITARRISTA_HOME = { x: 106.58, z: 61.34 };
+
+// =================================================================
+// FACE HUD
+// The sheet is 2048x1664: a 16x13 grid of 128x128 frames, 200 used and 8 spare.
+// FACE_LAYOUT is the sheet's contents in order — [name, frameCount, fps]. Start indices are
+// derived from it at load, so the numbers below are the only thing to edit when the art
+// changes. fps values are first guesses; tune them live with the Face Anim Speed slider in
+// the settings panel, then bake the ones you like back in here.
+// =================================================================
+const FACE_TEXTURE = './SabasHealthy.png';
+const FACE_COLS = 16, FACE_ROWS = 13;
+const FACE_DEFAULT_FPS = 12;
+
+const FACE_LAYOUT = [
+  // name              frames  fps
+  ['serious.blink',        2,  10],
+  ['serious.idle1',       10,  12],
+  ['serious.idle2',       18,  12],
+  ['serious.idle3',        4,  10],
+
+  ['hit1',                16,  14],
+  ['hit2',                 8,  14],
+  ['hit3',                 6,  14],
+  ['hit4',                 6,  14],
+
+  ['happy.blink',          2,  10],
+  ['happy.idle1',          4,  12],
+  ['happy.idle2',         12,  12],
+
+  ['excited.blink',        2,  10],
+  ['excited.idle1',       24,  15],
+  ['excited.idle2',       12,  15],
+
+  ['mad.blink',            2,  10],
+  ['mad.idle1',           46,  18],
+  ['mad.idle2',           26,  18],
+];
+const FACE_HIT_ANIMS = ['hit1','hit2','hit3','hit4'];
+
+// Blink pacing, in seconds. Humans blink roughly every 2-8 seconds.
+const FACE_BLINK_MIN = 2.5, FACE_BLINK_MAX = 6.0;
+// Idle pacing, in seconds — averages the ~20s asked for.
+const FACE_IDLE_MIN = 12, FACE_IDLE_MAX = 28;
+// Breathing rate per mood, in cycles per second. 0.25Hz is 15 breaths a minute, i.e. resting.
+const FACE_BOB_HZ = { serious:0.25, happy:0.40, excited:0.70, mad:0.95 };
+const FACE_BOB_PIXELS = 5;   // vertical travel of the portrait, in canvas pixels

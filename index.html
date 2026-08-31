@@ -58,6 +58,9 @@
   #healthNum{position:absolute;right:6px;top:1px;font-size:12px;color:var(--bone);}
 
   #ammoWrap{position:absolute;right:24px;bottom:24px;text-align:right;}
+  #faceWrap{position:absolute;right:24px;bottom:302px;width:190px;height:190px;
+    border:2px solid var(--panel-line);background:rgba(10,10,12,0.55);overflow:hidden;}
+  #faceCanvas{width:100%;height:100%;image-rendering:pixelated;}
   #minimapWrap{position:absolute;right:24px;bottom:104px;width:190px;height:190px;
     border:2px solid var(--panel-line);background:transparent;overflow:hidden;}
   #minimapCanvas{position:absolute;inset:0;width:100%;height:100%;}
@@ -190,6 +193,8 @@
     <div id="reloadTag">RELOADING...</div>
   </div>
 
+  <div id="faceWrap"><canvas id="faceCanvas" width="128" height="128"></canvas></div>
+
   <div id="minimapWrap">
     <canvas id="minimapCanvas" width="400" height="400"></canvas>
   </div>
@@ -206,6 +211,9 @@
 
   <div class="rowLabel"><span>Mouse Sensitivity</span><span class="val" id="vMouseSensitivity">0.0022</span></div>
   <input type="range" id="mouseSensitivity" min="0.0005" max="0.008" step="0.0001" value="0.0022">
+
+  <div class="rowLabel"><span>Face Anim Speed</span><span class="val" id="vFaceAnimSpeed">1.00</span></div>
+  <input type="range" id="faceAnimSpeed" min="0.25" max="3" step="0.05" value="1">
 
   <div class="rowLabel"><span>Brightness</span><span class="val" id="vBrightness">0.00</span></div>
   <input type="range" id="brightness" min="-0.5" max="0.5" step="0.01" value="0">
@@ -331,6 +339,7 @@
 <script src="js/shop.js"></script>
 <script src="js/zombies.js"></script>
 <script src="js/guitarrista.js"></script>
+<script src="js/face.js"></script>
 <script src="js/progression.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/main.js"></script>
