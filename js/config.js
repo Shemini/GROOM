@@ -366,8 +366,6 @@ const wave = {
 };
 
 const el = id => document.getElementById(id);
-const healthBarInner = el('healthBarInner'), healthNum = el('healthNum');
-const weaponNameEl = el('weaponName'), ammoNumEl = el('ammoNum'), reloadTagEl = el('reloadTag');
 const waveNumEl = el('waveNum'), moneyNumEl = el('moneyNum'), levelNumEl = el('levelNum');
 const xpBarInnerEl = el('xpBarInner'), statRowsEl = el('statRows'), waveBannerEl = el('waveBanner');
 const damageFlashEl = el('damageFlash'), lowHealthPulseEl = el('lowHealthPulse');

@@ -794,7 +794,6 @@ function startReload(){
   player.reloading = true;
   const baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
   player.reloadUntil = clock.getElapsedTime()+baseTime;
-  reloadTagEl.style.visibility='visible';
   soundReloadStart();
 }
 function finishReloadIfDue(elapsed){
@@ -804,7 +803,7 @@ function finishReloadIfDue(elapsed){
     const capacity = effectiveMag(wIdx);
     const transfer = Math.min(capacity-ammo.mag, ammo.reserve);
     ammo.mag += transfer; ammo.reserve -= transfer;
-    player.reloading=false; reloadTagEl.style.visibility='hidden';
+    player.reloading=false;
     soundReloadDone(); updateHUD();
   }
 }

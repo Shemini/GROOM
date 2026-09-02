@@ -134,7 +134,9 @@ function updateFace(delta){
   faceBobPhase += delta*bobHz*Math.PI*2;
   const bobY = Math.sin(faceBobPhase)*FACE_BOB_PIXELS;
 
-  drawFace(bobY);
+  // Quantise the bob to 4px so the head steps like pixel art rather than sliding smoothly.
+  drawFace(Math.round(bobY/4)*4);
+  faceCanvas.classList.toggle('hit', faceMode === 'hit');
 }
 
 function drawFace(bobY){

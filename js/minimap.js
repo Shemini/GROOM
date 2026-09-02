@@ -91,7 +91,7 @@ function updateMinimap(){
   if(!minimapCtx) return;
   const canvas = minimapCanvasEl;
   minimapCtx.clearRect(0,0,canvas.width,canvas.height);
-  if(minimapBgCanvas) minimapCtx.drawImage(minimapBgCanvas, 0, 0, canvas.width, canvas.height);
+  hudApplyMinimapBackground(); // the map art is the cell's CSS background; this canvas is blips only
   if(!minimapTransform) return; // markers wait on calibration; background can already show
 
   minimapCtx.fillStyle = '#e8434a';

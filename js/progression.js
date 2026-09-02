@@ -154,23 +154,11 @@ function updateStatPanel(){
   statRowsEl.innerHTML = html;
 }
 function updateHUD(){
-  const hpPct = Math.max(0, player.health/player.maxHealth*100);
-  healthBarInner.style.width = hpPct+'%';
-  healthNum.textContent = Math.ceil(player.health);
   lowHealthPulseEl.style.opacity = player.health<player.maxHealth*0.3 ? 0.7:0;
 
-  const staminaInner = document.getElementById('staminaBarInner');
-  if(staminaInner){
-    staminaInner.style.width = Math.max(0, (playerStamina/PLAYER_STAMINA_MAX)*100) + '%';
-    // Colour shift while locked out, so it's obvious why shift isn't doing anything.
-    if(playerExhausted) staminaInner.classList.add('exhausted');
-    else staminaInner.classList.remove('exhausted');
-  }
-
-  const wIdx = player.currentWeapon, weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx], ammo = player.ammoByWeapon[wIdx];
-  weaponNameEl.textContent = player.weaponEvolved[wIdx] ? EVOLUTIONS[wIdx].name : (weapon.name+' Lv'+(player.weaponLevel[wIdx]||1));
-  if(mods.noReload) ammoNumEl.innerHTML = ammo.mag+' <span>/ —</span>';
-  else ammoNumEl.innerHTML = ammo.mag+' <span>/ '+ammo.reserve+'</span>';
+  // The stone status bar (ammo, arsenal, health, stamina, tally, now-playing) is owned by
+  // js/hud.js; everything below is the overlay furniture that sits outside the bar.
+  updateStoneHUD();
 
   waveNumEl.textContent = 'WAVE '+wave.number;
   moneyNumEl.textContent = '$ '+player.money;

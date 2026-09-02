@@ -73,10 +73,8 @@ function stopMusic(){
 }
 
 function updateMusicHUD(){
-  const el2 = document.getElementById('musicTitle');
-  if(!el2) return;
-  if(musicCurrentTitle){ el2.textContent = '\u266a ' + musicCurrentTitle; el2.classList.remove('hidden'); }
-  else el2.classList.add('hidden');
+  // The track name is rendered by the stone HUD's NOW PLAYING plaque, which reads
+  // musicCurrentTitle directly — nothing to push here.
 }
 
 // Volume falls off with distance so he's only audible in his vicinity, loudest alongside him.

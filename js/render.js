@@ -78,6 +78,7 @@ function init(){
   wireSettingsUI();
   applySettingsToUI();
   loadFace();
+  initHUD();
   loadAssets();
   updateHUD();
   animate();
