@@ -151,23 +151,28 @@ function updateWave(delta, elapsed){
 function updateStatPanel(){
   let html='';
   STATS.forEach(s=>{ html += '<div class="row"><span>'+s.name+'</span><span class="lvl">'+formatStatValue(s)+'</span></div>'; });
-  statRowsEl.innerHTML = html;
+  if(statRowsEl) statRowsEl.innerHTML = html;
 }
 function updateHUD(){
-  lowHealthPulseEl.style.opacity = player.health<player.maxHealth*0.3 ? 0.7:0;
+  // Guarded throughout: a HUD element going missing (a partially-deployed index.html, say)
+  // should degrade to a blank readout, not throw every frame and take the whole game down
+  // with it — this runs inside init() and from the render loop.
+  if(lowHealthPulseEl) lowHealthPulseEl.style.opacity = player.health<player.maxHealth*0.3 ? 0.7:0;
 
   // The stone status bar (ammo, arsenal, health, stamina, tally, now-playing) is owned by
   // js/hud.js; everything below is the overlay furniture that sits outside the bar.
-  updateStoneHUD();
+  if(typeof updateStoneHUD === 'function') updateStoneHUD();
 
-  waveNumEl.textContent = 'WAVE '+wave.number;
-  moneyNumEl.textContent = '$ '+player.money;
-  levelNumEl.textContent = 'LV '+player.level;
-  xpBarInnerEl.style.width = Math.min(100,(player.xp/player.xpToNext)*100)+'%';
+  if(waveNumEl) waveNumEl.textContent = 'WAVE '+wave.number;
+  if(moneyNumEl) moneyNumEl.textContent = '$ '+player.money;
+  if(levelNumEl) levelNumEl.textContent = 'LV '+player.level;
+  if(xpBarInnerEl) xpBarInnerEl.style.width = Math.min(100,(player.xp/player.xpToNext)*100)+'%';
 
   const remaining = player.doubleUntil - (clock?clock.getElapsedTime():0);
-  if(remaining>0){ doubleBadgeEl.textContent='2x $/XP — '+Math.ceil(remaining)+'s'; doubleBadgeEl.classList.remove('hidden'); }
-  else doubleBadgeEl.classList.add('hidden');
+  if(doubleBadgeEl){
+    if(remaining>0){ doubleBadgeEl.textContent='2x $/XP — '+Math.ceil(remaining)+'s'; doubleBadgeEl.classList.remove('hidden'); }
+    else doubleBadgeEl.classList.add('hidden');
+  }
 
   updateStatPanel();
 }

@@ -60,6 +60,7 @@ function hudSet(key, el, value){
 }
 
 function initHUD(){
+  try {
   hudRefs = {
     bar: el('hudBar'),
     ammoWeaponName: el('ammoWeaponName'), ammoMag: el('ammoMag'),
@@ -86,9 +87,16 @@ function initHUD(){
   buildArsenalSlots();
   hudResize();
   window.addEventListener('resize', hudResize);
+  // Web fonts and the canvas both settle after first paint, so re-measure once things have.
+  window.addEventListener('load', hudResize);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(hudResize).catch(()=>{});
+  setTimeout(hudResize, 0);
   if(window.ResizeObserver){
     // The game canvas can resize without a window resize event firing, so observe directly.
     try { new ResizeObserver(hudResize).observe(document.documentElement); } catch(e){}
+  }
+  } catch(e){
+    console.error('initHUD failed — the status bar will be blank but the game will still run.', e);
   }
 }
 
@@ -97,7 +105,9 @@ function initHUD(){
 function hudResize(){
   if(!hudRefs || !hudRefs.bar) return;
   const w = document.documentElement.clientWidth || window.innerWidth;
-  const scale = Math.round((w/HUD_DESIGN_WIDTH)*1000)/1000;
+  // Round UP so the scaled bar can never fall short of the viewport and leave a sliver of
+  // empty space on the right; overshooting by a fraction of a pixel is invisible, a gap isn't.
+  const scale = Math.ceil((w/HUD_DESIGN_WIDTH)*1000)/1000;
   hudRefs.bar.style.transform = 'scale('+scale+')';
 }
 
