@@ -77,6 +77,16 @@ function loadAssets(){
     tryFinishLoading();
   });
 
+  // Pickup sheet. Non-blocking: if it's missing the drops fall back to the old glowing solid.
+  new THREE.TextureLoader().load(DROP_TEXTURE, tex=>{
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;   // mipmaps would bleed neighbouring frames together
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    dropTexture = tex;
+    console.log('Pickup sheet loaded: ' + (tex.image ? tex.image.width+'x'+tex.image.height : '?'));
+  }, undefined, ()=>{ console.warn(DROP_TEXTURE + ' not found — pickups will use placeholder shapes.'); });
+
   loadMinimap(); // doesn't gate game start — the minimap just stays blank until it's ready
 
   // Optional: a model whose floor polygons mark where enemies are allowed to appear. Never
@@ -848,7 +858,7 @@ function buildStationVisual(pos, color){
 function placeStationsAndBox(){
   const placed = [{x:playerStart.x, z:playerStart.z}];
   const colors = [0xffb347, 0x66d9ff, 0xff6666];
-  [1,2,3].forEach((weaponIndex,i)=>{
+  STATION_INDICES.forEach((weaponIndex,i)=>{
     const p = randomFloorPoint(placed, 6);
     if(!p) return;
     placed.push({x:p.x,z:p.z});

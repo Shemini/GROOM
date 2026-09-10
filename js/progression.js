@@ -170,7 +170,12 @@ function updateHUD(){
 
   const remaining = player.doubleUntil - (clock?clock.getElapsedTime():0);
   if(doubleBadgeEl){
-    if(remaining>0){ doubleBadgeEl.textContent='2x $/XP — '+Math.ceil(remaining)+'s'; doubleBadgeEl.classList.remove('hidden'); }
+    const now = clock?clock.getElapsedTime():0;
+    const kill = (player.instakillUntil||0) - now;
+    const parts = [];
+    if(remaining>0) parts.push('2x $/XP — '+Math.ceil(remaining)+'s');
+    if(kill>0) parts.push('VERMUT — '+Math.ceil(kill)+'s');
+    if(parts.length){ doubleBadgeEl.textContent = parts.join('   |   '); doubleBadgeEl.classList.remove('hidden'); }
     else doubleBadgeEl.classList.add('hidden');
   }
 

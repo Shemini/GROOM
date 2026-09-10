@@ -164,6 +164,9 @@ function spawnZombie(){
     attacking: false, attackDamageDone: false, movingToward: true, dying: false, deathAnimDone: false,
     explosionDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
+    infected:false, immune:false, coughTimer:0, luredBy:null, damageTakenMult:1,
+    slowUntil:-999, slowMult:1, streamUntil:-999, streamDps:0,
+    burnUntil:-999, burnDps:0, drunkUntil:-999, pukeTimer:0,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
   };
   billboard.userData.zombieRef=z;
@@ -230,7 +233,7 @@ function updateZombies(delta, elapsed){
     }
 
     const vertGap = Math.abs(z.feetY - feetY);
-    const inMeleeRange = distToPlayer <= 1.0 && vertGap < 2.0;
+    const inMeleeRange = !z.luredBy && distToPlayer <= 1.0 && vertGap < 2.0;
 
     // Direct approach whenever there's a clear straight line to the player. This is what
     // makes the last stretch look natural: the flow field steps cell-to-cell, which reads as
@@ -246,7 +249,10 @@ function updateZombies(delta, elapsed){
     }
 
     let targetX, targetZ;
-    if(z.hasLOS){
+    if(z.luredBy){
+      // Ham beats the player: while lured, the guest heads for the plate instead.
+      targetX = z.luredBy.pos.x; targetZ = z.luredBy.pos.z;
+    } else if(z.hasLOS){
       targetX = camera.position.x; targetZ = camera.position.z;
     } else {
       const step = flowFieldTarget(z.group.position.x, z.group.position.z);
@@ -255,7 +261,8 @@ function updateZombies(delta, elapsed){
     }
 
     if(!inMeleeRange){
-      const moveSpeed = z.speed * (z.attacking ? (z.def.attackSpeedMult!==undefined ? z.def.attackSpeedMult : 1) : 1);
+      const slowMult = (elapsed < z.slowUntil) ? z.slowMult : 1;
+      const moveSpeed = z.speed * (z.attacking ? (z.def.attackSpeedMult!==undefined ? z.def.attackSpeedMult : 1) : 1) * slowMult;
       const dx=targetX-z.group.position.x, dz=targetZ-z.group.position.z;
       const d=Math.hypot(dx,dz);
       if(d>0.0001){
@@ -524,19 +531,41 @@ function updateStatusEffects(delta, elapsed){
     const z = zombies[i];
     if(z.dot && elapsed>=z.dot.endTime) z.dot=null;
     if(z.stain && elapsed>=z.stain.endTime) z.stain=null;
+    if(elapsed < z.drunkUntil){
+      z.pukeTimer -= delta;
+      if(z.pukeTimer <= 0){
+        z.pukeTimer = 1.4 + Math.random()*0.8;
+        spawnPuddle(z.group.position, 1.1, z.drunkPukeDps||9, 3.0, false, 0, 0, 'puke');
+      }
+    }
     if(z.stain){
       z.stain.trailTimer -= delta;
       if(z.stain.trailTimer<=0){ spawnPuddle(z.group.position, 1.2, z.stain.dps, 2, false); z.stain.trailTimer=0.3; }
     }
     z.periodicTickTimer -= delta;
     if(z.periodicTickTimer>0) continue;
+    // Strongest puddle *per kind*, then summed: alcohol and vomit stack with each other, but
+    // two pools of vomit don't stack with themselves.
     let bestDps=0, bestPuddle=null, source=null;
+    const byKind = {};
     for(const pd of puddles){
       const d = Math.hypot(z.group.position.x-pd.pos.x, z.group.position.z-pd.pos.z);
-      if(d<pd.radius && pd.dps>bestDps){ bestDps=pd.dps; bestPuddle=pd; source='puddle'; }
+      if(d<pd.radius){
+        const k = pd.kind||'default';
+        if(!byKind[k] || pd.dps>byKind[k].dps) byKind[k] = pd;
+      }
     }
+    for(const k in byKind){
+      bestDps += byKind[k].dps;
+      if(!bestPuddle || byKind[k].dps > bestPuddle.dps) bestPuddle = byKind[k];
+    }
+    if(bestDps>0) source='puddle';
     if(z.dot && z.dot.dps>bestDps){ bestDps=z.dot.dps; source='dot'; }
     if(z.stain && z.stain.dps>bestDps){ bestDps=z.stain.dps; source='stain'; }
+    // The CO2 stream and its flame upgrade run through the same gate as puddles, so a dense
+    // spray can't multiply its damage by the number of particles touching a guest.
+    if(elapsed < z.streamUntil && z.streamDps>bestDps){ bestDps=z.streamDps; source='stream'; }
+    if(elapsed < z.burnUntil && z.burnDps>bestDps){ bestDps=z.burnDps; source='burn'; }
     if(bestDps>0){
       const killed = damageZombie(z, bestDps*0.25, {});
       z.periodicTickTimer=0.25;
@@ -555,9 +584,11 @@ function damageZombie(z, amount, opts){
   opts = opts||{};
   if(!z || z.dying) return true; // already dead/dying — treat as handled, no further effects
   if(amount<=0) return false;
-  z.hp -= amount;
+  // Vermut: while the buff is running, any hit at all is fatal.
+  if(player.instakillUntil && clock.getElapsedTime() < player.instakillUntil) z.hp = 0;
+  else z.hp -= amount * (z.damageTakenMult||1);
   triggerZombieFlash(z);
-  spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount), !!opts.crit);
+  spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount*(z.damageTakenMult||1)), !!opts.crit);
   if(opts.stagger){
     z.staggerTimer = STAGGER_DURATION;
     if(opts.knockFrom){
@@ -614,39 +645,99 @@ function scheduleDrops(){
   }
 }
 function spawnDropPickup(pos, type){
-  const color = DROP_COLORS[type];
-  const geo = new THREE.OctahedronGeometry(0.3,0);
-  const mat = new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:1 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(pos.x, pos.y+0.9, pos.z);
-  scene.add(mesh);
-  const light = new THREE.PointLight(color,1,6);
-  mesh.add(light);
-  drops.push({ mesh, type, pos:{x:pos.x,z:pos.z}, baseY:pos.y+0.9, phase:Math.random()*10, expiresAt:clock.getElapsedTime()+DROP_LIFETIME });
+  const def = DROP_DEFS[type] || DROP_DEFS.ammo;
+  const lightColor = def.light;
+  const group = new THREE.Group();
+  let billboard = null, tex = null;
+
+  if(dropTexture){
+    // Each pickup gets its own cloned texture, since the offset drives its animation frame.
+    tex = dropTexture.clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(1/DROP_SHEET_COLS, 1/DROP_SHEET_ROWS);
+    tex.offset.set(0, 1-(def.startRow+1)/DROP_SHEET_ROWS);
+    // alphaTest alone would hard-clip the soft edges of these renders, so blend instead and
+    // keep depthWrite off so the transparent border can't punch a hole in what's behind it.
+    const mat = new THREE.MeshBasicMaterial({
+      map:tex, transparent:true, alphaTest:0.05, depthWrite:false,
+      side:THREE.DoubleSide, toneMapped:false,
+    });
+    billboard = new THREE.Mesh(getBillboardGeometry(), mat);
+    billboard.scale.set(DROP_SPRITE_SIZE, DROP_SPRITE_SIZE, 1);
+    billboard.frustumCulled = false;
+    billboard.renderOrder = 2;
+    group.add(billboard);
+  } else {
+    const geo = new THREE.OctahedronGeometry(0.3,0);
+    const mat = new THREE.MeshStandardMaterial({ color:lightColor, emissive:lightColor, emissiveIntensity:1 });
+    group.add(new THREE.Mesh(geo, mat));
+  }
+
+  const light = new THREE.PointLight(lightColor, 1.6, 7, 2);
+  group.add(light);
+  group.position.set(pos.x, pos.y+0.9, pos.z);
+  scene.add(group);
+
+  drops.push({
+    mesh:group, billboard, tex, light, type, startRow:def.startRow,
+    pos:{x:pos.x,z:pos.z}, baseY:pos.y+0.9, phase:Math.random()*10,
+    animFrame:0, animTimer:Math.random()/DROP_ANIM_FPS,
+    expiresAt:clock.getElapsedTime()+DROP_LIFETIME,
+  });
 }
+
 function applyDrop(type){
   switch(type){
     case 'ammo':
       player.slots.forEach(wIdx=>{
         if(wIdx===null) return;
+        const w = ALL_WEAPONS[wIdx];
+        if(w.noAmmo) return;                       // melee has no magazine to refill
         const mods = player.weaponMods[wIdx];
         if(mods.noReload) player.ammoByWeapon[wIdx].mag = effectiveMag(wIdx);
         else player.ammoByWeapon[wIdx] = { mag:effectiveMag(wIdx), reserve:effectiveReserve(wIdx) };
       });
-      showWaveBanner('DROP','Ammo Refilled'); break;
-    case 'health': player.health = player.maxHealth; showWaveBanner('DROP','Health Restored'); break;
-    case 'double': player.doubleUntil = clock.getElapsedTime()+20; showWaveBanner('DROP','2x Money & XP — 20s'); break;
+      showWaveBanner('PLATO FUERTE','Munición recargada'); break;
+    case 'health':
+      player.health = player.maxHealth;
+      showWaveBanner('ENSALADA','Salud restaurada'); break;
+    case 'double':
+      player.doubleUntil = clock.getElapsedTime()+20;
+      showWaveBanner('POSTRE','2x dinero y XP — 20s'); break;
     case 'instakill':
-      for(let i=zombies.length-1;i>=0;i--) damageZombie(zombies[i], 99999, {});
-      showWaveBanner('DROP','INSTAKILL!'); break;
+      // No longer a board wipe: for a while, any damage at all is lethal.
+      player.instakillUntil = clock.getElapsedTime()+INSTAKILL_DURATION;
+      showWaveBanner('VERMUT','¡Muerte instantánea — '+INSTAKILL_DURATION+'s!'); break;
   }
   updateHUD();
 }
+
 function updateDrops(delta, elapsed){
   for(let i=drops.length-1;i>=0;i--){
     const d = drops[i];
-    d.mesh.rotation.y += delta*2;
+
+    // 16 frames spanning two rows: along the first, then continuing onto the second.
+    if(d.tex){
+      d.animTimer -= delta;
+      while(d.animTimer <= 0){
+        d.animTimer += 1/DROP_ANIM_FPS;
+        d.animFrame = (d.animFrame+1) % DROP_ANIM_FRAMES;
+        const row = d.startRow + Math.floor(d.animFrame/DROP_SHEET_COLS);
+        const col = d.animFrame % DROP_SHEET_COLS;
+        d.tex.offset.set(col/DROP_SHEET_COLS, 1-(row+1)/DROP_SHEET_ROWS);
+      }
+      // Face the camera on the vertical axis only, like the enemy billboards.
+      if(d.billboard){
+        d.billboard.rotation.y = Math.atan2(camera.position.x-d.mesh.position.x,
+                                            camera.position.z-d.mesh.position.z);
+      }
+    } else {
+      d.mesh.rotation.y += delta*2;
+    }
+
     d.mesh.position.y = d.baseY + Math.sin(elapsed*3+d.phase)*0.15;
+    if(d.light) d.light.intensity = 1.3 + Math.sin(elapsed*4+d.phase)*0.45;
+
     const timeLeft = d.expiresAt-elapsed;
     d.mesh.visible = timeLeft>3 || Math.floor(elapsed*8)%2===0;
     if(timeLeft<=0){ scene.remove(d.mesh); drops.splice(i,1); continue; }

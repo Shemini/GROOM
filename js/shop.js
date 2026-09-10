@@ -53,6 +53,14 @@ function interactStation(station){
   const idx = station.weaponIndex, w = ALL_WEAPONS[idx], owned = ownsWeapon(idx);
   if(!owned){
     if(player.money<w.cost){ soundDenied(); flashDenied(); return; }
+    // A melee pickup always replaces whatever is in the melee slot, never a carry slot.
+    if(isMeleeWeapon(idx)){
+      player.money -= w.cost;
+      const old = player.slots[0];
+      player.slots[0] = idx; initWeaponAcquired(idx); switchWeapon(idx);
+      if(old!==null && old!==idx){ delete player.weaponMods[old]; delete player.weaponLevel[old]; delete player.weaponEvolved[old]; }
+      soundPurchase(); updateHUD(); return;
+    }
     const slot = findEmptySlot();
     if(slot===-1){ openSwapMenu(idx); return; }
     player.money -= w.cost; player.slots[slot]=idx; initWeaponAcquired(idx); switchWeapon(idx);
@@ -77,6 +85,13 @@ function resolveBoxRoll(){
   if(available.length===0){ showWaveBanner('MYSTERY BOX','Already own them all!'); boxState='idle'; updateHUD(); return; }
   const idx = available[Math.floor(Math.random()*available.length)];
   const w = ALL_WEAPONS[idx];
+  if(isMeleeWeapon(idx)){
+    const old = player.slots[0];
+    player.slots[0] = idx; initWeaponAcquired(idx); switchWeapon(idx);
+    if(old!==null && old!==idx){ delete player.weaponMods[old]; delete player.weaponLevel[old]; delete player.weaponEvolved[old]; }
+    showWaveBanner('CAJA DE FIESTA', w.name+'!');
+    soundBoxWin(); boxState='idle'; updateHUD(); return;
+  }
   const slot = findEmptySlot();
   if(slot!==-1){
     player.slots[slot]=idx; initWeaponAcquired(idx); switchWeapon(idx);
@@ -99,7 +114,7 @@ function openSwapMenu(newIdx){
 function renderSwapCards(){
   swapCardsEl.innerHTML='';
   player.slots.forEach((wIdx,slotIdx)=>{
-    if(wIdx===null) return;
+    if(wIdx===null || slotIdx===0) return;   // the melee slot isn't swappable
     const w = ALL_WEAPONS[wIdx];
     const card = document.createElement('div');
     card.className='lvlCard'; card.dataset.slot=slotIdx;

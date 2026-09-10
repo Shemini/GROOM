@@ -37,7 +37,22 @@ const STAGGER_DURATION = 0.35;
 const KNOCKBACK_DIST = 0.3;
 const DROP_LIFETIME = 15;
 const DROP_TYPES = ['ammo','health','double','instakill'];
-const DROP_COLORS = { ammo:0xe8b24d, health:0x6fef7d, double:0xfff2b0, instakill:0xc81e2c };
+// Pickup spritesheet: 1024x1024, an 8x8 grid of 128px frames. Each pickup owns two rows, so
+// its 16 frames run left-to-right along the first row and continue onto the second.
+const DROP_TEXTURE = './Pickups1024.png';
+const DROP_SHEET_COLS = 8, DROP_SHEET_ROWS = 8;
+const DROP_ANIM_FRAMES = 16;
+const DROP_ANIM_FPS = 12;
+const DROP_SPRITE_SIZE = 1.0;      // world height of the billboard, in metres
+const DROP_DEFS = {
+  double:    { startRow:0, light:0xffd54a, label:'Postre — 2x dinero y XP' },   // dessert, yellow
+  ammo:      { startRow:2, light:0xff8c26, label:'Plato fuerte — munición' },   // main course, orange
+  health:    { startRow:4, light:0x5ce85c, label:'Ensalada — salud' },          // salad, green
+  instakill: { startRow:6, light:0xe83030, label:'Vermut — muerte instantánea' },// vermouth, red
+};
+// Kept for anything still asking for a flat colour (the HUD badge, particles).
+const DROP_COLORS = { ammo:0xff8c26, health:0x5ce85c, double:0xffd54a, instakill:0xe83030 };
+const INSTAKILL_DURATION = 15;     // seconds during which any damage is lethal
 const BOX_COST = 1500;
 
 // Enemy spawning. Points come from an optional SpawnZones model (see below); without it the
@@ -211,17 +226,49 @@ const NAV_NODES = [
 ];
 
 const ALL_WEAPONS = [
-  { name:'PISTOL',  type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72,  cost:0,    ammoCost:0,   spread:0.010, pellets:1 },
-  { name:'SHOTGUN', type:'hitscan', dmg:17, fireRate:0.85, mag:6,  reserveMax:36,  cost:500,  ammoCost:100, spread:0.10,  pellets:6 },
-  { name:'SMG',     type:'hitscan', dmg:14, fireRate:0.11, mag:30, reserveMax:150, cost:750,  ammoCost:150, spread:0.035, pellets:1 },
-  { name:'RIFLE',   type:'hitscan', dmg:46, fireRate:0.17, mag:20, reserveMax:120, cost:1300, ammoCost:250, spread:0.015, pellets:1 },
-  { name:'FRAG LAUNCHER', type:'grenade', dmg:55, fireRate:1.1, mag:2, reserveMax:10, launchSpeed:16, blastRadius:4.5, fuseDelay:0.35 },
-  { name:'ARC RIFLE', type:'chain', dmg:26, fireRate:0.3, mag:20, reserveMax:120, chainCount:3, chainRadius:7 },
-  { name:'ACID VIAL', type:'puddle', dmg:0, fireRate:1.0, mag:2, reserveMax:16, launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:22 },
-  { name:'RAILGUN', type:'pierce', dmg:64, fireRate:1.3, mag:6, reserveMax:24, pierceFalloff:0.5, maxPierces:6 },
-  { name:'VORTEX CANNON', type:'vortex', dmg:0, fireRate:1.2, mag:2, reserveMax:6, launchSpeed:26, vortexRadius:6, vortexDuration:3, vortexPull:3.2, vortexDps:9, vortexBurst:55 },
+  // 0 — melee, permanently occupies slot 0 and cannot be levelled or dropped.
+  { name:'PUÑOS', type:'melee', dmg:34, fireRate:0.45, mag:1, reserveMax:0, cost:0, ammoCost:0,
+    meleeRange:2.6, meleeArc:70, noAmmo:true, noLevel:true },
+  // 1 — the starting firearm, unchanged from the old pistol.
+  { name:'PISTOLA', type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72, cost:0, ammoCost:0,
+    spread:0.010, pellets:1 },
+  // 2 — the hunter cousin's stock: slow, precise, heavy.
+  { name:'RIFLE DE CAZA', type:'hitscan', dmg:78, fireRate:0.95, mag:5, reserveMax:40, cost:1400, ammoCost:250,
+    spread:0.004, pellets:1 },
+  // 3 — fast, weak, ricochets between guests.
+  { name:'PISTOLA DE BALINES', type:'chain', dmg:13, fireRate:0.14, mag:30, reserveMax:180, cost:900, ammoCost:180,
+    chainCount:3, chainRadius:6.5 },
+  // 4 — held to blow a stream; see the soap/breath handling in tryShoot().
+  { name:'VARITA DE BURBUJAS', type:'bubble', dmg:9, fireRate:0.12, mag:60, reserveMax:240,
+    bubbleSpeed:11, bubbleLife:6, bubbleRadius:0.55, soapLimit:1.6, soapRecover:1.2 },
+  // 5 — bait. Shared distraction budget, drains faster the bigger the crowd.
+  { name:'JAMÓN IBÉRICO', type:'bait', dmg:0, fireRate:1.4, mag:1, reserveMax:5,
+    launchSpeed:13, baitRadius:16, baitSeconds:40, cholesterolMult:1.35 },
+  // 6 — the old grenade launcher, rethemed.
+  { name:'PETARDOS', type:'grenade', dmg:55, fireRate:1.1, mag:2, reserveMax:10,
+    launchSpeed:16, blastRadius:4.5, fuseDelay:0.35 },
+  // 7 — puddle DoT.
+  { name:'TEQUIFRESA', type:'puddle', dmg:0, fireRate:1.0, mag:2, reserveMax:16,
+    launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:22 },
+  // 8 — single heavy spread with hard knockback.
+  { name:'CAÑÓN DE CONFETTI', type:'hitscan', dmg:20, fireRate:1.15, mag:2, reserveMax:20,
+    spread:0.13, pellets:9, knockback:1.1 },
+  // 9 — continuous cone of particles: light DoT plus a slow.
+  { name:'CAÑÓN DE CO2', type:'stream', dmg:0, fireRate:0.05, mag:120, reserveMax:480,
+    streamSpeed:16, streamLife:1.1, streamRadius:0.5, streamGrow:2.6, streamDps:11, streamSlow:0.55 },
+  // 10 — constant beam, ticks fast, doubles on the eyes.
+  { name:'PUNTERO LÁSER', type:'beam', dmg:0, fireRate:0.05, mag:100, reserveMax:400,
+    beamTick:0.05, beamDps:52, beamHeadMult:2.0, beamRange:60 },
+  // 11 — melee upgrade from the party box; replaces the fists in slot 0.
+  { name:'ESPADA DE TARTA', type:'melee', dmg:72, fireRate:0.5, mag:1, reserveMax:0,
+    meleeRange:3.2, meleeArc:85, noAmmo:true, windDmg:0.45, windSpeed:26, windRange:14 },
 ];
-const SPECIAL_INDICES = [4,5,6,7,8];
+// Weapons that live in the melee slot (slot 0) rather than the three carry slots.
+const MELEE_INDICES = [0, 11];
+const FISTS_INDEX = 0;
+const STARTER_INDEX = 1;
+const SPECIAL_INDICES = [4,5,6,7,8,9,10,11];  // party-box pool (11 is the melee upgrade)
+const STATION_INDICES = [2,3,8];               // wall-buy stock: the cousin's rifle, the BB gun, the confetti cannon
 
 const STATS = [
   { key:'damage',        name:'DAMAGE',       desc:'Weapon damage',                     perLevel:0.10, maxLevel:5 },
@@ -238,38 +285,49 @@ const STATS = [
 ];
 
 const BASE_LEVEL_TABLES = {
-  0: [ {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'damage', amount:0.15, label:'+15% damage'},
-       {stat:'ammo',   amount:0.25, label:'+25% ammo capacity'}, {stat:'damage', amount:0.15, label:'+15% damage'} ],
-  1: [ {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'spread', amount:-0.15,label:'-15% spread (tighter)'},
-       {stat:'ammo',   amount:0.25, label:'+25% ammo capacity'}, {stat:'damage', amount:0.15, label:'+15% damage'} ],
-  2: [ {stat:'fireRate', amount:0.10, label:'+10% fire rate'}, {stat:'damage', amount:0.15, label:'+15% damage'},
-       {stat:'ammo',     amount:0.25, label:'+25% ammo capacity'}, {stat:'fireRate', amount:0.10, label:'+10% fire rate'} ],
-  3: [ {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'ammo', amount:0.20, label:'+20% ammo capacity'},
-       {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'fireRate',amount:0.10,label:'+10% fire rate'} ],
-  4: [ {stat:'damage', amount:0.20, label:'+20% damage'}, {stat:'radius', amount:0.15, label:'+15% blast radius'},
-       {stat:'damage', amount:0.20, label:'+20% damage'}, {stat:'radius', amount:0.15, label:'+15% blast radius'} ],
-  5: [ {stat:'damage', amount:0.20, label:'+20% damage'}, {stat:'bounce', amount:1,    label:'+1 bounce target'},
-       {stat:'ammo',   amount:0.30, label:'+30% ammo capacity'}, {stat:'damage', amount:0.20, label:'+20% damage'} ],
-  6: [ {stat:'dot',      amount:0.20, label:'+20% puddle damage'}, {stat:'radius',   amount:0.15, label:'+15% puddle radius'},
-       {stat:'duration', amount:0.20, label:'+20% puddle duration'}, {stat:'dot',      amount:0.20, label:'+20% puddle damage'} ],
-  7: [ {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'ammo', amount:0.20, label:'+20% ammo capacity'},
-       {stat:'damage', amount:0.15, label:'+15% damage'}, {stat:'ammo', amount:0.20, label:'+20% ammo capacity'} ],
-  8: [ {stat:'duration', amount:0.20, label:'+20% vortex duration'}, {stat:'radius',   amount:0.15, label:'+15% vortex radius'},
-       {stat:'duration', amount:0.20, label:'+20% vortex duration'}, {stat:'radius',   amount:0.15, label:'+15% vortex radius'} ],
+  // Index 0 (fists) has no table: it never levels.
+  1: [ {stat:'damage',amount:0.15,label:'+15% damage'}, {stat:'damage',amount:0.15,label:'+15% damage'},
+       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.15,label:'+15% damage'} ],
+  2: [ {stat:'damage',amount:0.18,label:'+18% damage'}, {stat:'fireRate',amount:0.10,label:'+10% fire rate'},
+       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.18,label:'+18% damage'} ],
+  3: [ {stat:'fireRate',amount:0.10,label:'+10% fire rate'}, {stat:'bounce',amount:1,label:'+1 ricochet'},
+       {stat:'ammo',amount:0.30,label:'+30% ammo capacity'}, {stat:'damage',amount:0.15,label:'+15% damage'} ],
+  4: [ {stat:'damage',amount:0.18,label:'+18% bubble damage'}, {stat:'duration',amount:0.20,label:'+20% bubble life'},
+       {stat:'ammo',amount:0.25,label:'+25% soap'}, {stat:'radius',amount:0.15,label:'+15% bubble size'} ],
+  5: [ {stat:'duration',amount:0.20,label:'+20% jamón (more seconds)'}, {stat:'radius',amount:0.15,label:'+15% lure radius'},
+       {stat:'ammo',amount:0.25,label:'+1 tray capacity'}, {stat:'duration',amount:0.20,label:'+20% jamón' } ],
+  6: [ {stat:'damage',amount:0.20,label:'+20% damage'}, {stat:'radius',amount:0.15,label:'+15% blast radius'},
+       {stat:'damage',amount:0.20,label:'+20% damage'}, {stat:'radius',amount:0.15,label:'+15% blast radius'} ],
+  7: [ {stat:'dot',amount:0.20,label:'+20% puddle damage'}, {stat:'radius',amount:0.15,label:'+15% puddle radius'},
+       {stat:'duration',amount:0.20,label:'+20% puddle duration'}, {stat:'dot',amount:0.20,label:'+20% puddle damage'} ],
+  8: [ {stat:'damage',amount:0.18,label:'+18% damage'}, {stat:'knockback',amount:0.25,label:'+25% knockback'},
+       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.18,label:'+18% damage'} ],
+  9: [ {stat:'dot',amount:0.20,label:'+20% stream damage'}, {stat:'radius',amount:0.15,label:'+15% cone width'},
+       {stat:'duration',amount:0.18,label:'+18% reach'}, {stat:'dot',amount:0.20,label:'+20% stream damage'} ],
+  10:[ {stat:'dot',amount:0.20,label:'+20% laser damage'}, {stat:'ammo',amount:0.25,label:'+25% charge'},
+       {stat:'dot',amount:0.20,label:'+20% laser damage'}, {stat:'ammo',amount:0.25,label:'+25% charge'} ],
+  11:[ {stat:'damage',amount:0.18,label:'+18% damage'}, {stat:'fireRate',amount:0.12,label:'+12% swing speed'},
+       {stat:'damage',amount:0.18,label:'+18% damage'}, {stat:'radius',amount:0.15,label:'+15% reach'} ],
 };
 
 const EVOLUTIONS = {
-  0: { name:'HELLGUN',      rotation:['coneDamage','coneDot','coneDuration','coneRadius'] },
-  1: { name:'DOUBLE-ACTION',rotation:['damage','ammo','spread'] },
-  2: { name:'GATLING GUN',  rotation:['damage','fireRate','ammo'] },
-  3: { name:'HEADHUNTER',   rotation:['critBonus','explosionDamage','explosionRadius'] },
-  4: { name:'CLUSTER BOMB', rotation:['damage','radius','damage','radius','subCount'] },
-  5: { name:'PLASMA RIFLE', rotation:['damage','ammo','damage','ammo','initialSpread'] },
-  6: { name:'TOXIC SLUDGE', rotation:['dot','radius','duration'] },
-  7: { name:'LIARGUN',      rotation:['ammo','incrementPercent'] },
-  8: { name:'BLACK HOLE',   rotation:['duration','radius'] },
+  1:  { name:'PISTOLA DE FERIA',  rotation:['damage','fireRate','ammo'] },
+  2:  { name:'RIFLE PERFORANTE',  rotation:['damage','pierceCount','ammo'] },
+  3:  { name:'METRALLETA DE BALINES', rotation:['damage','bounce','fireRate','ammo'] },
+  4:  { name:'PACIENTE CERO',     rotation:['infectChance','coughDamage','coughSpread'] },
+  5:  { name:'JAMÓN EXPLOSIVO',   rotation:['radius','damage','duration'] },
+  6:  { name:'TRACA',             rotation:['subCount','damage','radius'] },
+  7:  { name:'GARRAFÓN',          rotation:['dot','radius','duration'] },
+  8:  { name:'FIESTA TOTAL',      rotation:['damage','radius','knockback'] },
+  9:  { name:'LANZALLAMAS',       rotation:['burnDamage','burnDuration','radius'] },
+  10: { name:'LÁSER QUIRÚRGICO',  rotation:['damage','explosionDamage','explosionRadius'] },
+  11: { name:'ESPADA DEL BANQUETE', rotation:['damage','windDamage','windRange'] },
 };
 const EVO_KEY_LABELS = {
+  pierceCount:'+1 enemy pierced', bounce:'+1 ricochet', knockback:'+knockback',
+  infectChance:'+infection chance', coughDamage:'+cough damage', coughSpread:'+spread chance',
+  burnDamage:'+burn damage', burnDuration:'+burn duration',
+  windDamage:'+wind slash damage', windRange:'+wind slash range',
   coneDamage:'+cone damage', coneDot:'+cone DoT', coneDuration:'+cone duration', coneRadius:'+cone radius',
   damage:'+damage', ammo:'+ammo capacity', spread:'+spread', fireRate:'+fire rate',
   critBonus:'+headshot crit chance', explosionDamage:'+headshot explosion damage', explosionRadius:'+explosion radius',
@@ -296,7 +354,8 @@ let blackHoles = [];
 let damageNumbers = [];
 let drops = [];
 let flashLight;
-let zombieSpriteTexture = null;          // TrajeA's sheet; kept for the Guitarrista fallback
+let zombieSpriteTexture = null;
+let dropTexture = null;          // TrajeA's sheet; kept for the Guitarrista fallback
 const enemyTextures = {};               // enemy type id -> THREE.Texture
 let guitarristaSpriteTexture = null;
 let navGridFine = null, navGridCoarse = null, levelMaxY = 10;
@@ -346,18 +405,21 @@ function createDefaultMods(){
     coneDamage:0, coneDot:0, coneDuration:0, coneRadius:0,
     critBonus:0, explosionDamage:0, explosionRadius:0,
     subCount:0, initialSpread:0, evoDamage:0, evolvedBaseDamage:0, incrementPercent:0,
+    // wedding roster
+    pierceCount:0, knockbackMult:1, infectChance:0, coughDamage:0, coughSpread:0,
+    burnDamage:0, burnDuration:0, windDamage:0, windRange:0, novaRadius:0,
   };
 }
 
 const player = {
   health: 100, maxHealth: 100, money: 0, kills: 0,
-  slots: [0, null, null, null],
-  ammoByWeapon: { 0: {mag:12, reserve:72} },
-  currentWeapon: 0,
+  slots: [FISTS_INDEX, STARTER_INDEX, null, null],   // slot 0 is the melee slot and is never empty
+  ammoByWeapon: { 1: {mag:12, reserve:72} },
+  currentWeapon: STARTER_INDEX,
   reloading: false, reloadUntil: 0, lastShotTime: -999,
   stats: {}, level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,
-  weaponLevel: { 0:1 }, weaponEvolved: { 0:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods() },
-  burstState: {}, doubleUntil: 0,
+  weaponLevel: { 1:1 }, weaponEvolved: { 1:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods(), 1: createDefaultMods() },
+  burstState: {}, doubleUntil: 0, instakillUntil: 0,
 };
 
 const wave = {

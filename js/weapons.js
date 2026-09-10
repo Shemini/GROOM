@@ -18,7 +18,12 @@ function xpForLevel(level){ return Math.round(70 + level*35 + level*level*2); }
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
 
 function ownsWeapon(idx){ return player.slots.includes(idx); }
-function findEmptySlot(){ return player.slots.indexOf(null); }
+// Slot 0 is the melee slot and is never empty, so only the three carry slots can be filled.
+function findEmptySlot(){
+  for(let i=1;i<player.slots.length;i++) if(player.slots[i]===null) return i;
+  return -1;
+}
+function isMeleeWeapon(idx){ return MELEE_INDICES.indexOf(idx) !== -1; }
 function effectiveDamage(wIdx){ return ALL_WEAPONS[wIdx].dmg * player.weaponMods[wIdx].dmgMult; }
 function effectiveMag(wIdx){ const w=ALL_WEAPONS[wIdx], m=player.weaponMods[wIdx]; return Math.round(w.mag*m.ammoMult*(1+statValue('ammoCapacity'))); }
 function effectiveReserve(wIdx){ const w=ALL_WEAPONS[wIdx], m=player.weaponMods[wIdx]; return Math.round(w.reserveMax*m.ammoMult*(1+statValue('ammoCapacity'))); }
@@ -71,35 +76,27 @@ function applyEvolutionRotationStep(wIdx, evoLevel){
   const rotation = EVOLUTIONS[wIdx].rotation;
   const key = rotation[(evoLevel-1)%rotation.length];
   const mods = player.weaponMods[wIdx];
-  switch(wIdx){
-    case 0:
-      if(key==='coneDamage') mods.coneDamage += 6; else if(key==='coneDot') mods.coneDot += 3;
-      else if(key==='coneDuration') mods.coneDuration += 1; else if(key==='coneRadius') mods.coneRadius += 0.6;
-      break;
-    case 1:
-      if(key==='damage') mods.dmgMult *= 1.15; else if(key==='ammo') mods.ammoMult *= 1.2; else if(key==='spread') mods.spreadMult *= 1.15;
-      break;
-    case 2:
-      if(key==='damage') mods.dmgMult *= 1.15; else if(key==='fireRate') mods.fireRateMult *= 1.15; else if(key==='ammo') mods.ammoMult *= 1.2;
-      break;
-    case 3:
-      if(key==='critBonus') mods.critBonus += 0.1; else if(key==='explosionDamage') mods.explosionDamage += 8; else if(key==='explosionRadius') mods.explosionRadius += 0.3;
-      break;
-    case 4:
-      if(key==='damage') mods.dmgMult *= 1.15; else if(key==='radius') mods.radiusMult *= 1.15; else if(key==='subCount') mods.subCount += 1;
-      break;
-    case 5:
-      if(key==='damage') mods.dmgMult *= 1.12; else if(key==='ammo') mods.ammoMult *= 1.2; else if(key==='initialSpread') mods.initialSpread += 1;
-      break;
-    case 6:
-      if(key==='dot') mods.dpsMult *= 1.2; else if(key==='radius') mods.radiusMult *= 1.15; else if(key==='duration') mods.durationMult *= 1.15;
-      break;
-    case 7:
-      if(key==='ammo') mods.ammoMult *= 1.25; else if(key==='incrementPercent') mods.incrementPercent += 0.1;
-      break;
-    case 8:
-      if(key==='duration') mods.durationMult *= 1.2; else if(key==='radius') mods.radiusMult *= 1.15;
-      break;
+  switch(key){
+    case 'damage':          mods.dmgMult *= 1.15; break;
+    case 'fireRate':        mods.fireRateMult *= 1.12; break;
+    case 'ammo':            mods.ammoMult *= 1.20; break;
+    case 'radius':          mods.radiusMult *= 1.15; break;
+    case 'duration':        mods.durationMult *= 1.18; break;
+    case 'dot':             mods.dpsMult *= 1.18; break;
+    case 'bounce':          mods.bounceBonus += 1; break;
+    case 'pierceCount':     mods.pierceCount += 1; break;
+    case 'knockback':       mods.knockbackMult *= 1.25; break;
+    case 'infectChance':    mods.infectChance += 0.12; break;
+    case 'coughDamage':     mods.coughDamage += 7; break;
+    case 'coughSpread':     mods.coughSpread += 0.08; break;
+    case 'burnDamage':      mods.burnDamage += 6; break;
+    case 'burnDuration':    mods.burnDuration += 0.8; break;
+    case 'windDamage':      mods.windDamage += 0.12; break;
+    case 'windRange':       mods.windRange += 3; break;
+    case 'subCount':        mods.subCount += 1; break;
+    case 'explosionDamage': mods.explosionDamage += 12; break;
+    case 'explosionRadius': mods.explosionRadius += 0.4; break;
+    case 'spread':          mods.spreadMult *= 1.12; break;
   }
   updateHUD();
 }
@@ -109,15 +106,17 @@ function applyEvolution(wIdx){
   const mods = player.weaponMods[wIdx];
   const w = ALL_WEAPONS[wIdx];
   switch(wIdx){
-    case 0: mods.coneDamage=14; mods.coneDot=6; mods.coneDuration=3; mods.coneRadius=4.5; break;
-    case 1: mods.pelletBonus=2; mods.spreadMult*=1.3; break;
-    case 2: mods.noReload=true; mods.ammoMult*=6; break;
-    case 3: mods.critBonus=0.35; mods.explosionDamage=22; mods.explosionRadius=2.2; break;
-    case 4: mods.subCount=4; break;
-    case 5: mods.initialSpread=2; mods.evoDamage=Math.round(effectiveDamage(5)*0.7); break;
-    case 6: break;
-    case 7: mods.evolvedBaseDamage=Math.round(effectiveDamage(7)/3); mods.incrementPercent=0.30; break;
-    case 8: break;
+    case 1:  mods.fireRateMult*=1.25; mods.dmgMult*=1.15; break;                 // pistola de feria
+    case 2:  mods.pierceCount=0; break;                                          // rifle perforante: 1 pierce, +1/level
+    case 3:  mods.bounceBonus+=2; mods.fireRateMult*=1.15; break;                // metralleta de balines
+    case 4:  mods.infectChance=0; mods.coughDamage=0; mods.coughSpread=0; break; // paciente cero
+    case 5:  mods.explosionDamage=0; break;                                      // jamón explosivo
+    case 6:  mods.subCount=4; break;                                             // traca
+    case 7:  break;                                                              // garrafón
+    case 8:  mods.novaRadius=9; mods.knockbackMult*=1.4; break;                  // fiesta total
+    case 9:  mods.burnDamage=14; mods.burnDuration=2.5; break;                   // lanzallamas
+    case 10: mods.explosionDamage=55; mods.explosionRadius=2.4; break;           // láser quirúrgico
+    case 11: mods.windDamage=0.45; mods.windRange=0; break;                      // espada del banquete
   }
   if(mods.noReload) player.ammoByWeapon[wIdx] = { mag: effectiveMag(wIdx), reserve: 0 };
   else player.ammoByWeapon[wIdx] = { mag: effectiveMag(wIdx), reserve: effectiveReserve(wIdx) };
@@ -149,11 +148,40 @@ function getShotCooldown(wIdx){
   }
   return base;
 }
+// Called every frame from the main loop so the soap film recovers while the trigger is up.
+function updateSoap(delta, elapsed){
+  if(!mouseDown && player.soapStrain > 0){
+    const w = ALL_WEAPONS[player.currentWeapon];
+    player.soapStrain = Math.max(0, player.soapStrain - (w.soapRecover||1.2)*delta);
+  }
+}
+
 function tryShoot(elapsed){
   const wIdx = player.currentWeapon, weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx], ammo = player.ammoByWeapon[wIdx];
   if(player.reloading) return;
   if(elapsed-player.lastShotTime < getShotCooldown(wIdx)) return;
+  if(weapon.noAmmo){
+    // Melee never runs dry, so skip the magazine bookkeeping entirely.
+    player.lastShotTime = elapsed;
+    fireMelee(wIdx, 1+statValue('damage'), Math.random()<statValue('critChance'), 1.5+statValue('critMult'));
+    soundShot(weapon); return;
+  }
   if(ammo.mag<=0){ if(!mods.noReload && ammo.reserve>0) startReload(); return; }
+  // Bubble wand: holding the trigger is "blowing". Sustained pressure tears the film and
+  // forces a quick re-dip; feathering the trigger lets the soap recover, so a controlled
+  // rhythm gets far more out of one charge than holding it down.
+  if(weapon.type === 'bubble'){
+    player.soapStrain = (player.soapStrain||0) + (elapsed - (player.lastBubbleTime||0) < 0.25
+      ? (elapsed - (player.lastBubbleTime||elapsed)) + 0.1 : 0);
+    player.lastBubbleTime = elapsed;
+    if(player.soapStrain > (weapon.soapLimit||1.6)){
+      player.soapStrain = 0;
+      player.soapBroke = true;
+      startReload();
+      return;
+    }
+  }
+
   player.lastShotTime = elapsed; ammo.mag--;
   guitarristaHitThisShot = false; // one Guitarrista hit per trigger pull, not per pellet
   if(wIdx===1 && player.weaponEvolved[1]){ const st=player.burstState[1]; st.phase = st.phase===0?1:0; }
@@ -162,19 +190,20 @@ function tryShoot(elapsed){
   const isCrit = Math.random()<statValue('critChance');
   const critMultVal = 1.5+statValue('critMult');
 
-  if(wIdx===3 && player.weaponEvolved[3]) fireHeadhunter(wIdx,dmgMult,critMultVal);
-  else if(wIdx===7 && player.weaponEvolved[7]) firePierceLiar(wIdx,dmgMult,isCrit,critMultVal);
-  else if(wIdx===5 && player.weaponEvolved[5]) fireBranchingChain(wIdx,dmgMult,isCrit,critMultVal);
-  else if(wIdx===0 && player.weaponEvolved[0]) fireHellgun(wIdx,dmgMult,isCrit,critMultVal);
-  else {
-    switch(weapon.type){
-      case 'grenade': fireGrenade(wIdx,dmgMult,isCrit,critMultVal); break;
-      case 'puddle':  firePuddleVial(wIdx,dmgMult,isCrit,critMultVal); break;
-      case 'vortex':  fireVortex(wIdx,dmgMult,isCrit,critMultVal); break;
-      case 'chain':   fireChain(wIdx,dmgMult,isCrit,critMultVal); break;
-      case 'pierce':  firePierce(wIdx,dmgMult,isCrit,critMultVal); break;
-      default:        fireHitscan(wIdx,dmgMult,isCrit,critMultVal); break;
-    }
+  switch(weapon.type){
+    case 'melee':   fireMelee(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'grenade': fireGrenade(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'puddle':  firePuddleVial(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'chain':   fireChain(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'bubble':  fireBubble(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'bait':    fireBait(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'stream':  fireStream(wIdx,dmgMult,isCrit,critMultVal); break;
+    case 'beam':    fireBeam(wIdx,dmgMult,isCrit,critMultVal); break;
+    default:
+      // The confetti cannon's evolution turns its forward spread into a 360 nova.
+      if(wIdx===8 && player.weaponEvolved[8]) fireNova(wIdx,dmgMult,isCrit,critMultVal);
+      else fireHitscan(wIdx,dmgMult,isCrit,critMultVal);
+      break;
   }
   soundShot(weapon); flashMuzzle(); updateHUD();
 }
@@ -472,6 +501,20 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
     onImpact:(pos)=>{
       explodeAt(pos, radius, dmg, true);
       if(evolved){
+        // Traca: a running string of blasts that wanders away from the first, rather than a
+        // tidy ring of sub-munitions.
+        let last = pos.clone();
+        for(let i=0;i<mods.subCount;i++){
+          const p = last.clone();
+          p.x += (Math.random()-0.5)*5.5; p.z += (Math.random()-0.5)*5.5;
+          last = p;
+          setTimeout(()=>{
+            const fy = getFloorY(p.x,p.z,p.y+4);
+            explodeAt(new THREE.Vector3(p.x, fy!==null?fy:p.y, p.z), radius*0.7, dmg*0.5, true);
+          }, 140*(i+1));
+        }
+      }
+      if(false){
         for(let i=0;i<mods.subCount;i++){
           const angle=(i/mods.subCount)*Math.PI*2;
           const subVel = new THREE.Vector3(Math.cos(angle)*6,7,Math.sin(angle)*6);
@@ -502,7 +545,17 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
   projectiles.push({
     mesh, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
-    onImpact:(pos)=>{ spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration); }
+    onImpact:(pos)=>{
+      spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration, 'booze');
+      // Garrafón: rough spirits make guests sick, and what comes back up burns too.
+      if(evolved){
+        const until = clock.getElapsedTime()+duration*1.4;
+        for(const z of zombies){
+          const d = Math.hypot(z.group.position.x-pos.x, z.group.position.z-pos.z);
+          if(d<=radius){ z.drunkUntil = until; z.drunkPukeDps = dps*0.4; z.pukeTimer = 0.6; }
+        }
+      }
+    }
   });
 }
 
@@ -792,7 +845,8 @@ function startReload(){
   const ammo = player.ammoByWeapon[wIdx];
   if(player.reloading || ammo.reserve<=0 || ammo.mag>=effectiveMag(wIdx)) return;
   player.reloading = true;
-  const baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
+  let baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
+  if(player.soapBroke){ baseTime *= 0.45; player.soapBroke = false; }  // a snapped film re-dips quickly
   player.reloadUntil = clock.getElapsedTime()+baseTime;
   soundReloadStart();
 }

@@ -19,6 +19,8 @@ function animate(){
     updateStatusEffects(delta, elapsed);
     updateWave(delta, elapsed);
     updateInteractables(delta, elapsed);
+    updateSoap(delta, elapsed);
+    updateWeddingWeapons(delta, elapsed);
     updateProjectiles(delta, elapsed);
     updatePuddles(delta, elapsed);
     updateVortexFields(delta, elapsed);
