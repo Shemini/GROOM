@@ -414,7 +414,7 @@ function createDefaultMods(){
 const player = {
   health: 100, maxHealth: 100, money: 0, kills: 0,
   slots: [FISTS_INDEX, STARTER_INDEX, null, null],   // slot 0 is the melee slot and is never empty
-  ammoByWeapon: { 1: {mag:12, reserve:72} },
+  ammoByWeapon: { 0: {mag:1, reserve:0}, 1: {mag:12, reserve:72} },  // slot 0 is melee: a placeholder record keeps every ammo lookup valid
   currentWeapon: STARTER_INDEX,
   reloading: false, reloadUntil: 0, lastShotTime: -999,
   stats: {}, level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,

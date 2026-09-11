@@ -159,7 +159,7 @@ function updateArsenal(){
     const label = player.weaponEvolved[wIdx] ? EVOLUTIONS[wIdx].name : weapon.name;
 
     hudSet('slotKey'+i, key, String(i+1));
-    hudSet('slotAmmo'+i, ammoEl, ammo ? (mods.noReload ? String(ammo.mag) : ammo.mag+'/'+ammo.reserve) : '');
+    hudSet('slotAmmo'+i, ammoEl, weapon.noAmmo ? '—' : (ammo ? (mods.noReload ? String(ammo.mag) : ammo.mag+'/'+ammo.reserve) : ''));
     hudSet('slotName'+i, nameEl, label);
     const src = hudIconFor(weapon.name);
     if(icon.getAttribute('src') !== src) icon.src = src;
@@ -173,13 +173,21 @@ function updateStoneHUD(){
   // --- ammo ---
   const wIdx = player.currentWeapon;
   const weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx], ammo = player.ammoByWeapon[wIdx];
-  const label = player.weaponEvolved[wIdx] ? EVOLUTIONS[wIdx].name : (weapon.name+' LV'+(player.weaponLevel[wIdx]||1));
+  const label = player.weaponEvolved[wIdx] ? EVOLUTIONS[wIdx].name
+              : (weapon.noLevel ? weapon.name : weapon.name+' LV'+(player.weaponLevel[wIdx]||1));
   hudSet('wname', hudRefs.ammoWeaponName, label);
-  hudSet('mag', hudRefs.ammoMag, String(ammo.mag));
-  hudSet('reserve', hudRefs.ammoReserve, mods.noReload ? '/ —' : '/ '+ammo.reserve);
-  const magSize = effectiveMag(wIdx);
-  const low = ammo.mag <= Math.ceil(magSize*0.25);
-  if(hudRefs.ammoMag) hudRefs.ammoMag.classList.toggle('low', low);
+  // Melee carries no ammo, so show a dash instead of a count — and never assume the record
+  // exists, since a weapon without one used to throw here every frame and stall the loop.
+  if(weapon.noAmmo || !ammo){
+    hudSet('mag', hudRefs.ammoMag, '—');
+    hudSet('reserve', hudRefs.ammoReserve, '');
+    if(hudRefs.ammoMag) hudRefs.ammoMag.classList.remove('low');
+  } else {
+    hudSet('mag', hudRefs.ammoMag, String(ammo.mag));
+    hudSet('reserve', hudRefs.ammoReserve, mods.noReload ? '/ —' : '/ '+ammo.reserve);
+    const magSize = effectiveMag(wIdx);
+    if(hudRefs.ammoMag) hudRefs.ammoMag.classList.toggle('low', ammo.mag <= Math.ceil(magSize*0.25));
+  }
   if(hudRefs.ammoReloading) hudRefs.ammoReloading.style.visibility = player.reloading ? 'visible' : 'hidden';
 
   updateArsenal();

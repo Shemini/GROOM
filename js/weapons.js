@@ -160,6 +160,7 @@ function tryShoot(elapsed){
   const wIdx = player.currentWeapon, weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx], ammo = player.ammoByWeapon[wIdx];
   if(player.reloading) return;
   if(elapsed-player.lastShotTime < getShotCooldown(wIdx)) return;
+  if(!ammo && !weapon.noAmmo) return;   // defensive: a weapon with no ammo record can't fire
   if(weapon.noAmmo){
     // Melee never runs dry, so skip the magazine bookkeeping entirely.
     player.lastShotTime = elapsed;
@@ -841,9 +842,9 @@ function flashMuzzle(){ flashLight.intensity=2.4; setTimeout(()=>{ flashLight.in
 
 function startReload(){
   const wIdx = player.currentWeapon, mods = player.weaponMods[wIdx];
-  if(mods.noReload) return;
+  if(mods.noReload || ALL_WEAPONS[wIdx].noAmmo) return;   // nothing to reload on a melee weapon
   const ammo = player.ammoByWeapon[wIdx];
-  if(player.reloading || ammo.reserve<=0 || ammo.mag>=effectiveMag(wIdx)) return;
+  if(!ammo || player.reloading || ammo.reserve<=0 || ammo.mag>=effectiveMag(wIdx)) return;
   player.reloading = true;
   let baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
   if(player.soapBroke){ baseTime *= 0.45; player.soapBroke = false; }  // a snapped film re-dips quickly
@@ -854,6 +855,7 @@ function finishReloadIfDue(elapsed){
   if(!player.reloading) return;
   if(elapsed>=player.reloadUntil){
     const wIdx = player.currentWeapon, ammo = player.ammoByWeapon[wIdx];
+    if(!ammo){ player.reloading=false; return; }
     const capacity = effectiveMag(wIdx);
     const transfer = Math.min(capacity-ammo.mag, ammo.reserve);
     ammo.mag += transfer; ammo.reserve -= transfer;
