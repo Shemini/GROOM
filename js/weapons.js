@@ -164,7 +164,8 @@ function tryShoot(elapsed){
   if(weapon.noAmmo){
     // Melee never runs dry, so skip the magazine bookkeeping entirely.
     player.lastShotTime = elapsed;
-    fireMelee(wIdx, 1+statValue('damage'), Math.random()<statValue('critChance'), 1.5+statValue('critMult'));
+    const dm = 1+statValue('damage'), crit = Math.random()<statValue('critChance'), cm = 1.5+statValue('critMult');
+    fpvOnFire(wIdx, ()=>fireMelee(wIdx, dm, crit, cm));
     soundShot(weapon); return;
   }
   if(ammo.mag<=0){ if(!mods.noReload && ammo.reserve>0) startReload(); return; }
@@ -191,21 +192,27 @@ function tryShoot(elapsed){
   const isCrit = Math.random()<statValue('critChance');
   const critMultVal = 1.5+statValue('critMult');
 
-  switch(weapon.type){
-    case 'melee':   fireMelee(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'grenade': fireGrenade(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'puddle':  firePuddleVial(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'chain':   fireChain(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'bubble':  fireBubble(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'bait':    fireBait(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'stream':  fireStream(wIdx,dmgMult,isCrit,critMultVal); break;
-    case 'beam':    fireBeam(wIdx,dmgMult,isCrit,critMultVal); break;
-    default:
-      // The confetti cannon's evolution turns its forward spread into a 360 nova.
-      if(wIdx===8 && player.weaponEvolved[8]) fireNova(wIdx,dmgMult,isCrit,critMultVal);
-      else fireHitscan(wIdx,dmgMult,isCrit,critMultVal);
-      break;
-  }
+  // Handed to the first-person view rather than called directly: thrown weapons hold the
+  // projectile back until the sprite reaches the top of its arc, so the shot leaves the hand
+  // at the moment the animation shows it leaving.
+  const launch = ()=>{
+    switch(weapon.type){
+      case 'melee':   fireMelee(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'grenade': fireGrenade(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'puddle':  firePuddleVial(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'chain':   fireChain(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'bubble':  fireBubble(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'bait':    fireBait(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'stream':  fireStream(wIdx,dmgMult,isCrit,critMultVal); break;
+      case 'beam':    fireBeam(wIdx,dmgMult,isCrit,critMultVal); break;
+      default:
+        // The confetti cannon's evolution turns its forward spread into a 360 nova.
+        if(wIdx===8 && player.weaponEvolved[8]) fireNova(wIdx,dmgMult,isCrit,critMultVal);
+        else fireHitscan(wIdx,dmgMult,isCrit,critMultVal);
+        break;
+    }
+  };
+  fpvOnFire(wIdx, launch);
   soundShot(weapon); flashMuzzle(); updateHUD();
 }
 

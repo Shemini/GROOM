@@ -79,6 +79,7 @@ function init(){
   applySettingsToUI();
   loadFace();
   initHUD();
+  initFPV();
   loadAssets();
   updateHUD();
   animate();
@@ -128,6 +129,7 @@ function onMouseMove(e){
   if(mx >  cap) mx =  cap; else if(mx < -cap) mx = -cap;
   if(my >  cap) my =  cap; else if(my < -cap) my = -cap;
 
+  fpvAddMouseDelta(mx*sens*60, my*sens*60);
   euler.setFromQuaternion(camera.quaternion);
   euler.y -= mx * sens;
   euler.x -= my * sens;
@@ -158,6 +160,7 @@ function onResize(){
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   rebuildRenderTarget();
+  if(typeof fpvLayoutLayers === 'function') fpvLayoutLayers();
 }
 
 // =================================================================
@@ -353,6 +356,7 @@ function renderFrame(){
   skyMesh.position.copy(camera.position);
   renderer.setRenderTarget(renderTarget);
   renderer.render(scene, camera);
+  renderFPV(renderer);   // into the same target, so the weapon is pixelated and graded too
   renderer.setRenderTarget(null);
   renderer.render(quadScene, quadCamera);
 }
