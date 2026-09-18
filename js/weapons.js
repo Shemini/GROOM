@@ -671,9 +671,13 @@ function spawnHellfireCone(origin, dir, radius){
   scene.add(light);
   setTimeout(()=>scene.remove(light),220);
 }
-function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration){
+// `kind` tags the puddle so the damage gate can stack different liquids but not two of the
+// same: strongest per kind, summed across kinds. Without a tag every pool counted separately.
+const PUDDLE_COLORS = { booze:0xff4fa3, puke:0xc8d84a, default:0x7fff6a };
+function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration, kind){
+  const k = kind || 'default';
   const geo = new THREE.CircleGeometry(radius,20);
-  const color = stains?0xb8ff5a:0x7fff6a;
+  const color = PUDDLE_COLORS[k] !== undefined ? PUDDLE_COLORS[k] : (stains?0xb8ff5a:0x7fff6a);
   const mat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.4, side:THREE.DoubleSide });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI/2;
@@ -681,7 +685,7 @@ function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration
   scene.add(mesh);
   soundSplat();
   puddles.push({ mesh, pos:{x:pos.x,z:pos.z}, radius, dps, expiresAt:clock.getElapsedTime()+duration,
-    stains:!!stains, stainDps:stainDps||0, stainDuration:stainDuration||1 });
+    stains:!!stains, stainDps:stainDps||0, stainDuration:stainDuration||1, kind:k });
 }
 function updatePuddles(delta, elapsed){
   for(let i=puddles.length-1;i>=0;i--){

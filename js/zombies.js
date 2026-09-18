@@ -540,7 +540,7 @@ function updateStatusEffects(delta, elapsed){
     }
     if(z.stain){
       z.stain.trailTimer -= delta;
-      if(z.stain.trailTimer<=0){ spawnPuddle(z.group.position, 1.2, z.stain.dps, 2, false); z.stain.trailTimer=0.3; }
+      if(z.stain.trailTimer<=0){ spawnPuddle(z.group.position, 1.2, z.stain.dps, 2, false, 0, 0, 'stain'); z.stain.trailTimer=0.3; }
     }
     z.periodicTickTimer -= delta;
     if(z.periodicTickTimer>0) continue;
