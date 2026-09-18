@@ -22,7 +22,7 @@
 // =================================================================
 
 const WEAPON_DIR = './Weapons/';
-const WEAPON_SCREEN_FRACTION = 0.40;   // sprite width as a share of viewport width
+const WEAPON_SCREEN_FRACTION = 0.60;   // sprite width as a share of viewport width
 const WEAPON_SINK_PX = 26;             // how far the sprite's base hides behind the HUD bar
 const HUD_BAR_DESIGN_HEIGHT = 206;     // matches #hudBar in index.html
 
@@ -337,7 +337,7 @@ function updateFPV(delta, elapsed){
   fpvLayers.forEach((l, i)=>{
     const layerDef = l.def;
     let lx = offX + bobX + fpvState.swayX;
-    let ly = offY + bobY + fpvState.swayY + dropPx;
+    let ly = offY + bobY + fpvState.swayY;   // the drop is applied per layer below
 
     // The bubble wand's right hand slides to its holding position while the trigger is down.
     if(def && def.motion === 'hold' && layerDef.holdOffset){
