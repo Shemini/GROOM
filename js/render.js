@@ -353,7 +353,6 @@ function syncColorDepthUniform(){
 
 function renderFrame(){
   syncColorDepthUniform();
-  if(typeof syncHudColorDepth === 'function') syncHudColorDepth();
   skyMesh.position.copy(camera.position);
   renderer.setRenderTarget(renderTarget);
   renderer.render(scene, camera);

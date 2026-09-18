@@ -31,7 +31,8 @@ const HUD_BAR_DESIGN_HEIGHT = 206;     // matches #hudBar in index.html
 // One entry per weapon index in ALL_WEAPONS. `layers` are drawn in order, back to front.
 // Weapons with no entry simply draw nothing, so missing art never breaks anything.
 const FPV_WEAPONS = {
-  0:  { motion:'punch',  layers:[{name:'PuñosLeft', hand:'left'}, {name:'PuñosRight', hand:'right'}] },
+  0:  { motion:'punch',  layers:[{name:'PuñosLeft', hand:'left'}, {name:'PuñosRight', hand:'right'}],
+        punch:130, punchRot:0.10, punchSide:70, settle:0.26 },
   1:  { motion:'kick',   layers:[{name:'Pistola'}],   kick:16, kickRot:0.09 },
   2:  { motion:'kick',   layers:[{name:'Rifle'}],     kick:34, kickRot:0.16, settle:0.55 },
   3:  { motion:'kick',   layers:[{name:'Metralleta'}],kick:9,  kickRot:0.05, settle:0.12 },
@@ -187,8 +188,8 @@ function fpvOnFire(wIdx, fireFn){
     fpvState.punchHand = 1 - fpvState.punchHand;
     fpvState.phase = 'kick';
     fpvState.t = 0;
-    fpvState.recoil = 40;
-    fpvState.recoilRot = 0;
+    fpvState.recoil = def.punch || 130;      // was 40 — the jab barely registered
+    fpvState.recoilRot = def.punchRot || 0.10;
   } else if(def.motion === 'swing'){
     // Alternate the stroke direction so repeated swings don't look like one looping clip.
     fpvState.punchHand = 1 - fpvState.punchHand;
@@ -294,7 +295,10 @@ function updateFPV(delta, elapsed){
     // Sharp out, spring back: a damped sine reads as mechanical rather than linear.
     const env = Math.pow(1-k, 2) * Math.cos(k*Math.PI*1.6);
     if(def && def.motion === 'punch'){
-      offY += fpvState.recoil*env*0.4;
+      // Drive the hand up and across rather than nudging it, so the jab reads as a strike.
+      fpvState.punchEnv = env;
+      offY += fpvState.recoil*env;
+      rot  += (fpvState.punchHand===0 ? -1 : 1) * fpvState.recoilRot * env;
     } else {
       offY -= fpvState.recoil*env;
       rot  -= fpvState.recoilRot*env;
@@ -374,7 +378,13 @@ function updateFPV(delta, elapsed){
     // Fists: only the punching hand moves, and it alternates each swing.
     if(def && def.motion === 'punch'){
       const isActive = (fpvState.punchHand === 0) ? (layerDef.hand === 'right') : (layerDef.hand === 'left');
-      if(!isActive) ly -= (offY);   // cancel the punch offset for the idle hand
+      if(!isActive){
+        ly -= offY;                 // the idle hand keeps its resting position
+      } else {
+        // Throw it toward the centre of the screen as it extends.
+        const side = (layerDef.hand === 'right') ? -1 : 1;
+        lx += side * (def.punchSide||70) * (fpvState.punchEnv||0);
+      }
     }
 
     const p = fpvPx(lx, ly);

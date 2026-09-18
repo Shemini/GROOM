@@ -193,7 +193,6 @@
   .stud{position:absolute;width:12px;height:12px;background:var(--gold);}
   #faceClip{width:256px;height:256px;overflow:hidden;}
   #faceCanvas{width:256px;height:256px;}
-  #faceCanvas.hit{filter:saturate(1.5) brightness(1.08);}
 
   .overlay{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
     background:rgba(4,4,5,0.9);flex-direction:column;text-align:center;}
@@ -263,36 +262,6 @@
 </style>
 </head>
 <body>
-
-<!-- Colour-depth filters for the HUD. The status bar is DOM, so it sits outside the WebGL
-     render target and the grading shader can't reach it; an SVG feComponentTransfer with
-     discrete tableValues performs the same per-channel quantisation the shader does, which
-     keeps the banner matching the world. Populated by hud.js from the same level table. -->
-<svg id="hudFilterDefs" width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <filter id="hudQuantize4" color-interpolation-filters="sRGB">
-      <feComponentTransfer>
-        <feFuncR type="discrete" tableValues=""></feFuncR>
-        <feFuncG type="discrete" tableValues=""></feFuncG>
-        <feFuncB type="discrete" tableValues=""></feFuncB>
-      </feComponentTransfer>
-    </filter>
-    <filter id="hudQuantize8" color-interpolation-filters="sRGB">
-      <feComponentTransfer>
-        <feFuncR type="discrete" tableValues=""></feFuncR>
-        <feFuncG type="discrete" tableValues=""></feFuncG>
-        <feFuncB type="discrete" tableValues=""></feFuncB>
-      </feComponentTransfer>
-    </filter>
-    <filter id="hudQuantize16" color-interpolation-filters="sRGB">
-      <feComponentTransfer>
-        <feFuncR type="discrete" tableValues=""></feFuncR>
-        <feFuncG type="discrete" tableValues=""></feFuncG>
-        <feFuncB type="discrete" tableValues=""></feFuncB>
-      </feComponentTransfer>
-    </filter>
-  </defs>
-</svg>
 
 <div id="crosshair"><div class="dot"></div></div>
 <div id="spreadRing"></div>
@@ -417,8 +386,8 @@
   <div class="rowLabel"><span>Color Depth</span></div>
   <select id="colorDepth">
     <option value="4">4-bit (16 colors)</option>
-    <option value="8">8-bit (256 colors)</option>
-    <option value="16" selected>16-bit (65k colors)</option>
+    <option value="8" selected>8-bit (256 colors)</option>
+    <option value="16">16-bit (65k colors)</option>
     <option value="24">24-bit (full)</option>
   </select>
 

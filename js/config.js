@@ -391,7 +391,7 @@ const DEFAULT_SETTINGS = {
   mouseSensitivity:0.0022,
   faceAnimSpeed:1.0,   // global multiplier for tuning the portrait's animation speed live
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:6, lutStrength:1,
-  colorDepth:16,   // 4 / 8 / 16 / 24 — note the renderer itself is 24-bit, so 24 = no quantisation
+  colorDepth:8,   // 4 / 8 / 16 / 24 — note the renderer itself is 24-bit, so 24 = no quantisation
   skyColor:'#3a5f8a', horizonColor:'#ccf0ff', horizonSharpness:2.0,
   sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
   contactShadowColor:'#000000', contactShadowOpacity:0.45,

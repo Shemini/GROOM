@@ -247,56 +247,6 @@ function hudApplyMinimapBackground(){
   hudRefs.minimapViewport.style.backgroundImage = 'url(' + minimapBgCanvas.toDataURL() + ')';
 }
 
-// =================================================================
-// HUD COLOUR DEPTH
-// The status bar is DOM, composited by the browser outside the WebGL render target, so the
-// grading shader can't touch it — at 4-bit the world would posterise hard while the banner
-// stayed smooth. An SVG feComponentTransfer with discrete tableValues quantises each channel
-// the same way the shader does, driven from the same level table so the two can't disagree.
-//
-// One honest difference: the shader dithers, this can't. On the flat fills the HUD is made of
-// that's invisible, but a heavy gradient in the banner would band where the world wouldn't.
-// =================================================================
-let hudFiltersBuilt = false;
-let hudLastDepth = -1;
-
-// n discrete levels spanning 0..1. feComponentTransfer splits the input range into as many
-// bands as there are entries, so the entry count IS the level count.
-function hudQuantTable(levels){
-  const n = Math.max(2, Math.round(levels));
-  const out = new Array(n);
-  for(let i=0;i<n;i++) out[i] = (i/(n-1)).toFixed(4);
-  return out.join(' ');
-}
-
-function buildHudFilters(){
-  if(hudFiltersBuilt) return;
-  const defs = document.getElementById('hudFilterDefs');
-  if(!defs) return;
-  [4,8,16].forEach(depth=>{
-    const filter = document.getElementById('hudQuantize'+depth);
-    if(!filter) return;
-    const levels = colorLevelsFor(depth);   // the shader's own table: Vector3(r,g,b)
-    const funcs = filter.querySelectorAll('feFuncR, feFuncG, feFuncB');
-    if(funcs.length < 3) return;
-    funcs[0].setAttribute('tableValues', hudQuantTable(levels.x));
-    funcs[1].setAttribute('tableValues', hudQuantTable(levels.y));
-    funcs[2].setAttribute('tableValues', hudQuantTable(levels.z));
-  });
-  hudFiltersBuilt = true;
-}
-
-// Called each frame from the render loop, alongside the shader's own sync, so the banner
-// follows the dropdown however the setting was changed.
-function syncHudColorDepth(){
-  const depth = settings.colorDepth;
-  if(depth === hudLastDepth) return;
-  hudLastDepth = depth;
-  buildHudFilters();
-  const targets = [document.getElementById('hudBar'), document.getElementById('statPanel'),
-                   document.getElementById('topBar')];
-  // 24-bit is the renderer's native depth, so no filter at all rather than a no-op one —
-  // an SVG filter forces the element onto its own compositing layer, which isn't free.
-  const value = (depth >= 24) ? '' : 'url(#hudQuantize'+depth+')';
-  targets.forEach(el2=>{ if(el2) el2.style.filter = value; });
-}
+// The HUD deliberately does NOT follow the colour-depth setting: the banner reads better at
+// full depth, and an SVG filter over it forces an extra compositing layer for no real gain.
+// The world's depth is handled entirely in the grading shader (see syncColorDepthUniform).

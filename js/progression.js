@@ -34,9 +34,15 @@ function buildUpgradePool(){
   STATS.forEach(s=>{ if(statLevel(s.key)<s.maxLevel) pool.push({ctype:'stat', stat:s}); });
   player.slots.forEach(wIdx=>{
     if(wIdx===null) return;
+    const w = ALL_WEAPONS[wIdx];
+    // The fists are a fallback, not a build path: no level table, no evolution, so they must
+    // never reach the card builder — reading a table that doesn't exist threw mid-render,
+    // which left the level-up screen with too few cards or none at all.
+    if(!w || w.noLevel) return;
+    if(!BASE_LEVEL_TABLES[wIdx] && !player.weaponEvolved[wIdx]) return;
     if(player.weaponEvolved[wIdx]) pool.push({ctype:'weapon', weaponIdx:wIdx});
     else if((player.weaponLevel[wIdx]||1)<5) pool.push({ctype:'weapon', weaponIdx:wIdx});
-    else pool.push({ctype:'evolve', weaponIdx:wIdx});
+    else if(EVOLUTIONS[wIdx]) pool.push({ctype:'evolve', weaponIdx:wIdx});
   });
   return pool;
 }
@@ -76,16 +82,25 @@ function doReroll(){
   player.money -= player.rerollCost; player.rerollCost += 50;
   soundPurchase(); updateHUD();
   const picks = pickThreeStats();
-  if(picks.length===0){ levelUpEl.classList.add('hidden'); gameState='playing'; requestLock(); return; }
-  renderLevelUpCards(picks);
+  if(picks.length===0 || !safeRenderLevelUpCards(picks)){
+    levelUpEl.classList.add('hidden'); gameState='playing'; requestLock(); return;
+  }
 }
+// Wrapped so a card that fails to build can't leave the game stuck: the level-up screen is
+// shown with gameState already switched, so an exception between the two used to freeze the
+// game with no overlay and no pointer lock to recover from.
+function safeRenderLevelUpCards(picks){
+  try { renderLevelUpCards(picks); return true; }
+  catch(e){ console.error('Level-up card render failed', e); return false; }
+}
+
 function maybeShowLevelUp(){
   if(gameState==='playing' && player.pendingLevelUps>0){
     player.pendingLevelUps--;
     gameState='levelup'; document.exitPointerLock(); soundLevelUp();
     const picks = pickThreeStats();
     if(picks.length===0){ gameState='playing'; requestLock(); return; }
-    renderLevelUpCards(picks);
+    if(!safeRenderLevelUpCards(picks)){ gameState='playing'; requestLock(); return; }
     levelUpEl.classList.remove('hidden');
   }
 }
@@ -101,8 +116,10 @@ function chooseLevelUpCard(sel){
   if(player.pendingLevelUps>0){
     player.pendingLevelUps--; soundLevelUp();
     const picks = pickThreeStats();
-    if(picks.length===0){ levelUpEl.classList.add('hidden'); gameState='playing'; requestLock(); return; }
-    renderLevelUpCards(picks); return;
+    if(picks.length===0 || !safeRenderLevelUpCards(picks)){
+      levelUpEl.classList.add('hidden'); gameState='playing'; requestLock(); return;
+    }
+    return;
   }
   levelUpEl.classList.add('hidden'); gameState='playing'; requestLock();
 }
