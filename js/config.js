@@ -416,7 +416,7 @@ const player = {
   slots: [FISTS_INDEX, STARTER_INDEX, null, null],   // slot 0 is the melee slot and is never empty
   ammoByWeapon: { 0: {mag:1, reserve:0}, 1: {mag:12, reserve:72} },  // slot 0 is melee: a placeholder record keeps every ammo lookup valid
   currentWeapon: STARTER_INDEX,
-  reloading: false, reloadUntil: 0, lastShotTime: -999,
+  reloading: false, reloadUntil: 0, lastReloadStart: 0, lastShotTime: -999,
   stats: {}, level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,
   weaponLevel: { 1:1 }, weaponEvolved: { 1:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods(), 1: createDefaultMods() },
   burstState: {}, doubleUntil: 0, instakillUntil: 0,

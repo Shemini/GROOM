@@ -22,8 +22,10 @@
 // =================================================================
 
 const WEAPON_DIR = './Weapons/';
-const WEAPON_SCREEN_FRACTION = 0.60;   // sprite width as a share of viewport width
-const WEAPON_SINK_PX = 26;             // how far the sprite's base hides behind the HUD bar
+const WEAPON_SCREEN_FRACTION = 0.48;   // 20% smaller than the previous 0.60   // sprite width as a share of viewport width
+// How far the sprite's base sits below the top of the HUD bar, as a fraction of the bar's
+// height. 0.5 puts the bottom of the art halfway down the banner.
+const WEAPON_SINK_FRACTION = 0.5;
 const HUD_BAR_DESIGN_HEIGHT = 206;     // matches #hudBar in index.html
 
 // One entry per weapon index in ALL_WEAPONS. `layers` are drawn in order, back to front.
@@ -40,7 +42,10 @@ const FPV_WEAPONS = {
   8:  { motion:'kick',   layers:[{name:'Confetti'}],  kick:42, kickRot:0.2, settle:0.6 },
   9:  { motion:'vibrate', layers:[{name:'Megatron'}], shake:5.5, shakeRot:0.016 },
   10: { motion:'toggle', layers:[{name:'LaserA', alt:'LaserB'}] },
-  11: { motion:'swing',  layers:[{name:'Espada'}], swingArc:330, swingRot:1.15, swingLift:70 },
+  // pivot is in normalised sprite space: x 0=left..1=right, y 0=top..1=bottom. Putting it
+  // low and to the right makes the blade sweep from a held grip rather than spinning about
+  // the middle of the image.
+  11: { motion:'swing',  layers:[{name:'Espada', pivot:{x:0.75, y:0.85}}], swingArc:330, swingRot:1.15, swingLift:70 },
 };
 
 // Swing timing, in seconds. Kept just under the sword's 0.5s cadence so a held trigger reads
@@ -51,6 +56,8 @@ const SWING_TIME = 0.34;
 // Weapon-swap timing, in seconds. Long enough to register as a movement rather than a cut.
 const SWAP_OUT_TIME = 0.16;
 const SWAP_IN_TIME = 0.22;
+// Share of a reload spent travelling at each end; the remainder is held off-screen.
+const RELOAD_TRAVEL = 0.3;
 
 const TOSS_DIP = 0.12;      // dip down before the throw
 const TOSS_RISE = 0.16;     // up to the zenith, where the sprite swaps and the projectile flies
@@ -132,7 +139,7 @@ function fpvLayoutLayers(){
   // The HUD bar is authored at 2100px wide and scaled to the viewport, so its on-screen
   // height scales with it — the sprite has to follow or it would detach at other resolutions.
   const barPx = HUD_BAR_DESIGN_HEIGHT * (W/HUD_DESIGN_WIDTH);
-  const basePx = Math.max(0, barPx - WEAPON_SINK_PX);
+  const basePx = Math.max(0, barPx * (1 - WEAPON_SINK_FRACTION));
 
   fpvLayers.forEach(l=>{
     const img = l.mat.map.image;
@@ -267,11 +274,17 @@ function updateFPV(delta, elapsed){
     }
     altNow = fpvState.showAlt;
   } else if(def && def.motion === 'toss'){
-    // Between throws the hand still holds the spent state until a reload restores it.
+    // Between throws the hand keeps the spent state. During a reload, showAlt is cleared by
+    // the drop handler at the halfway point — so the empty sprite travels down and the
+    // restocked one travels back up. Reading showAlt directly (rather than forcing the empty
+    // state for the whole reload, as this used to) is what lets that swap happen.
     const ammo = player.ammoByWeapon[wIdx];
-    altNow = fpvState.showAlt && !(ammo && ammo.mag > 0);
-    if(player.reloading) altNow = true;
-    if(ammo && ammo.mag > 0 && !player.reloading) altNow = false;
+    if(player.reloading){
+      altNow = fpvState.showAlt;
+    } else {
+      altNow = fpvState.showAlt && !(ammo && ammo.mag > 0);
+      if(ammo && ammo.mag > 0) altNow = false;
+    }
   }
 
   if(fpvState.phase === 'kick'){
@@ -319,11 +332,22 @@ function updateFPV(delta, elapsed){
   // left the top of taller sprites poking up during reloads.
   let dropK = 0;
   if(player.reloading){
-    const total = Math.max(0.15, player.reloadUntil - (player.lastReloadStart||0));
+    const start = player.lastReloadStart || (player.reloadUntil - 1.6);
+    const total = Math.max(0.15, player.reloadUntil - start);
     const remain = Math.max(0, player.reloadUntil - elapsed);
     const k = 1 - Math.min(1, remain/total);
-    // Down and back, fully hidden across the middle of the reload.
-    dropK = Math.sin(Math.min(1,k)*Math.PI);
+    // Drop clean out of frame, hold there, then come back up — rather than a single sine that
+    // only touches full extension for an instant. RELOAD_TRAVEL is the share of the reload
+    // spent moving at each end; the middle is spent fully hidden.
+    if(k < RELOAD_TRAVEL)            dropK = k/RELOAD_TRAVEL;
+    else if(k > 1-RELOAD_TRAVEL)     dropK = (1-k)/RELOAD_TRAVEL;
+    else                             dropK = 1;
+    // Thrown weapons come back up already restocked: the empty still goes down, the full one
+    // returns. The swap happens while the sprite is out of sight.
+    if(def && def.motion === 'toss' && k >= 0.5){
+      const ammo = player.ammoByWeapon[wIdx];
+      if(ammo && ammo.reserve > 0) fpvState.showAlt = false;
+    }
   }
   if(fpvState.phase === 'swap'){
     const dur = fpvState.swapOut ? SWAP_OUT_TIME : SWAP_IN_TIME;
@@ -356,8 +380,23 @@ function updateFPV(delta, elapsed){
     const p = fpvPx(lx, ly);
     // Enough travel to put the sprite's top edge below the bottom of the screen, whatever its
     // height, plus a small margin so nothing peeks during the hold.
-    const clearTravel = (l.baseY||0) + (l.heightUnits||1)/2 + 1 + 0.05;
-    l.mesh.position.set(p.x, (l.baseY||0) + p.y - dropK*clearTravel, 0);
+    const clearTravel = (l.baseY||0) + (l.heightUnits||1)/2 + 1 + 0.15;
+    let cx = p.x;
+    let cy = (l.baseY||0) + p.y - dropK*clearTravel;
+
+    // Rotate about a chosen point on the sprite rather than its centre. three.js always spins
+    // a mesh about its own origin, so the mesh is nudged by (P - R·P): the offset that leaves
+    // the pivot sitting still while everything around it turns.
+    if(rot !== 0 && layerDef.pivot){
+      const wu = l.mesh.scale.x, hu = l.mesh.scale.y;
+      const px = (layerDef.pivot.x - 0.5) * wu;     // centre -> pivot, in overlay units
+      const py = (0.5 - layerDef.pivot.y) * hu;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      cx += px - (px*cos - py*sin);
+      cy += py - (px*sin + py*cos);
+    }
+
+    l.mesh.position.set(cx, cy, 0);
     l.mesh.rotation.z = rot;
 
     // Two-state sprites (A/B) swap their texture rather than needing a second plane.

@@ -859,7 +859,11 @@ function startReload(){
   player.reloading = true;
   let baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
   if(player.soapBroke){ baseTime *= 0.45; player.soapBroke = false; }  // a snapped film re-dips quickly
-  player.reloadUntil = clock.getElapsedTime()+baseTime;
+  // The first-person view needs the start time as well as the end, or it can't work out how
+  // far through the reload it is — without this the drop animation barely moved, because the
+  // progress fraction was measured against the whole session rather than this reload.
+  player.lastReloadStart = clock.getElapsedTime();
+  player.reloadUntil = player.lastReloadStart+baseTime;
   soundReloadStart();
 }
 function finishReloadIfDue(elapsed){
