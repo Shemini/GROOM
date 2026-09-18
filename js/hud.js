@@ -13,41 +13,18 @@
 
 const HUD_DESIGN_WIDTH = 2100;
 
-// 16x8 pixel-art weapon icons, rasterised once at boot and cached as data URLs.
-// Palette: . transparent, m metal, l light metal, w wood, e energy.
-const HUD_ICON_COLORS = { m:'#4a4a52', l:'#9aa0aa', w:'#6b4a25', e:'#ffcf5c' };
-const HUD_ICON_ART = {
-  PISTOL:        ['................','.....llll.......','....lmmmml......','...lmmmmmml.....','...lmm..........','...www..........','...www..........','...ww...........'],
-  SHOTGUN:       ['................','..llllllllll....','.lmmmmmmmmmml...','.lmmmmmmmmmml...','..wwww..........','..wwwww.........','...www..........','...ww...........'],
-  SMG:           ['................','....llllll......','...lmmmmmml.....','...lmmmmmml.....','...lmm.mm.......','...www.mm.......','...www..........','...ww...........'],
-  RIFLE:         ['................','..llllllllllll..','.lmmmmmmmmmmmml.','.lmmmmmmmmmmmml.','..ww...mm.......','..www..mm.......','...www..........','...ww...........'],
-  'FRAG LAUNCHER':['................','...llllllll.....','..lmmmmmmmml....','..lmmeeeemml....','..lmmmmmmmml....','...www..........','...www..........','...ww...........'],
-  'ARC RIFLE':   ['................','....llllll......','...lmmeemml.....','...lmeeeeml.....','...lmmeemml.....','...www..........','...www..........','...ww...........'],
-  'ACID VIAL':   ['................','......ll........','.....leel.......','....leeeel......','....leeeel......','....leeeel......','.....llll.......','................'],
-  RAILGUN:       ['................','.llllllllllllll.','.lmmmmeeeemmmml.','.lmmmmeeeemmmml.','.llllllllllllll.','...www..........','...www..........','...ww...........'],
-  'VORTEX CANNON':['................','....llllll......','...leeeeeel.....','..lee....eel....','...leeeeeel.....','....llllll......','...www..........','...ww...........'],
+// Weapon icons, keyed by index in ALL_WEAPONS. They live alongside the first-person art in
+// Weapons/ and are referenced by URL — the browser decodes the PNG alpha for us, so no
+// rasterising or palette work is needed here any more.
+const HUD_ICON_FILES = {
+  0:'PuñosIcon', 1:'PistolaIcon', 2:'RifleIcon', 3:'MetralletaIcon',
+  4:'BurbujaIcon', 5:'JamonIcon', 6:'PetardoIcon', 7:'TequifresaIcon',
+  8:'ConfettiIcon', 9:'MegatronIcon', 10:'LaserIcon', 11:'EspadaIcon',
 };
-const hudIconCache = {};
-
-function hudIconFor(name){
-  if(hudIconCache[name]) return hudIconCache[name];
-  const art = HUD_ICON_ART[name];
-  if(!art){ hudIconCache[name] = ''; return ''; }
-  const px = 7, w = art[0].length, h = art.length;
-  const c = document.createElement('canvas');
-  c.width = w*px; c.height = h*px;
-  const ctx = c.getContext('2d');
-  for(let y=0;y<h;y++){
-    for(let x=0;x<w;x++){
-      const ch = art[y][x];
-      const col = HUD_ICON_COLORS[ch];
-      if(!col) continue;
-      ctx.fillStyle = col;
-      ctx.fillRect(x*px, y*px, px, px);
-    }
-  }
-  hudIconCache[name] = c.toDataURL();
-  return hudIconCache[name];
+// ñ and accents have to be percent-encoded or the request 404s on a strict server.
+function hudIconFor(wIdx){
+  const file = HUD_ICON_FILES[wIdx];
+  return file ? (WEAPON_DIR + encodeURIComponent(file) + '.png') : '';
 }
 
 let hudRefs = null;
@@ -65,7 +42,7 @@ function initHUD(){
     bar: el('hudBar'),
     ammoWeaponName: el('ammoWeaponName'), ammoMag: el('ammoMag'),
     ammoReserve: el('ammoReserve'), ammoReloading: el('ammoReloading'),
-    arsenalGrid: el('arsenalGrid'), arsenalCount: el('arsenalCount'),
+    arsenalGrid: el('arsenalGrid'),
     healthValue: el('healthValue'), healthMax: el('healthMax'), healthPips: el('healthPips'),
     stamTrack: el('stamTrack'),
     tallyKills: el('tallyKills'), tallyScore: el('tallyScore'),
@@ -120,11 +97,13 @@ function buildArsenalSlots(){
   for(let i=0;i<player.slots.length;i++){
     const slot = document.createElement('div');
     slot.className = 'slot empty';
+    // The icon is the backdrop; the key, ammo and name are overlaid on it.
     slot.innerHTML =
-      '<div class="top"><span class="key chip sm"></span><span class="ammo"></span></div>' +
       '<img class="icon" alt="">' +
+      '<span class="key"></span>' +
+      '<span class="ammo"></span>' +
       '<div class="name"></div>' +
-      '<div class="hatch"></div><div class="emptyTxt">EMPTY</div>';
+      '<div class="emptyTxt">EMPTY</div>';
     hudRefs.arsenalGrid.appendChild(slot);
   }
 }
@@ -138,12 +117,12 @@ function updateArsenal(){
     const cell = cells[i];
     const key = cell.querySelector('.key'), ammoEl = cell.querySelector('.ammo');
     const icon = cell.querySelector('.icon'), nameEl = cell.querySelector('.name');
-    const hatch = cell.querySelector('.hatch'), emptyTxt = cell.querySelector('.emptyTxt');
+    const emptyTxt = cell.querySelector('.emptyTxt');
 
     if(wIdx === null || wIdx === undefined){
       cell.className = 'slot empty';
       key.style.display = ammoEl.style.display = icon.style.display = nameEl.style.display = 'none';
-      hatch.style.display = emptyTxt.style.display = '';
+      emptyTxt.style.display = '';
       continue;
     }
 
@@ -151,7 +130,7 @@ function updateArsenal(){
     const isActive = (wIdx === player.currentWeapon);
     cell.className = 'slot ' + (isActive ? 'active' : 'filled');
     key.style.display = ammoEl.style.display = icon.style.display = nameEl.style.display = '';
-    hatch.style.display = emptyTxt.style.display = 'none';
+    emptyTxt.style.display = 'none';
 
     const weapon = ALL_WEAPONS[wIdx];
     const mods = player.weaponMods[wIdx];
@@ -161,10 +140,9 @@ function updateArsenal(){
     hudSet('slotKey'+i, key, String(i+1));
     hudSet('slotAmmo'+i, ammoEl, weapon.noAmmo ? '—' : (ammo ? (mods.noReload ? String(ammo.mag) : ammo.mag+'/'+ammo.reserve) : ''));
     hudSet('slotName'+i, nameEl, label);
-    const src = hudIconFor(weapon.name);
+    const src = hudIconFor(wIdx);
     if(icon.getAttribute('src') !== src) icon.src = src;
   }
-  hudSet('carry', hudRefs.arsenalCount, 'CARRY '+carried+' OF '+player.slots.length);
 }
 
 function updateStoneHUD(){

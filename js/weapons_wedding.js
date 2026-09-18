@@ -199,23 +199,25 @@ function fireBait(wIdx, dmgMult, isCrit, critMultVal){
   const w = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const start = camera.position.clone().addScaledVector(forward,0.6);
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.45,0.12,12),
-    new THREE.MeshStandardMaterial({ color:0xc4564f, emissive:0x3a0f0c, emissiveIntensity:0.4 }));
+  // Flies as its own icon. No spin: a tray of ham should stay level, unlike the firecracker
+  // and the bottle, which tumble.
+  const mesh = createIconProjectile('JamonIcon', 0.7);
   mesh.position.copy(start);
   scene.add(mesh);
   const seconds = (w.baitSeconds||40)*mods.durationMult;
   const radius = (w.baitRadius||16)*mods.radiusMult;
   const evolved = !!player.weaponEvolved[wIdx];
   projectiles.push({
-    mesh, pos:start.clone(), vel:forward.clone().multiplyScalar(w.launchSpeed||13),
+    mesh, spin:0, pos:start.clone(), vel:forward.clone().multiplyScalar(w.launchSpeed||13),
     gravity:true, radius:0.3, groundOnly:true, spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{ spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult); }
   });
 }
 
 function spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult){
-  const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,0.1,16),
-    new THREE.MeshStandardMaterial({ color:0xd8b48a, emissive:0x2a1a0c, emissiveIntensity:0.3 }));
+  // Lies flat on the floor once it lands, so it reads as a plate set down rather than a disc.
+  const plate = createIconProjectile('JamonIcon', 1.3);
+  plate.rotation.x = -Math.PI/2;
   plate.position.set(pos.x, pos.y+0.06, pos.z);
   scene.add(plate);
   const ring = new THREE.Mesh(new THREE.RingGeometry(radius-0.25, radius, 32),
@@ -259,7 +261,7 @@ function updateBaits(delta, elapsed){
       b.deadline = elapsed + remaining/eaters;
     }
 
-    b.plate.rotation.y += delta*0.6;
+    b.plate.rotation.z += delta*0.6;   // lying flat, so spin is about its own normal
     const lifeFrac = Math.max(0, (b.deadline-elapsed)/Math.max(0.001, b.radius));
     b.ring.material.opacity = 0.10 + 0.08*Math.sin(elapsed*3);
 

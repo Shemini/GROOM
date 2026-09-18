@@ -39,6 +39,7 @@ const DROP_LIFETIME = 15;
 const DROP_TYPES = ['ammo','health','double','instakill'];
 // Pickup spritesheet: 1024x1024, an 8x8 grid of 128px frames. Each pickup owns two rows, so
 // its 16 frames run left-to-right along the first row and continue onto the second.
+const WEAPON_DIR = './Weapons/';   // first-person sprites and HUD icons
 const DROP_TEXTURE = './Pickups1024.png';
 const DROP_SHEET_COLS = 8, DROP_SHEET_ROWS = 8;
 const DROP_ANIM_FRAMES = 16;

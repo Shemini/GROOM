@@ -128,31 +128,35 @@
   #ammoReloading{font-size:12px;letter-spacing:5px;color:var(--danger);visibility:hidden;}
 
   /* ARSENAL */
-  #cellArsenal{flex:1;padding:10px 14px;gap:8px;}
-  #arsenalHeader{display:flex;align-items:baseline;gap:10px;justify-content:space-between;}
-  #arsenalGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;}
-  .slot{min-height:96px;display:flex;flex-direction:column;}
+  #cellArsenal{flex:1;padding:10px 14px;display:flex;align-items:center;justify-content:center;}
+  /* Square cells: the icons are square, so aspect-ratio keeps them undistorted at any width. */
+  #arsenalGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;height:100%;}
+  .slot{position:relative;aspect-ratio:1/1;height:100%;overflow:hidden;}
   .slot.active{background:#5c4720;
     background-image:repeating-linear-gradient(45deg,rgba(255,240,205,.06) 0 2px,rgba(0,0,0,0) 2px 6px);
-    box-shadow:inset 0 0 0 3px var(--gold);padding:8px 10px;}
-  .slot.filled{background:#1d160c;box-shadow:inset 0 0 0 3px var(--txt-off);padding:8px 10px;}
+    box-shadow:inset 0 0 0 3px var(--gold);}
+  .slot.filled{background:#1d160c;box-shadow:inset 0 0 0 3px var(--txt-off);}
   .slot.empty{background:#181207;
     box-shadow:inset 3px 3px 0 #0d0904, inset -3px -3px 0 #33291a;
-    align-items:center;justify-content:center;gap:8px;}
-  .slot .top{display:flex;align-items:center;justify-content:space-between;gap:6px;}
-  .slot .key{font-size:12px;padding:2px 6px;}
+    display:flex;align-items:center;justify-content:center;}
+  /* The icon is the backdrop at 90% of the cell; everything else is overlaid on top of it. */
+  .slot .icon{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:90%;height:90%;object-fit:contain;image-rendering:pixelated;}
+  .slot.filled .icon{opacity:.5;}
+  /* Text sits over the art, so it needs its own backing to stay readable. */
+  .slot .key{position:absolute;left:4px;top:4px;font-size:12px;padding:1px 5px;z-index:2;
+    background:rgba(10,7,3,.78);}
   .slot.active .key{color:#0f0b05;background:var(--gold);}
-  .slot.filled .key{color:var(--txt-dim);background:#2f2617;}
-  .slot .ammo{font-size:11px;}
+  .slot.filled .key{color:var(--txt-dim);}
+  .slot .ammo{position:absolute;right:4px;top:4px;font-size:11px;padding:1px 5px;z-index:2;
+    background:rgba(10,7,3,.78);}
   .slot.active .ammo{color:var(--gold);}
   .slot.filled .ammo{color:var(--txt-muted);}
-  .slot .icon{width:76px;height:48px;margin:4px auto;image-rendering:pixelated;}
-  .slot.filled .icon{opacity:.45;}
-  .slot .name{font-size:10px;letter-spacing:1px;line-height:1.1;overflow-wrap:anywhere;}
+  .slot .name{position:absolute;left:0;right:0;bottom:0;z-index:2;text-align:center;
+    font-size:9px;letter-spacing:.5px;line-height:1.2;padding:3px 2px;overflow-wrap:anywhere;
+    background:linear-gradient(180deg,rgba(10,7,3,0) 0%,rgba(10,7,3,.85) 45%);}
   .slot.active .name{color:var(--gold-lt);}
   .slot.filled .name{color:var(--txt-dim);}
-  .slot .hatch{width:34px;height:34px;
-    background:repeating-linear-gradient(45deg,#241c10 0 5px,#1b1409 5px 10px);}
   .slot .emptyTxt{font-size:11px;letter-spacing:3px;color:var(--txt-off);}
 
   /* HEALTH + STAMINA */
@@ -301,10 +305,6 @@
       </div>
 
       <div id="cellArsenal" class="cell">
-        <div id="arsenalHeader">
-          <span class="chip">ARSENAL</span>
-          <span id="arsenalCount" class="chip sm">CARRY 1 OF 4</span>
-        </div>
         <div id="arsenalGrid"></div>
       </div>
     </div>

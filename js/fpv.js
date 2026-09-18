@@ -21,7 +21,6 @@
 // with their base sitting just below the top of the HUD bar so the frame is clipped by it.
 // =================================================================
 
-const WEAPON_DIR = './Weapons/';
 const WEAPON_SCREEN_FRACTION = 0.48;   // 20% smaller than the previous 0.60   // sprite width as a share of viewport width
 // How far the sprite's base sits below the top of the HUD bar, as a fraction of the bar's
 // height. 0.5 puts the bottom of the art halfway down the banner.

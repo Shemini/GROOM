@@ -493,6 +493,32 @@ function createProjectileMesh(color, size){
   return new THREE.Mesh(new THREE.SphereGeometry(size,8,8), mat);
 }
 
+// Some thrown weapons fly as their own HUD icon rather than an abstract blob. The plane is
+// turned to face the camera every frame (see updateProjectiles), and `spin` rotates it about
+// the view axis so tumbling reads clearly against any background.
+const projectileIconCache = {};
+function createIconProjectile(iconFile, size){
+  let tex = projectileIconCache[iconFile];
+  if(!tex){
+    tex = new THREE.TextureLoader().load(WEAPON_DIR + encodeURIComponent(iconFile) + '.png');
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    projectileIconCache[iconFile] = tex;
+  }
+  // Blended rather than alpha-tested: these icons have soft edges, and a hard cutout would
+  // leave them visibly jagged in flight. depthWrite off so the clear border doesn't punch
+  // a hole through whatever is behind it.
+  const mat = new THREE.MeshBasicMaterial({
+    map:tex, transparent:true, alphaTest:0.02, depthWrite:false,
+    side:THREE.DoubleSide, toneMapped:false,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
   const weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
@@ -500,11 +526,11 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
   const vel = forward.clone().multiplyScalar(weapon.launchSpeed);
   const dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
   const radius = effectiveBlastRadius(wIdx);
-  const mesh = createProjectileMesh(0xff8a3d,0.18);
+  const mesh = createIconProjectile('PetardoIcon', 0.55);
   mesh.position.copy(startPos); scene.add(mesh);
   const evolved = player.weaponEvolved[wIdx];
   projectiles.push({
-    mesh, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true, fuseDelay:weapon.fuseDelay,
+    mesh, spin:9.0, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true, fuseDelay:weapon.fuseDelay,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
       explodeAt(pos, radius, dmg, true);
@@ -545,13 +571,13 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
   const startPos = camera.position.clone().addScaledVector(forward,0.6);
   const vel = forward.clone().multiplyScalar(weapon.launchSpeed);
-  const mesh = createProjectileMesh(0x6fef7d,0.16);
+  const mesh = createIconProjectile('TequifresaIcon', 0.55);
   mesh.position.copy(startPos); scene.add(mesh);
   const radius=effectivePuddleRadius(wIdx), duration=effectivePuddleDuration(wIdx), dps=effectivePuddleDps(wIdx);
   const evolved = player.weaponEvolved[wIdx];
   const stainDps=dps*0.5, stainDuration=duration*0.6;
   projectiles.push({
-    mesh, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true,
+    mesh, spin:6.5, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
       spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration, 'booze');
@@ -598,6 +624,13 @@ function updateProjectiles(delta, elapsed){
     if(p.gravity) p.vel.y -= GRAVITY*delta;
     p.pos.addScaledVector(p.vel, delta);
     p.mesh.position.copy(p.pos);
+    // Icon projectiles are flat planes, so keep them turned toward the camera and spin them
+    // about the view axis; without the billboarding they'd vanish edge-on.
+    if(p.spin !== undefined){
+      p.mesh.quaternion.copy(camera.quaternion);
+      p.spinAngle = (p.spinAngle||0) + p.spin*delta;
+      p.mesh.rotateZ(p.spinAngle);
+    }
 
     let hitPos=null, impacted=false;
     const fy = getFloorY(p.pos.x, p.pos.z, p.pos.y+3);
