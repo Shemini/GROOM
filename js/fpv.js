@@ -22,7 +22,7 @@
 // =================================================================
 
 const WEAPON_DIR = './Weapons/';
-const WEAPON_SCREEN_FRACTION = 0.80;   // sprite width as a share of viewport width
+const WEAPON_SCREEN_FRACTION = 0.40;   // sprite width as a share of viewport width
 const WEAPON_SINK_PX = 26;             // how far the sprite's base hides behind the HUD bar
 const HUD_BAR_DESIGN_HEIGHT = 206;     // matches #hudBar in index.html
 
@@ -48,6 +48,10 @@ const FPV_WEAPONS = {
 const SWING_TIME = 0.34;
 
 // Toss timing, in seconds.
+// Weapon-swap timing, in seconds. Long enough to register as a movement rather than a cut.
+const SWAP_OUT_TIME = 0.16;
+const SWAP_IN_TIME = 0.22;
+
 const TOSS_DIP = 0.12;      // dip down before the throw
 const TOSS_RISE = 0.16;     // up to the zenith, where the sprite swaps and the projectile flies
 const TOSS_FALL = 0.20;     // back down to rest
@@ -202,11 +206,11 @@ function updateFPV(delta, elapsed){
   // Halfway through a swap, switch to the new weapon's sprites while they're off-screen.
   if(fpvState.phase === 'swap'){
     fpvState.t += delta;
-    if(fpvState.swapOut && fpvState.t >= 0.14){
+    if(fpvState.swapOut && fpvState.t >= SWAP_OUT_TIME){
       fpvState.swapOut = false;
       fpvBuildLayers(wIdx);
       fpvState.t = 0;
-    } else if(!fpvState.swapOut && fpvState.t >= 0.18){
+    } else if(!fpvState.swapOut && fpvState.t >= SWAP_IN_TIME){
       fpvState.phase = 'idle';
     }
   } else if(wIdx !== fpvCurrentIdx){
@@ -310,17 +314,23 @@ function updateFPV(delta, elapsed){
   if(def && def.motion === 'toggle') altNow = mouseDown && !player.reloading;
 
   // --- reload / swap: drop the whole weapon out of frame -------------------
-  let dropPx = 0;
+  // Expressed as a fraction of the travel needed to clear the screen; the exact pixel distance
+  // depends on how tall each sprite is, so it's resolved per layer below. A flat pixel amount
+  // left the top of taller sprites poking up during reloads.
+  let dropK = 0;
   if(player.reloading){
     const total = Math.max(0.15, player.reloadUntil - (player.lastReloadStart||0));
     const remain = Math.max(0, player.reloadUntil - elapsed);
     const k = 1 - Math.min(1, remain/total);
-    // Down and back: fully hidden across the middle of the reload.
-    dropPx = -Math.sin(Math.min(1,k*1.0)*Math.PI) * (window.innerHeight*0.75);
+    // Down and back, fully hidden across the middle of the reload.
+    dropK = Math.sin(Math.min(1,k)*Math.PI);
   }
   if(fpvState.phase === 'swap'){
-    const k = Math.min(1, fpvState.t/(fpvState.swapOut?0.14:0.18));
-    dropPx = fpvState.swapOut ? -window.innerHeight*0.8*k : -window.innerHeight*0.8*(1-k);
+    const dur = fpvState.swapOut ? SWAP_OUT_TIME : SWAP_IN_TIME;
+    const k = Math.min(1, fpvState.t/dur);
+    // Ease so the weapon accelerates away and decelerates back in, rather than sliding
+    // linearly — a linear move at this speed reads as a cut rather than a motion.
+    dropK = fpvState.swapOut ? (k*k) : (1-k)*(1-k);
   }
 
   // --- apply --------------------------------------------------------------
@@ -344,7 +354,10 @@ function updateFPV(delta, elapsed){
     }
 
     const p = fpvPx(lx, ly);
-    l.mesh.position.set(p.x, (l.baseY||0) + p.y, 0);
+    // Enough travel to put the sprite's top edge below the bottom of the screen, whatever its
+    // height, plus a small margin so nothing peeks during the hold.
+    const clearTravel = (l.baseY||0) + (l.heightUnits||1)/2 + 1 + 0.05;
+    l.mesh.position.set(p.x, (l.baseY||0) + p.y - dropK*clearTravel, 0);
     l.mesh.rotation.z = rot;
 
     // Two-state sprites (A/B) swap their texture rather than needing a second plane.
@@ -355,12 +368,19 @@ function updateFPV(delta, elapsed){
 }
 
 // Drawn into the low-res target after the world, so it shares the pixelation and grading.
-// The depth buffer is cleared first: without that, a weapon drawn against open sky inherits
-// the sky's far-plane depth and the grading pass would skip it as background.
+//
+// autoClear has to be off: three.js clears the colour buffer before every render() by default,
+// so drawing this pass straight after the world wiped the world out and left the weapon on
+// black. The depth buffer must NOT be cleared either — the grading shader reads it to tell
+// scene from sky, and clearing it would make the whole frame register as background and skip
+// grading entirely. Instead the weapon's material writes depth without testing it, so weapon
+// pixels register as geometry while the world's depth stays intact.
 function renderFPV(renderer){
   if(!fpvScene || !fpvLayers.length) return;
-  renderer.clearDepth();
+  const prevAutoClear = renderer.autoClear;
+  renderer.autoClear = false;
   renderer.render(fpvScene, fpvCamera);
+  renderer.autoClear = prevAutoClear;
 }
 
 // Accumulated mouse delta, consumed by the sway above.
