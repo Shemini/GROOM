@@ -264,6 +264,36 @@
 </head>
 <body>
 
+<!-- Colour-depth filters for the HUD. The status bar is DOM, so it sits outside the WebGL
+     render target and the grading shader can't reach it; an SVG feComponentTransfer with
+     discrete tableValues performs the same per-channel quantisation the shader does, which
+     keeps the banner matching the world. Populated by hud.js from the same level table. -->
+<svg id="hudFilterDefs" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="hudQuantize4" color-interpolation-filters="sRGB">
+      <feComponentTransfer>
+        <feFuncR type="discrete" tableValues=""></feFuncR>
+        <feFuncG type="discrete" tableValues=""></feFuncG>
+        <feFuncB type="discrete" tableValues=""></feFuncB>
+      </feComponentTransfer>
+    </filter>
+    <filter id="hudQuantize8" color-interpolation-filters="sRGB">
+      <feComponentTransfer>
+        <feFuncR type="discrete" tableValues=""></feFuncR>
+        <feFuncG type="discrete" tableValues=""></feFuncG>
+        <feFuncB type="discrete" tableValues=""></feFuncB>
+      </feComponentTransfer>
+    </filter>
+    <filter id="hudQuantize16" color-interpolation-filters="sRGB">
+      <feComponentTransfer>
+        <feFuncR type="discrete" tableValues=""></feFuncR>
+        <feFuncG type="discrete" tableValues=""></feFuncG>
+        <feFuncB type="discrete" tableValues=""></feFuncB>
+      </feComponentTransfer>
+    </filter>
+  </defs>
+</svg>
+
 <div id="crosshair"><div class="dot"></div></div>
 <div id="spreadRing"></div>
 
