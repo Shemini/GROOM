@@ -44,6 +44,7 @@ function init(){
   buildTrajectoryMarker();
 
   window.addEventListener('resize', onResize);
+  window.addEventListener('resize', ()=>{ if(typeof scaleLevelUpPanel==='function') scaleLevelUpPanel(); });
   document.addEventListener('keydown', e => { keys[e.code]=true; handleKeyDown(e); });
   document.addEventListener('keyup', e => { keys[e.code]=false; });
   document.addEventListener('mousemove', onMouseMove);
@@ -174,6 +175,18 @@ function handleKeyDown(e){
     else if(currentInteractable.type==='box') interactBox();
     else if(currentInteractable.type==='guitarrista') hireGuitarrista();
   }
+  // The level-up screen is pointer-driven but keyboard-operable: 1/2/3 pick a card, R rerolls.
+  if(gameState==='levelup'){
+    if(['Digit1','Digit2','Digit3'].includes(e.code)){
+      const i = parseInt(e.code.slice(-1),10)-1;
+      const card = levelUpCardsEl.children[i];
+      if(card) card.click();
+      return;
+    }
+    if(e.code==='KeyR'){ doReroll(); return; }
+    return;
+  }
+
   if(['Digit1','Digit2','Digit3','Digit4'].includes(e.code) && gameState==='playing'){
     const slotIdx = parseInt(e.code.slice(-1),10)-1;
     const wIdx = player.slots[slotIdx];

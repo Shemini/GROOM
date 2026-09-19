@@ -51,37 +51,90 @@ function pickThreeStats(){ const pool=buildUpgradePool(); shuffle(pool); return 
 
 function renderLevelUpCards(picks){
   levelUpCardsEl.innerHTML='';
-  picks.forEach(item=>{
-    const card = document.createElement('div');
+  picks.forEach((item, i)=>{
+    const card = document.createElement('button');
     card.className='lvlCard';
+    card.type = 'button';
+    const hotkey = '<span class="hotkey">'+(i+1)+'</span>';
+
     if(item.ctype==='stat'){
       const stat=item.stat, lvl=statLevel(stat.key);
       card.dataset.ctype='stat'; card.dataset.key=stat.key;
-      let dots=''; for(let i=0;i<stat.maxLevel;i++) dots+='<div class="dot '+(i<lvl?'filled':'')+'"></div>';
-      const icon = stat.icon ? '<img class="cardIcon" src="'+STATS_DIR+encodeURIComponent(stat.icon)+'.png" alt="">' : '';
-      card.innerHTML=icon+'<div class="name">'+stat.name+'</div><div class="desc">'+stat.desc+'</div><div class="dots">'+dots+'</div>';
+      let dots=''; for(let d=0;d<stat.maxLevel;d++) dots+='<div class="dot '+(d<lvl?'filled':'')+'"></div>';
+      // The design called for a hatch swatch here; the real stat icons exist now, so they're
+      // used instead and the swatch is only a fallback for a stat without art.
+      const art = stat.icon
+        ? '<img src="'+STATS_DIR+encodeURIComponent(stat.icon)+'.png" alt="">'
+        : '<div class="swatch"></div>';
+      card.innerHTML =
+        '<div class="cardHead"><span class="kindChip">STAT</span>'+hotkey+'</div>'+
+        '<div class="art">'+art+'</div>'+
+        '<div class="name">'+stat.name+'</div>'+
+        '<div class="desc">'+stat.desc+'</div>'+
+        '<div class="dots">'+dots+'</div>';
+
     } else if(item.ctype==='weapon'){
       const info = describeWeaponCard(item.weaponIdx);
       card.dataset.ctype='weapon'; card.dataset.widx=item.weaponIdx;
-      let dots=''; if(info.maxDots>0){ for(let i=0;i<info.maxDots;i++) dots+='<div class="dot '+(i<info.curDots?'filled':'')+'"></div>'; }
+      let dots='';
+      const total = info.maxDots>0 ? info.maxDots : 5;
+      for(let d=0;d<total;d++) dots+='<div class="dot '+(d<info.curDots?'filled':'')+'"></div>';
       const src = hudIconFor(item.weaponIdx);
-      const icon = src ? '<img class="cardIcon" src="'+src+'" alt="">' : '';
-      card.innerHTML=icon+'<div class="name">'+info.name+'</div><div class="desc">'+info.desc+'</div><div class="dots">'+dots+'</div>';
+      card.innerHTML =
+        '<div class="cardHead"><span class="kindChip">ARMA</span>'+hotkey+'</div>'+
+        '<div class="art">'+(src?'<img src="'+src+'" alt="">':'<div class="swatch"></div>')+'</div>'+
+        '<div class="name">'+info.name+'</div>'+
+        '<div class="desc">'+info.desc+'</div>'+
+        '<div class="dots">'+dots+'</div>';
+
     } else {
       const w = ALL_WEAPONS[item.weaponIdx];
       card.className='lvlCard evolveCard';
       card.dataset.ctype='evolve'; card.dataset.widx=item.weaponIdx;
       const src = hudIconFor(item.weaponIdx);
-      const icon = src ? '<img class="cardIcon" src="'+src+'" alt="">' : '';
-      card.innerHTML=icon+'<div class="name">EVOLUCIÓN: '+w.name+'</div><div class="desc">-&gt; '+EVOLUTIONS[item.weaponIdx].name+'</div><div class="dots"></div>';
+      let dots=''; for(let d=0;d<5;d++) dots+='<div class="dot filled"></div>';
+      card.innerHTML =
+        '<div class="cardHead"><span class="kindChip">EVOLUCIÓN</span>'+hotkey+'</div>'+
+        '<div class="art">'+(src?'<img src="'+src+'" alt="">':'<div class="swatch"></div>')+'</div>'+
+        '<div class="name">EVOLUCIÓN: '+w.name+'</div>'+
+        '<div class="desc">→ '+EVOLUTIONS[item.weaponIdx].name+'</div>'+
+        '<div class="dots">'+dots+'</div>';
     }
     levelUpCardsEl.appendChild(card);
   });
+  updateLevelUpChrome();
   updateRerollButton();
+  scaleLevelUpPanel();
+}
+
+// Header and instruction bar, refreshed whenever the cards are.
+function updateLevelUpChrome(){
+  const lvl = document.getElementById('lvlNumber');
+  if(lvl) lvl.textContent = 'LV ' + player.level;
+  const funds = document.getElementById('lvlFunds');
+  if(funds) funds.textContent = 'FONDOS $' + player.money;
+}
+
+// The panel is authored at 1240px and never scales ABOVE 1 — on a wide screen it simply stays
+// its natural size rather than stretching.
+function scaleLevelUpPanel(){
+  const panel = document.getElementById('levelUpPanel');
+  if(!panel) return;
+  const w = document.documentElement.clientWidth || window.innerWidth;
+  const h = document.documentElement.clientHeight || window.innerHeight;
+  // Height is considered too, or the panel overflows on a short window.
+  const scale = Math.min(1, w/1290, h/700);
+  panel.style.transform = 'scale(' + (Math.round(scale*1000)/1000) + ')';
 }
 function updateRerollButton(){
   rerollBtnEl.textContent = 'REROLL ($'+player.rerollCost+')';
-  rerollBtnEl.disabled = player.money<player.rerollCost;
+  const broke = player.money < player.rerollCost;
+  rerollBtnEl.disabled = broke;
+  const note = document.getElementById('lvlRerollNote');
+  if(note){
+    note.textContent = broke ? 'NOT ENOUGH FUNDS' : 'COST RISES $50 EACH TIME';
+    note.classList.toggle('broke', broke);
+  }
 }
 function doReroll(){
   if(player.money<player.rerollCost) return;

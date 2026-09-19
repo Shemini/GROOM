@@ -224,28 +224,91 @@
   #loadingFill{height:100%;width:0%;background:var(--stam);transition:width .2s;}
   #loadingLabel{margin-top:10px;font-size:11px;color:var(--txt-muted);letter-spacing:1px;}
 
-  #levelUp{position:fixed;inset:0;z-index:28;background:rgba(4,4,5,0.92);display:flex;align-items:center;justify-content:center;}
-  #levelUpPanel{width:860px;max-width:94vw;background:var(--panel);border:2px solid var(--panel-line);
-    padding:26px;text-align:center;position:relative;max-height:88vh;overflow-y:auto;}
-  #levelUpPanel h2{font-size:24px;letter-spacing:4px;color:var(--stam);margin:0 0 10px;}
-  .lvlSub{color:var(--txt-muted);font-size:11px;letter-spacing:2px;margin-bottom:20px;}
-  #levelUpCards, #swapCards{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
-  .lvlCard{width:210px;background:#1b1b20;border:2px solid var(--panel-line);padding:16px 12px;cursor:pointer;
-    transition:border-color .15s, transform .15s;}
-  .lvlCard:hover{border-color:var(--stam);transform:translateY(-4px);}
-  .lvlCard.evolveCard{border-color:var(--gold);}
-  .lvlCard.evolveCard:hover{border-color:var(--danger);}
-  .lvlCard .cardIcon{display:block;width:64px;height:64px;margin:0 auto 10px;
-    image-rendering:pixelated;object-fit:contain;}
-  #statPanel .statIcon{width:14px;height:14px;vertical-align:-3px;margin-right:6px;
-    image-rendering:pixelated;object-fit:contain;}
-  .lvlCard .name{font-size:13px;letter-spacing:1px;color:var(--txt-1);margin-bottom:8px;line-height:1.4;}
-  .lvlCard .desc{font-size:10px;color:var(--txt-muted);line-height:1.8;margin-bottom:10px;min-height:44px;}
-  .lvlCard .dots{display:flex;gap:4px;justify-content:center;}
-  .lvlCard .dot{width:8px;height:8px;background:#333;}
-  .lvlCard .dot.filled{background:var(--stam);}
-  #rerollBtn{margin-top:18px;background:transparent;border:2px solid var(--gold);color:var(--gold);}
-  #rerollBtn:hover:not(:disabled){background:var(--gold);color:#1a1200;}
+  /* ---- LEVEL-UP MODAL ---- */
+  #levelUp{position:fixed;inset:0;z-index:28;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 45%, rgba(24,18,10,.35) 0%, rgba(4,4,5,.92) 78%);}
+  /* Same six-layer masonry as the HUD bar, so the modal reads as the same material. */
+  #levelUpPanel{position:relative;box-sizing:border-box;width:1240px;padding:34px 34px 30px;
+    transform-origin:center;
+    background-color:var(--stone-bar);
+    background-image:
+      repeating-linear-gradient(0deg,rgba(70,50,24,.45) 0 5px,rgba(0,0,0,0) 5px 98px),
+      repeating-linear-gradient(90deg,rgba(70,50,24,.45) 0 5px,rgba(0,0,0,0) 5px 300px),
+      repeating-linear-gradient(90deg,rgba(255,244,214,.16) 0 5px,rgba(0,0,0,0) 5px 300px),
+      repeating-linear-gradient(63deg,rgba(120,88,44,.17) 0 4px,rgba(0,0,0,0) 4px 15px),
+      repeating-linear-gradient(-51deg,rgba(255,244,214,.1) 0 4px,rgba(0,0,0,0) 4px 13px),
+      linear-gradient(180deg,rgba(255,240,205,.24) 0 8px,rgba(0,0,0,0) 8px);
+    background-position:0 0,0 0,150px 49px,0 0,0 0,0 0;
+    box-shadow:inset 0 -6px 0 rgba(48,36,18,.85), 0 0 0 4px var(--cell-line), 0 24px 0 rgba(4,4,5,.45);}
+  #levelUpPanel .filigree{position:absolute;left:0;right:0;height:14px;
+    background-image:
+      repeating-linear-gradient(45deg,rgba(207,168,105,.85) 0 3px,rgba(0,0,0,0) 3px 10px),
+      repeating-linear-gradient(-45deg,rgba(90,68,34,.7) 0 3px,rgba(0,0,0,0) 3px 10px);}
+  #levelUpPanel .filigree.top{top:0;}
+  #levelUpPanel .filigree.bottom{bottom:0;}
+  #levelUpPanel .stud{position:absolute;width:12px;height:12px;background:var(--gold);}
+  #levelUpPanel .stud.tl{left:12px;top:26px;} #levelUpPanel .stud.tr{right:12px;top:26px;}
+  #levelUpPanel .stud.bl{left:12px;bottom:26px;} #levelUpPanel .stud.br{right:12px;bottom:26px;}
+
+  #lvlHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .lvlHeadLeft{display:flex;align-items:center;gap:14px;}
+  .chip.lvlChip{font-size:14px;letter-spacing:6px;}
+  #lvlFunds{font-size:12px;letter-spacing:3px;}
+  /* Dark ink straight onto the sandstone, rather than a light readout in a recess. */
+  #lvlNumber{font-family:'Press Start 2P',monospace;font-size:30px;color:var(--plaque);
+    text-shadow:0 2px 0 rgba(255,244,214,.35);}
+  #lvlInstruction{display:flex;justify-content:space-between;align-items:center;
+    background:var(--plaque);box-shadow:inset 0 0 0 2px var(--cell-line);
+    padding:5px 12px 4px;margin-bottom:18px;font-size:12px;letter-spacing:4px;color:var(--txt-2);}
+  #lvlKeysHint{font-size:11px;letter-spacing:2px;color:var(--txt-muted);}
+
+  #levelUpCards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  .lvlCard{min-height:300px;padding:16px 18px 18px;text-align:left;border:none;cursor:pointer;
+    font-family:'Silkscreen',monospace;
+    background:var(--cell);
+    background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.022) 0 2px,rgba(0,0,0,0) 2px 6px);
+    box-shadow:inset 3px 3px 0 var(--cell-dark), inset -3px -3px 0 var(--cell-light), 0 0 0 2px var(--cell-line);
+    display:flex;flex-direction:column;gap:14px;transition:none;}
+  /* This screen is pointer-driven, so it's the one place with a hover state — it borrows the
+     active weapon slot's treatment from the HUD. */
+  .lvlCard:hover{background:#5c4720;
+    background-image:repeating-linear-gradient(45deg,rgba(255,240,205,.06) 0 2px,rgba(0,0,0,0) 2px 6px);
+    box-shadow:inset 0 0 0 4px var(--gold);transform:none;}
+  .lvlCard:active{background:#6d552a;}
+  .lvlCard .cardHead{display:flex;justify-content:space-between;align-items:center;}
+  .lvlCard .kindChip{font-size:10px;letter-spacing:3px;color:var(--vitor);background:var(--stone-chip);
+    padding:3px 8px 2px;
+    box-shadow:inset 0 2px 0 rgba(255,244,214,.45), inset 0 -2px 0 rgba(90,66,32,.35);}
+  .lvlCard .hotkey{font-size:12px;color:#0f0b05;background:var(--gold);padding:2px 8px 1px;}
+  /* Fixed height whatever the card holds, so titles and dot rows line up across the row. */
+  .lvlCard .art{height:96px;display:flex;align-items:center;justify-content:center;}
+  .lvlCard .art img{max-width:96px;max-height:96px;object-fit:contain;image-rendering:pixelated;}
+  .lvlCard .swatch{width:76px;height:76px;
+    background:repeating-linear-gradient(45deg,#241c10 0 6px,#1b1409 6px 12px);
+    box-shadow:inset 0 0 0 3px #33291a;}
+  .lvlCard .name{font-size:17px;line-height:1.35;letter-spacing:1px;color:var(--gold-lt);
+    overflow-wrap:anywhere;margin:0;}
+  .lvlCard .desc{font-size:12px;line-height:1.8;color:var(--stone-chip);margin:0;min-height:0;}
+  .lvlCard .dots{margin-top:auto;display:flex;gap:5px;}
+  .lvlCard .dot{width:100%;height:10px;border-radius:0;background:#33291a;
+    box-shadow:inset 0 0 0 2px #0d0904;}
+  .lvlCard .dot.filled{background:var(--gold);}
+  /* Evolve cards announce themselves at rest rather than only on hover. */
+  .lvlCard.evolveCard{box-shadow:inset 0 0 0 4px var(--gold), inset 0 0 0 8px var(--cell-dark),
+    0 0 0 2px var(--cell-line);}
+  .lvlCard.evolveCard .dot{background:var(--danger);}
+
+  #lvlRerollRow{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:22px;}
+  #rerollBtn{font-family:'Silkscreen',monospace;font-size:14px;letter-spacing:4px;
+    padding:12px 30px 10px;border:none;cursor:pointer;margin:0;
+    color:var(--gold);background:var(--plaque);box-shadow:inset 0 0 0 3px var(--gold);}
+  #rerollBtn:hover:not(:disabled){color:#0f0b05;background:var(--gold);}
+  #rerollBtn:active:not(:disabled){transform:translateY(2px);}
+  #rerollBtn:disabled{color:var(--txt-off);background:#181207;
+    box-shadow:inset 0 0 0 3px #33291a;cursor:not-allowed;}
+  /* Sits on sandstone, so it's dark ink rather than a light-on-dark readout. */
+  #lvlRerollNote{font-size:11px;letter-spacing:2px;color:var(--plaque);}
+  #lvlRerollNote.broke{color:var(--vitor);}
 
   #swapMenu{position:fixed;inset:0;z-index:28;background:rgba(4,4,5,0.92);display:flex;align-items:center;justify-content:center;}
   #swapPanel{width:740px;max-width:94vw;background:var(--panel);border:2px solid var(--panel-line);padding:26px;text-align:center;}
@@ -477,10 +540,30 @@
 
 <div id="levelUp" class="hidden">
   <div id="levelUpPanel">
-    <h2>LEVEL UP!</h2>
-    <div class="lvlSub">Choose an upgrade</div>
+    <div class="filigree top"></div>
+    <div class="filigree bottom"></div>
+    <div class="stud tl"></div><div class="stud tr"></div>
+    <div class="stud bl"></div><div class="stud br"></div>
+
+    <div id="lvlHeader">
+      <div class="lvlHeadLeft">
+        <span class="chip lvlChip">LEVEL UP</span>
+        <span id="lvlNumber">LV 1</span>
+      </div>
+      <span id="lvlFunds" class="chip lvlChip">FONDOS $0</span>
+    </div>
+
+    <div id="lvlInstruction">
+      <span>ELIGE UNA MEJORA — CHOOSE ONE UPGRADE</span>
+      <span id="lvlKeysHint">1 · 2 · 3&nbsp;&nbsp;&nbsp;R REROLL</span>
+    </div>
+
     <div id="levelUpCards"></div>
-    <button id="rerollBtn" class="btn"></button>
+
+    <div id="lvlRerollRow">
+      <button id="rerollBtn"></button>
+      <span id="lvlRerollNote">COST RISES $50 EACH TIME</span>
+    </div>
   </div>
 </div>
 
