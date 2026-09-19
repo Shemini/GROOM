@@ -85,7 +85,7 @@ function init(){
   animate();
 }
 
-function requestLock(){ initAudio(); renderer.domElement.requestPointerLock(); }
+function requestLock(){ initAudio(); loadWeaponAudio(); renderer.domElement.requestPointerLock(); }
 
 function toggleCursorLock(){
   if(gameState==='playing'){

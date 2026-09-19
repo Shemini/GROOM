@@ -166,9 +166,15 @@ function tryShoot(elapsed){
     player.lastShotTime = elapsed;
     const dm = 1+statValue('damage'), crit = Math.random()<statValue('critChance'), cm = 1.5+statValue('critMult');
     fpvOnFire(wIdx, ()=>fireMelee(wIdx, dm, crit, cm));
-    soundShot(weapon); return;
+    return;
   }
-  if(ammo.mag<=0){ if(!mods.noReload && ammo.reserve>0) startReload(); return; }
+  if(ammo.mag<=0){
+    // Dry click before the automatic reload kicks in.
+    if(!player.dryFired){ player.dryFired = true; weaponDryFireSound(); }
+    if(!mods.noReload && ammo.reserve>0) startReload();
+    return;
+  }
+  player.dryFired = false;
   // Bubble wand: holding the trigger is "blowing". Sustained pressure tears the film and
   // forces a quick re-dip; feathering the trigger lets the soap recover, so a controlled
   // rhythm gets far more out of one charge than holding it down.
@@ -213,7 +219,7 @@ function tryShoot(elapsed){
     }
   };
   fpvOnFire(wIdx, launch);
-  soundShot(weapon); flashMuzzle(); updateHUD();
+  weaponFireSound(wIdx); flashMuzzle(); updateHUD();
 }
 
 function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
@@ -529,10 +535,14 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
   const mesh = createIconProjectile('PetardoIcon', 0.55);
   mesh.position.copy(startPos); scene.add(mesh);
   const evolved = player.weaponEvolved[wIdx];
+  const fuse = weaponStartFuse(wIdx);
   projectiles.push({
     mesh, spin:9.0, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true, fuseDelay:weapon.fuseDelay,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
+      weaponStopFuse(fuse);
+      weaponExplodeSound(wIdx, computePan(pos));
+      if(evolved) weaponEvolvedExtraSound(wIdx, computePan(pos), 0.14);
       explodeAt(pos, radius, dmg, true);
       if(evolved){
         // Traca: a running string of blasts that wanders away from the first, rather than a
@@ -580,6 +590,7 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
     mesh, spin:6.5, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
+      weaponImpactSound(wIdx, computePan(pos));
       spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration, 'booze');
       // Garrafón: rough spirits make guests sick, and what comes back up burns too.
       if(evolved){
@@ -897,7 +908,8 @@ function startReload(){
   // progress fraction was measured against the whole session rather than this reload.
   player.lastReloadStart = clock.getElapsedTime();
   player.reloadUntil = player.lastReloadStart+baseTime;
-  soundReloadStart();
+  // Parts are scheduled across baseTime, so they stay in step as reload speed changes.
+  weaponReloadSequence(wIdx, baseTime);
 }
 function finishReloadIfDue(elapsed){
   if(!player.reloading) return;

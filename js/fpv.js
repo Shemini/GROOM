@@ -259,6 +259,8 @@ function updateFPV(delta, elapsed){
       if(k >= 1){
         // Zenith: the plate leaves the hand. Swap to the second still and release the shot.
         fpvState.showAlt = true;
+        // Right before the projectile leaves the hand.
+        if(typeof weaponThrowSound === 'function') weaponThrowSound(wIdx);
         if(fpvState.pendingFire){ fpvState.pendingFire(); fpvState.pendingFire = null; }
         fpvState.tossStage = 'fall'; fpvState.t = 0;
       }

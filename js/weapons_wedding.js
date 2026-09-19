@@ -30,6 +30,8 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
     hitAny = true;
   }
   spawnMeleeArc(forward, reach);
+  // The swing has already resolved, so the hit and miss variants can be chosen correctly.
+  weaponMeleeSound(wIdx, hitAny);
   if(hitAny) soundHit(false, isCrit);
 
   // The evolved sword throws a slash, but only at full health — the Zelda rule.
@@ -141,10 +143,12 @@ function updateBubbles(delta, elapsed){
       if(d < b.radius+(z.collisionRadius||ZOMBIE_RADIUS) && dy < (z.height||1.8)*0.7){
         damageZombie(z, b.dmg, {});
         if(b.infect) tryInfect(z, b.infectChance, elapsed);
+        weaponBubblePopSound(computePan(b.mesh.position));
         b.popped = true; break;
       }
     }
     if(b.popped || b.age >= b.life){
+      if(!b.popped) weaponBubblePopSound(computePan(b.mesh.position));
       scene.remove(b.mesh); b.geo.dispose(); b.mat.dispose(); bubbles.splice(i,1);
     }
   }
@@ -210,7 +214,10 @@ function fireBait(wIdx, dmgMult, isCrit, critMultVal){
   projectiles.push({
     mesh, spin:0, pos:start.clone(), vel:forward.clone().multiplyScalar(w.launchSpeed||13),
     gravity:true, radius:0.3, groundOnly:true, spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
-    onImpact:(pos)=>{ spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult); }
+    onImpact:(pos)=>{
+      weaponImpactSound(wIdx, computePan(pos));
+      spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult);
+    }
   });
 }
 
@@ -270,7 +277,9 @@ function updateBaits(delta, elapsed){
       if(b.evolved){
         const mods = player.weaponMods[b.wIdx];
         const dmg = (90 + (mods.explosionDamage||0)) * b.dmgMult * mods.dmgMult;
-        explodeAt(new THREE.Vector3(b.pos.x, b.pos.y, b.pos.z), b.radius*0.45*mods.radiusMult, dmg, true);
+        const bp = new THREE.Vector3(b.pos.x, b.pos.y, b.pos.z);
+        weaponExplodeSound(b.wIdx, computePan(bp));
+        explodeAt(bp, b.radius*0.45*mods.radiusMult, dmg, true);
       }
       scene.remove(b.plate); scene.remove(b.ring);
       baits.splice(i,1);

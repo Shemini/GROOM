@@ -21,6 +21,7 @@ function animate(){
     updateWave(delta, elapsed);
     updateInteractables(delta, elapsed);
     updateSoap(delta, elapsed);
+    updateWeaponAudio();
     updateWeddingWeapons(delta, elapsed);
     updateProjectiles(delta, elapsed);
     updatePuddles(delta, elapsed);
