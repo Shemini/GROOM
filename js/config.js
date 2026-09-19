@@ -299,19 +299,24 @@ const STARTER_INDEX = 1;
 const SPECIAL_INDICES = [4,5,6,7,8,9,10,11];  // party-box pool (11 is the melee upgrade)
 const STATION_INDICES = [2,3,8];               // wall-buy stock: the cousin's rifle, the BB gun, the confetti cannon
 
+// Stat icons live in Stats/ alongside the weapon icons; `icon` is the filename without the
+// extension. Names are Spanish to match the art.
+const STATS_DIR = './Stats/';
 const STATS = [
-  { key:'damage',        name:'DAMAGE',       desc:'Weapon damage',                     perLevel:0.10, maxLevel:5 },
-  { key:'fireRate',      name:'FIRE RATE',    desc:'Fire rate',                         perLevel:0.08, maxLevel:5 },
-  { key:'moveSpeed',     name:'MOVE SPEED',   desc:'Move speed',                        perLevel:0.06, maxLevel:5 },
-  { key:'maxHealth',     name:'VITALITY',     desc:'Max health (full heal on pick)',    perLevel:20,   maxLevel:5 },
-  { key:'reloadSpeed',   name:'RELOAD SPEED', desc:'Reload time',                       perLevel:0.06, maxLevel:5 },
-  { key:'ammoCapacity',  name:'AMMO CAPACITY',desc:'Magazine & reserve size (cap only)',perLevel:0.15, maxLevel:5 },
-  { key:'moneyMult',     name:'GREED',        desc:'Money from kills',                  perLevel:0.12, maxLevel:5 },
-  { key:'xpMult',        name:'INSIGHT',      desc:'XP from kills',                     perLevel:0.12, maxLevel:5 },
-  { key:'critChance',    name:'PRECISION',    desc:'Critical hit chance',               perLevel:0.05, maxLevel:5 },
-  { key:'critMult',      name:'BRUTALITY',    desc:'Critical hit damage',               perLevel:0.25, maxLevel:5 },
-  { key:'enemyIntensity',name:'BLOODLUST',    desc:'More & tougher — bigger payout',    perLevel:1,    maxLevel:5 },
+  { key:'damage',        name:'DAÑO',                   icon:'DañoIcon',                desc:'Daño de las armas',                     perLevel:0.10, maxLevel:5 },
+  { key:'fireRate',      name:'CADENCIA',               icon:'CadenciaIcon',            desc:'Velocidad de disparo',                  perLevel:0.08, maxLevel:5 },
+  { key:'moveSpeed',     name:'VELOCIDAD',              icon:'VelocidadMovimientoIcon', desc:'Velocidad de movimiento',               perLevel:0.06, maxLevel:5 },
+  { key:'maxHealth',     name:'VITALIDAD',              icon:'VitalidadIcon',           desc:'Salud máxima (cura al elegirla)',       perLevel:20,   maxLevel:5 },
+  { key:'reloadSpeed',   name:'RECARGA',                icon:'VelocidadRecargaIcon',    desc:'Tiempo de recarga',                     perLevel:0.06, maxLevel:5 },
+  { key:'ammoCapacity',  name:'MUNICIÓN',               icon:'CapacidadMunicionIcon',   desc:'Cargador y reserva (solo el tope)',     perLevel:0.15, maxLevel:5 },
+  { key:'moneyMult',     name:'CODICIA',                icon:'CodiciaIcon',             desc:'Dinero por muerte',                     perLevel:0.12, maxLevel:5 },
+  { key:'xpMult',        name:'INTELIGENCIA',           icon:'InteligenciaIcon',        desc:'XP por muerte',                         perLevel:0.12, maxLevel:5 },
+  { key:'critChance',    name:'PRECISIÓN',              icon:'PrecisionIcon',           desc:'Probabilidad de crítico',               perLevel:0.05, maxLevel:5 },
+  { key:'enemyIntensity',name:'SED DE SANGRE',          icon:'SedSangreIcon',           desc:'Más y más duros — mayor recompensa',    perLevel:1,    maxLevel:5 },
 ];
+// Critical hits are a flat multiplier now: the old BRUTALITY stat only paid off once
+// PRECISIÓN had been taken, which made it a trap pick most of the time.
+const CRIT_MULTIPLIER = 1.5;
 
 const BASE_LEVEL_TABLES = {
   // Index 0 (fists) has no table: it never levels.
@@ -597,3 +602,9 @@ const FACE_IDLE_MIN = 12, FACE_IDLE_MAX = 28;
 // Breathing rate per mood, in cycles per second. 0.25Hz is 15 breaths a minute, i.e. resting.
 const FACE_BOB_HZ = { serious:0.25, happy:0.40, excited:0.70, mad:0.95 };
 const FACE_BOB_PIXELS = 5;   // vertical travel of the portrait, in canvas pixels
+// Edge treatment for the portrait sheet. 'outline' turns the feathered band into a solid dark
+// edge; 'cut' simply discards it. Either removes the white halo that partial alpha produces.
+const FACE_EDGE_MODE = 'outline';
+const FACE_ALPHA_CUTOFF = 0.6;      // at or above this, a pixel is fully opaque
+const FACE_OUTLINE_MIN = 0.15;      // below this, a pixel is discarded entirely
+const FACE_OUTLINE_COLOR = [42, 26, 14];   // dark brown

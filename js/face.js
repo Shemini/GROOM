@@ -49,15 +49,55 @@ function buildFaceAnims(){
   }
 }
 
+// The sheet's transparent pixels still carry white RGB, so its feathered edges composite
+// toward white and leave a pale halo around the portrait. Rather than fight that at draw
+// time, the alpha is hardened once at load:
+//   'cut'     — anything below the cutoff is discarded, everything above is fully opaque.
+//   'outline' — the feathered band becomes a solid dark edge instead, which reads as
+//               deliberate linework rather than a mistake.
+function hardenFaceEdges(img){
+  const off = document.createElement('canvas');
+  off.width = img.width; off.height = img.height;
+  const ctx = off.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0);
+  try{
+    const data = ctx.getImageData(0, 0, off.width, off.height);
+    const d = data.data;
+    const cut = FACE_ALPHA_CUTOFF*255;
+    const edge = FACE_OUTLINE_MIN*255;
+    const oc = FACE_OUTLINE_COLOR;
+    for(let i=0;i<d.length;i+=4){
+      const a = d[i+3];
+      if(a >= cut){
+        d[i+3] = 255;                       // solid interior, no partial blending
+      } else if(FACE_EDGE_MODE === 'outline' && a >= edge){
+        d[i] = oc[0]; d[i+1] = oc[1]; d[i+2] = oc[2]; d[i+3] = 255;
+      } else {
+        // Zero the colour too: leftover white in fully clear pixels is what bleeds.
+        d[i] = d[i+1] = d[i+2] = 0; d[i+3] = 0;
+      }
+    }
+    ctx.putImageData(data, 0, 0);
+  }catch(e){
+    console.warn('Face: could not harden edges (canvas pixel read blocked) — using the sheet as-is.', e);
+  }
+  return off;
+}
+
 function loadFace(){
   buildFaceAnims();
   faceCanvas = document.getElementById('faceCanvas');
   if(!faceCanvas){ console.warn('Face: canvas element missing.'); return; }
   faceCtx = faceCanvas.getContext('2d');
-  faceImage = new Image();
-  faceImage.onload = ()=>{ console.log('Face sheet loaded: ' + faceImage.width + 'x' + faceImage.height); };
-  faceImage.onerror = ()=>{ console.warn('Face: ' + FACE_TEXTURE + ' failed to load — the portrait will stay blank.'); faceImage = null; };
-  faceImage.src = FACE_TEXTURE;
+  faceCtx.imageSmoothingEnabled = false;
+  const img = new Image();
+  img.onload = ()=>{
+    faceImage = hardenFaceEdges(img);
+    console.log('Face sheet loaded: ' + img.width + 'x' + img.height + ' (edges: ' + FACE_EDGE_MODE + ')');
+  };
+  img.onerror = ()=>{ console.warn('Face: ' + FACE_TEXTURE + ' failed to load — the portrait will stay blank.'); faceImage = null; };
+  img.src = FACE_TEXTURE;
 }
 
 function faceAnim(name){ return faceAnims[name] || null; }
@@ -139,6 +179,7 @@ function updateFace(delta){
 function drawFace(bobY){
   const cw = faceCanvas.width, ch = faceCanvas.height;
   faceCtx.clearRect(0,0,cw,ch);
+  faceCtx.imageSmoothingEnabled = false;
   if(!faceImage) return;
 
   const idx = faceCurrent ? (faceCurrent.start + faceFrame) : faceRestFrame();

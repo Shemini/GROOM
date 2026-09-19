@@ -164,7 +164,7 @@ function tryShoot(elapsed){
   if(weapon.noAmmo){
     // Melee never runs dry, so skip the magazine bookkeeping entirely.
     player.lastShotTime = elapsed;
-    const dm = 1+statValue('damage'), crit = Math.random()<statValue('critChance'), cm = 1.5+statValue('critMult');
+    const dm = 1+statValue('damage'), crit = Math.random()<statValue('critChance'), cm = CRIT_MULTIPLIER;
     fpvOnFire(wIdx, ()=>fireMelee(wIdx, dm, crit, cm));
     return;
   }
@@ -196,7 +196,7 @@ function tryShoot(elapsed){
 
   const dmgMult = 1+statValue('damage');
   const isCrit = Math.random()<statValue('critChance');
-  const critMultVal = 1.5+statValue('critMult');
+  const critMultVal = CRIT_MULTIPLIER;
 
   // Handed to the first-person view rather than called directly: thrown weapons hold the
   // projectile back until the sprite reaches the top of its arc, so the shot leaves the hand

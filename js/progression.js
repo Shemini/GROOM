@@ -58,17 +58,22 @@ function renderLevelUpCards(picks){
       const stat=item.stat, lvl=statLevel(stat.key);
       card.dataset.ctype='stat'; card.dataset.key=stat.key;
       let dots=''; for(let i=0;i<stat.maxLevel;i++) dots+='<div class="dot '+(i<lvl?'filled':'')+'"></div>';
-      card.innerHTML='<div class="name">'+stat.name+'</div><div class="desc">'+stat.desc+'</div><div class="dots">'+dots+'</div>';
+      const icon = stat.icon ? '<img class="cardIcon" src="'+STATS_DIR+encodeURIComponent(stat.icon)+'.png" alt="">' : '';
+      card.innerHTML=icon+'<div class="name">'+stat.name+'</div><div class="desc">'+stat.desc+'</div><div class="dots">'+dots+'</div>';
     } else if(item.ctype==='weapon'){
       const info = describeWeaponCard(item.weaponIdx);
       card.dataset.ctype='weapon'; card.dataset.widx=item.weaponIdx;
       let dots=''; if(info.maxDots>0){ for(let i=0;i<info.maxDots;i++) dots+='<div class="dot '+(i<info.curDots?'filled':'')+'"></div>'; }
-      card.innerHTML='<div class="name">'+info.name+'</div><div class="desc">'+info.desc+'</div><div class="dots">'+dots+'</div>';
+      const src = hudIconFor(item.weaponIdx);
+      const icon = src ? '<img class="cardIcon" src="'+src+'" alt="">' : '';
+      card.innerHTML=icon+'<div class="name">'+info.name+'</div><div class="desc">'+info.desc+'</div><div class="dots">'+dots+'</div>';
     } else {
       const w = ALL_WEAPONS[item.weaponIdx];
       card.className='lvlCard evolveCard';
       card.dataset.ctype='evolve'; card.dataset.widx=item.weaponIdx;
-      card.innerHTML='<div class="name">EVOLVE: '+w.name+'</div><div class="desc">-&gt; '+EVOLUTIONS[item.weaponIdx].name+'</div><div class="dots"></div>';
+      const src = hudIconFor(item.weaponIdx);
+      const icon = src ? '<img class="cardIcon" src="'+src+'" alt="">' : '';
+      card.innerHTML=icon+'<div class="name">EVOLUCIÓN: '+w.name+'</div><div class="desc">-&gt; '+EVOLUTIONS[item.weaponIdx].name+'</div><div class="dots"></div>';
     }
     levelUpCardsEl.appendChild(card);
   });
@@ -175,7 +180,10 @@ function updateWave(delta, elapsed){
 // =================================================================
 function updateStatPanel(){
   let html='';
-  STATS.forEach(s=>{ html += '<div class="row"><span>'+s.name+'</span><span class="lvl">'+formatStatValue(s)+'</span></div>'; });
+  STATS.forEach(s=>{
+    const icon = s.icon ? '<img class="statIcon" src="'+STATS_DIR+encodeURIComponent(s.icon)+'.png" alt="">' : '';
+    html += '<div class="row"><span>'+icon+s.name+'</span><span class="lvl">'+formatStatValue(s)+'</span></div>';
+  });
   if(statRowsEl) statRowsEl.innerHTML = html;
 }
 function updateHUD(){
