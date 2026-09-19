@@ -281,6 +281,7 @@ function updateBaits(delta, elapsed){
         const dmg = (45 + (mods.explosionDamage||0)) * b.dmgMult * mods.dmgMult;
         const bp = new THREE.Vector3(b.pos.x, b.pos.y, b.pos.z);
         weaponExplodeSound(b.wIdx, bp);
+        spawnJamonBurst(bp.clone().setY(bp.y + 0.4));
         explodeAt(bp, blastRadius, dmg, true);
       }
       scene.remove(b.plate); scene.remove(b.ring);
@@ -437,6 +438,8 @@ function fireCone(wIdx, dmgMult, isCrit, critMultVal){
     hits++;
   }
   spawnConeBurst(forward, range, halfArc);
+  // Fired from just in front of the camera so it reads as coming out of the barrel.
+  spawnConfettiBurst(camera.position.clone().addScaledVector(forward, 0.8).setY(feetY+1.25), forward, range);
   return hits;
 }
 
@@ -470,6 +473,11 @@ function fireNova(wIdx, dmgMult, isCrit, critMultVal){
   const dmg = effectiveDamage(wIdx)*0.45*dmgMult*(isCrit?critMultVal:1);
   const kb = radius*(mods.knockbackMult||1);
   spawnExplosionVisual(camera.position.clone().setY(feetY+0.9), radius);
+  // Full circle, so the confetti goes out in every direction rather than down a lane.
+  spawnParticles(camera.position.clone().setY(feetY+1.2), {
+    count:120, dir:null, speed:[radius*1.1, radius*1.9], upBias:3.5,
+    colors:CONFETTI_COLORS, size:[0.085,0.085], drag:0.05, gravity:2.6, flutter:1.5, life:3.4,
+  });
   soundExplosion(0);
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];

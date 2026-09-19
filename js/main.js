@@ -27,6 +27,7 @@ function animate(){
     updatePuddles(delta, elapsed);
     updateVortexFields(delta, elapsed);
     updateBlackHoles(delta, elapsed);
+    updateParticles(delta, elapsed);
     updateDamageNumbers(delta);
     updateDrops(delta, elapsed);
     updateTrajectoryMarker();
