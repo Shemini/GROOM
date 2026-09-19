@@ -53,7 +53,11 @@ const DROP_DEFS = {
 };
 // Kept for anything still asking for a flat colour (the HUD badge, particles).
 const DROP_COLORS = { ammo:0xff8c26, health:0x5ce85c, double:0xffd54a, instakill:0xe83030 };
-const INSTAKILL_DURATION = 15;     // seconds during which any damage is lethal
+// Vermut used to make every hit lethal, which trivialised anything with area damage or a
+// high tick rate (laser, bubbles, the stream weapons). A flat multiplier scales with what the
+// weapon actually does instead of flattening the difference between them.
+const VERMUT_DURATION = 15;        // seconds
+const VERMUT_DAMAGE_MULT = 3;
 const BOX_COST = 1500;
 
 // Enemy spawning. Points come from an optional SpawnZones model (see below); without it the
@@ -231,13 +235,13 @@ const ALL_WEAPONS = [
   { name:'PUÑOS', type:'melee', dmg:34, fireRate:0.45, mag:1, reserveMax:0, cost:0, ammoCost:0,
     meleeRange:2.6, meleeArc:70, noAmmo:true, noLevel:true },
   // 1 — the starting firearm, unchanged from the old pistol.
-  { name:'PISTOLA', type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72, cost:0, ammoCost:0,
+  { name:'PISTOLA DE PLOMOS', type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72, cost:0, ammoCost:0,
     spread:0.010, pellets:1 },
   // 2 — the hunter cousin's stock: slow, precise, heavy.
-  { name:'RIFLE DE CAZA', type:'hitscan', dmg:78, fireRate:0.95, mag:5, reserveMax:40, cost:1400, ammoCost:250,
+  { name:'ESCOPETILLA DE PLOMOS', type:'hitscan', dmg:78, fireRate:0.95, mag:5, reserveMax:40, cost:1400, ammoCost:250,
     spread:0.004, pellets:1 },
   // 3 — fast, weak, ricochets between guests.
-  { name:'PISTOLA DE BALINES', type:'chain', dmg:13, fireRate:0.14, mag:30, reserveMax:180, cost:900, ammoCost:180,
+  { name:'METRALLETA DE BALINES', type:'chain', dmg:13, fireRate:0.14, mag:30, reserveMax:180, cost:900, ammoCost:180,
     chainCount:3, chainRadius:6.5 },
   // 4 — held to blow a stream; see the soap/breath handling in tryShoot().
   { name:'VARITA DE BURBUJAS', type:'bubble', dmg:9, fireRate:0.12, mag:60, reserveMax:240,
@@ -252,8 +256,9 @@ const ALL_WEAPONS = [
   { name:'TEQUIFRESA', type:'puddle', dmg:0, fireRate:1.0, mag:2, reserveMax:16,
     launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:22 },
   // 8 — single heavy spread with hard knockback.
-  { name:'CAÑÓN DE CONFETTI', type:'hitscan', dmg:20, fireRate:1.15, mag:2, reserveMax:20,
-    spread:0.13, pellets:9, knockback:1.1 },
+  // Crowd control first, damage second: everything inside the cone is shoved to its far edge.
+  { name:'CAÑÓN DE CONFETTI', type:'cone', dmg:52, fireRate:1.15, mag:2, reserveMax:20,
+    coneRange:5, coneAngle:42, knockback:1.1 },
   // 9 — continuous cone of particles: light DoT plus a slow.
   { name:'CAÑÓN DE CO2', type:'stream', dmg:0, fireRate:0.05, mag:120, reserveMax:480,
     streamSpeed:16, streamLife:1.1, streamRadius:0.5, streamGrow:2.6, streamDps:11, streamSlow:0.55 },
@@ -301,8 +306,8 @@ const BASE_LEVEL_TABLES = {
        {stat:'damage',amount:0.20,label:'+20% damage'}, {stat:'radius',amount:0.15,label:'+15% blast radius'} ],
   7: [ {stat:'dot',amount:0.20,label:'+20% puddle damage'}, {stat:'radius',amount:0.15,label:'+15% puddle radius'},
        {stat:'duration',amount:0.20,label:'+20% puddle duration'}, {stat:'dot',amount:0.20,label:'+20% puddle damage'} ],
-  8: [ {stat:'damage',amount:0.18,label:'+18% damage'}, {stat:'knockback',amount:0.25,label:'+25% knockback'},
-       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.18,label:'+18% damage'} ],
+  8: [ {stat:'radius',amount:0.14,label:'+14% cone range'}, {stat:'knockback',amount:0.25,label:'+25% knockback'},
+       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'radius',amount:0.14,label:'+14% cone range'} ],
   9: [ {stat:'dot',amount:0.20,label:'+20% stream damage'}, {stat:'radius',amount:0.15,label:'+15% cone width'},
        {stat:'duration',amount:0.18,label:'+18% reach'}, {stat:'dot',amount:0.20,label:'+20% stream damage'} ],
   10:[ {stat:'dot',amount:0.20,label:'+20% laser damage'}, {stat:'ammo',amount:0.25,label:'+25% charge'},
@@ -314,12 +319,12 @@ const BASE_LEVEL_TABLES = {
 const EVOLUTIONS = {
   1:  { name:'PISTOLA DE FERIA',  rotation:['damage','fireRate','ammo'] },
   2:  { name:'RIFLE PERFORANTE',  rotation:['damage','pierceCount','ammo'] },
-  3:  { name:'METRALLETA DE BALINES', rotation:['damage','bounce','fireRate','ammo'] },
+  3:  { name:'METRALLETA AUTOMÁTICA', rotation:['damage','bounce','fireRate','ammo'] },
   4:  { name:'PACIENTE CERO',     rotation:['infectChance','coughDamage','coughSpread'] },
   5:  { name:'JAMÓN EXPLOSIVO',   rotation:['radius','damage','duration'] },
   6:  { name:'TRACA',             rotation:['subCount','damage','radius'] },
   7:  { name:'GARRAFÓN',          rotation:['dot','radius','duration'] },
-  8:  { name:'FIESTA TOTAL',      rotation:['damage','radius','knockback'] },
+  8:  { name:'FIESTA TOTAL',      rotation:['radius','knockback','radius'] },
   9:  { name:'LANZALLAMAS',       rotation:['burnDamage','burnDuration','radius'] },
   10: { name:'LÁSER QUIRÚRGICO',  rotation:['damage','explosionDamage','explosionRadius'] },
   11: { name:'ESPADA DEL BANQUETE', rotation:['damage','windDamage','windRange'] },
@@ -457,11 +462,23 @@ const AUDIO_EXT = 'ogg';
 // `title` is what shows in the HUD while it plays.
 // `file` must match the filename on disk EXACTLY (minus the extension). These use spaces, not
 // underscores — the code percent-encodes them for the URL, so spaces and accents are fine.
+// `file` must match the filename on disk EXACTLY (minus the .ogg). Spaces and accents are
+// fine — the URL is percent-encoded before the request. `title` is what the HUD shows.
+// `file` must match the filename on disk EXACTLY (minus the .ogg). Spaces and accents are
+// fine — the URL is percent-encoded before the request. `title` is what the HUD shows.
 const GUITARRISTA_TRACKS = [
-  { file:'Sombras de Jaén',   title:'Sombras de Jaén' },
-  { file:'Tango Down',        title:'Tango Down' },
-  { file:'Caricias de Arena', title:'Caricias de Arena' },
-  { file:'Taranta Allegra',   title:'Taranta Allegra' },
+  { file:'Sombras de Jaén',       title:'Sombras de Jaén' },
+  { file:'Tango Down',            title:'Tango Down' },
+  { file:'Caricias de Arena',     title:'Caricias de Arena' },
+  { file:'Taranta Allegra',       title:'Taranta Allegra' },
+  { file:'Novalbos y Nogales',    title:'Novalbos y Nogales' },
+  { file:'Bossa en Okinawa',      title:'Bossa en Okinawa' },
+  { file:'Y después Japón',       title:'Y después Japón' },
+  { file:'Helmántica',            title:'Helmántica' },
+  { file:'Tarumba',               title:'Tarumba' },
+  { file:'Corazón de Hormigón',   title:'Corazón de Hormigón' },
+  { file:'Alhambra Roja',         title:'Alhambra Roja' },
+  { file:'Veinticuatro de Abril', title:'Veinticuatro de Abril' },
 ];
 // Folder names are case-sensitive once deployed (Linux servers) even though Windows treats
 // them as interchangeable — a folder called 'canciones' will 404 when the code asks for

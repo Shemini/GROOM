@@ -22,7 +22,7 @@ const WEAPON_SOUNDS = {
   5:  { thrown:true, impact:'JamonImpact', explode:'JamonExplosion' },
   6:  { thrown:true, explode:'Petardo', evolvedExtra:'Traca', fuseUntil:'explosion' },
   7:  { thrown:true, impact:['TequifresaImpactA','TequifresaImpactB'] },
-  8:  { fire:'Confetti' },
+  8:  { fire:'Confetti', fireVolume:0.98 },   // 30% louder than the 0.75 default
   // A hard attack and a tail that only fades once the trigger is released.
   9:  { fireLoop:'Megatron', loopFadeIn:0.015, loopFadeOut:0.40 },
   10: { fireLoop:'LaserOn', loopFadeIn:0.02, loopFadeOut:0.08 },
@@ -78,6 +78,21 @@ function loadWeaponAudio(){
 }
 
 function wsndPick(v){ return Array.isArray(v) ? v[Math.floor(Math.random()*v.length)] : v; }
+
+// Plays at a world position: pans with direction and drops off with distance, so a bubble
+// bursting across the courtyard doesn't sound like one bursting at your feet.
+const WSND_FALLOFF = 26;   // metres to silence
+function wsndPlayAt(name, worldPos, baseVolume, opts){
+  if(!worldPos || !camera) return wsndPlay(name, Object.assign({volume:baseVolume}, opts||{}));
+  const dx = worldPos.x-camera.position.x, dz = worldPos.z-camera.position.z;
+  const dist = Math.hypot(dx, dz);
+  const atten = Math.max(0, 1 - dist/WSND_FALLOFF);
+  if(atten <= 0.001) return null;
+  return wsndPlay(name, Object.assign({
+    volume: baseVolume * atten * atten,   // squared reads as a more natural rolloff
+    pan: computePan(worldPos),
+  }, opts||{}));
+}
 
 // One-shot. Returns the source so a caller can stop it early (the fuse does this).
 function wsndPlay(name, opts){
@@ -165,7 +180,7 @@ function weaponFireSound(wIdx){
   if(def.fireLoop) return;              // handled by the loop above
   if(def.thrown) return;                // the throw sound fires at the animation's zenith
   if(def.meleeMiss) return;             // decided by whether the swing connected
-  if(def.fire) wsndPlay(def.fire, { volume:0.75 });
+  if(def.fire) wsndPlay(def.fire, { volume: def.fireVolume || 0.75 });
 }
 
 // Espada: the swing resolves instantly, so the result is known before the sound is chosen.
@@ -180,15 +195,17 @@ function weaponMeleeSound(wIdx, didHit){
 }
 
 function weaponDryFireSound(){ wsndPlay(SOUND_SHOOT_FAIL, { volume:0.6 }); }
-function weaponBulletImpactSound(pan){ wsndPlay(SOUND_BULLET_IMPACT, { volume:0.45, pan:pan||0 }); }
-function weaponBubblePopSound(pan){ wsndPlay(wsndPick(BUBBLE_POP_SOUNDS), { volume:0.5, pan:pan||0 }); }
+function weaponBulletImpactSound(pos){ wsndPlayAt(SOUND_BULLET_IMPACT, pos, 0.5); }
+// Louder than the rest: these are small, frequent sounds that were getting lost.
+function weaponBubblePopSound(pos){ wsndPlayAt(wsndPick(BUBBLE_POP_SOUNDS), pos, 1.0); }
 
 // ---------- throwing and fuses ----------
 // The fuse starts on the button press, so its opening strike lines up with the throw, and is
 // cut when the charge goes off — the file runs longer than any fuse actually lasts.
 let activeFuses = [];
 function weaponThrowSound(wIdx){
-  wsndPlay(wsndPick(THROW_SOUNDS), { volume:0.7 });
+  // Thrown from the player's own hands, so it stays centred.
+  wsndPlay(wsndPick(THROW_SOUNDS), { volume:0.8 });
 }
 
 function weaponStartFuse(wIdx){
@@ -213,22 +230,33 @@ function weaponStopFuse(handle){
   }catch(e){}
 }
 
-function weaponImpactSound(wIdx, pan){
+function weaponImpactSound(wIdx, pos){
   const def = WEAPON_SOUNDS[wIdx];
   if(!def || !def.impact) return;
-  wsndPlay(wsndPick(def.impact), { volume:0.7, pan:pan||0 });
+  wsndPlayAt(wsndPick(def.impact), pos, 0.9);
 }
 
-function weaponExplodeSound(wIdx, pan){
+function weaponExplodeSound(wIdx, pos){
   const def = WEAPON_SOUNDS[wIdx];
   if(!def || !def.explode) return;
-  wsndPlay(def.explode, { volume:0.85, pan:pan||0 });
+  wsndPlayAt(def.explode, pos, 1.0);
 }
 
-function weaponEvolvedExtraSound(wIdx, pan, delay){
+// The traca file is longer than any single chain of bangs, so it's cut shortly after the last
+// one lands — that way a levelled-up traca with more explosions simply uses more of the file.
+function weaponEvolvedExtraSound(wIdx, pos, delay, playFor){
   const def = WEAPON_SOUNDS[wIdx];
-  if(!def || !def.evolvedExtra) return;
-  wsndPlay(def.evolvedExtra, { volume:0.8, pan:pan||0, delay:delay||0 });
+  if(!def || !def.evolvedExtra) return null;
+  const h = wsndPlayAt(def.evolvedExtra, pos, 0.95, { delay:delay||0 });
+  if(h && playFor){
+    const stopAt = audioCtx.currentTime + (delay||0) + playFor;
+    try{
+      h.gain.gain.setValueAtTime(h.gain.gain.value, Math.max(audioCtx.currentTime, stopAt-0.12));
+      h.gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+      h.src.stop(stopAt + 0.02);
+    }catch(e){}
+  }
+  return h;
 }
 
 // ---------- reload sequences ----------

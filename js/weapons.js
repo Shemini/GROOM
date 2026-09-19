@@ -211,11 +211,12 @@ function tryShoot(elapsed){
       case 'bait':    fireBait(wIdx,dmgMult,isCrit,critMultVal); break;
       case 'stream':  fireStream(wIdx,dmgMult,isCrit,critMultVal); break;
       case 'beam':    fireBeam(wIdx,dmgMult,isCrit,critMultVal); break;
-      default:
-        // The confetti cannon's evolution turns its forward spread into a 360 nova.
-        if(wIdx===8 && player.weaponEvolved[8]) fireNova(wIdx,dmgMult,isCrit,critMultVal);
-        else fireHitscan(wIdx,dmgMult,isCrit,critMultVal);
+      case 'cone':
+        // Evolving swaps the forward cone for a full-circle shove.
+        if(player.weaponEvolved[wIdx]) fireNova(wIdx,dmgMult,isCrit,critMultVal);
+        else fireCone(wIdx,dmgMult,isCrit,critMultVal);
         break;
+      default:        fireHitscan(wIdx,dmgMult,isCrit,critMultVal); break;
     }
   };
   fpvOnFire(wIdx, launch);
@@ -282,6 +283,10 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
   const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const hitSet = new Set([ref]);
   damageZombie(ref, dmg, {headshot, crit:isCrit});
+  // One impact per body struck, staggered a few milliseconds apart so a long ricochet chain
+  // reads as a burst rather than a single stacked click.
+  let impactIndex = 0;
+  weaponBulletImpactSound(ref.group.position);
   let currentPos = ref.group.position.clone();
   let currentHeight = ref.height||AVG_ZOMBIE_HEIGHT;
   const chainCount = effectiveChainCount(wIdx), chainRadius = weapon.chainRadius;
@@ -293,9 +298,10 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
     spawnBolt(currentPos.clone().add(new THREE.Vector3(0,currentHeight*0.55,0)), targetPos, 0x8fe8ff);
     const dmg2 = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
     damageZombie(nearest, dmg2, {crit:isCrit});
+    impactIndex++;
+    wsndPlayAt(SOUND_BULLET_IMPACT, nearest.group.position, 0.45, { delay: impactIndex*0.035 });
     currentPos = nearest.group.position.clone(); currentHeight = nearest.height||AVG_ZOMBIE_HEIGHT; hitSet.add(nearest);
   }
-  soundHit(headshot, isCrit); soundChain();
 }
 
 function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
@@ -321,7 +327,7 @@ function fireBranchingChain(wIdx, dmgMult, isCrit, critMultVal){
   const dmg = mods.evoDamage*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const hitSet = new Set([ref]); const chainOrder=[ref];
   damageZombie(ref, dmg, {headshot, crit:isCrit});
-  soundHit(headshot, isCrit); soundChain();
+  weaponBulletImpactSound(ref.group.position);
 
   function findNearestUnhit(anchor){
     let nearest=null, nearestDist=weapon.chainRadius;
@@ -541,9 +547,13 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
       weaponStopFuse(fuse);
-      weaponExplodeSound(wIdx, computePan(pos));
-      if(evolved) weaponEvolvedExtraSound(wIdx, computePan(pos), 0.14);
-      explodeAt(pos, radius, dmg, true);
+      weaponExplodeSound(wIdx, pos);
+      if(evolved){
+        // Sub-blasts land every 140ms, so the sample runs until just past the final one.
+        const tail = 0.14*(mods.subCount||0) + 0.35;
+        weaponEvolvedExtraSound(wIdx, pos, 0.14, tail);
+      }
+      explodeAt(pos, radius, dmg, true, true);
       if(evolved){
         // Traca: a running string of blasts that wanders away from the first, rather than a
         // tidy ring of sub-munitions.
@@ -554,7 +564,7 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
           last = p;
           setTimeout(()=>{
             const fy = getFloorY(p.x,p.z,p.y+4);
-            explodeAt(new THREE.Vector3(p.x, fy!==null?fy:p.y, p.z), radius*0.7, dmg*0.5, true);
+            explodeAt(new THREE.Vector3(p.x, fy!==null?fy:p.y, p.z), radius*0.7, dmg*0.5, true, true);
           }, 140*(i+1));
         }
       }
@@ -590,7 +600,7 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
     mesh, spin:6.5, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
-      weaponImpactSound(wIdx, computePan(pos));
+      weaponImpactSound(wIdx, pos);
       spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration, 'booze');
       // Garrafón: rough spirits make guests sick, and what comes back up burns too.
       if(evolved){
@@ -666,8 +676,10 @@ function updateProjectiles(delta, elapsed){
   }
 }
 
-function explodeAt(pos, radius, dmg, stagger){
-  soundExplosion(computePan(pos));
+function explodeAt(pos, radius, dmg, stagger, silent){
+  // `silent` is used by chained explosions (the traca), which have their own sampled audio —
+  // otherwise every link in the chain stacked the old procedural boom on top of it.
+  if(!silent) soundExplosion(computePan(pos));
   spawnExplosionVisual(pos, radius);
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];

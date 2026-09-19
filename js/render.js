@@ -77,6 +77,7 @@ function init(){
 
   wireSettingsUI();
   applySettingsToUI();
+  updateToolPanelVisibility();
   loadFace();
   initHUD();
   initFPV();
@@ -96,6 +97,17 @@ function toggleCursorLock(){
     requestLock();
   }
 }
+// The tuning panels are development tools, so they're kept out of the way while actually
+// playing and reappear whenever the cursor is released (B, pause, or a level-up screen).
+function updateToolPanelVisibility(){
+  const playing = (gameState === 'playing');
+  const settings = el('settingsPanel');
+  if(settings) settings.style.display = playing ? 'none' : '';
+  const dbg = el('debugPanel');
+  // The debug panel also has its own backtick toggle; don't override that when it's hidden.
+  if(dbg && !dbg.classList.contains('hidden')) dbg.style.display = playing ? 'none' : '';
+}
+
 function updateLockButtonLabel(){
   const btn = el('btnToggleLock');
   if(btn) btn.textContent = gameState==='playing' ? 'UNLOCK CURSOR [B]' : 'LOCK CURSOR [B]';
@@ -113,6 +125,7 @@ function onPointerLockChange(){
     pauseOverlay.classList.remove('hidden');
   }
   updateLockButtonLabel();
+  updateToolPanelVisibility();
 }
 
 function onMouseMove(e){
@@ -141,7 +154,7 @@ function handleKeyDown(e){
   if(e.code==='KeyR' && gameState==='playing') startReload();
   if(e.code==='KeyM') toggleMute();
   if(e.code==='KeyB') toggleCursorLock();
-  if(e.code==='Backquote') debugPanelEl.classList.toggle('hidden');
+  if(e.code==='Backquote'){ debugPanelEl.classList.toggle('hidden'); debugPanelEl.style.display=''; updateToolPanelVisibility(); }
   if(e.code==='KeyE' && gameState==='playing' && currentInteractable){
     if(currentInteractable.type==='station') interactStation(currentInteractable.station);
     else if(currentInteractable.type==='box') interactBox();

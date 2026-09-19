@@ -584,9 +584,10 @@ function damageZombie(z, amount, opts){
   opts = opts||{};
   if(!z || z.dying) return true; // already dead/dying — treat as handled, no further effects
   if(amount<=0) return false;
-  // Vermut: while the buff is running, any hit at all is fatal.
-  if(player.instakillUntil && clock.getElapsedTime() < player.instakillUntil) z.hp = 0;
-  else z.hp -= amount * (z.damageTakenMult||1);
+  // Vermut multiplies damage rather than killing outright: an instant kill ignored how much
+  // a weapon actually hit for, which made area and rapid-tick weapons trivially strong.
+  const vermut = (player.instakillUntil && clock.getElapsedTime() < player.instakillUntil) ? VERMUT_DAMAGE_MULT : 1;
+  z.hp -= amount * (z.damageTakenMult||1) * vermut;
   triggerZombieFlash(z);
   spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount*(z.damageTakenMult||1)), !!opts.crit);
   if(opts.stagger){
@@ -706,8 +707,8 @@ function applyDrop(type){
       showWaveBanner('POSTRE','2x dinero y XP — 20s'); break;
     case 'instakill':
       // No longer a board wipe: for a while, any damage at all is lethal.
-      player.instakillUntil = clock.getElapsedTime()+INSTAKILL_DURATION;
-      showWaveBanner('VERMUT','¡Muerte instantánea — '+INSTAKILL_DURATION+'s!'); break;
+      player.instakillUntil = clock.getElapsedTime()+VERMUT_DURATION;
+      showWaveBanner('VERMUT','x'+VERMUT_DAMAGE_MULT+' daño — '+VERMUT_DURATION+'s'); break;
   }
   updateHUD();
 }

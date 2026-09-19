@@ -143,12 +143,12 @@ function updateBubbles(delta, elapsed){
       if(d < b.radius+(z.collisionRadius||ZOMBIE_RADIUS) && dy < (z.height||1.8)*0.7){
         damageZombie(z, b.dmg, {});
         if(b.infect) tryInfect(z, b.infectChance, elapsed);
-        weaponBubblePopSound(computePan(b.mesh.position));
+        weaponBubblePopSound(b.mesh.position);
         b.popped = true; break;
       }
     }
     if(b.popped || b.age >= b.life){
-      if(!b.popped) weaponBubblePopSound(computePan(b.mesh.position));
+      if(!b.popped) weaponBubblePopSound(b.mesh.position);
       scene.remove(b.mesh); b.geo.dispose(); b.mat.dispose(); bubbles.splice(i,1);
     }
   }
@@ -215,7 +215,7 @@ function fireBait(wIdx, dmgMult, isCrit, critMultVal){
     mesh, spin:0, pos:start.clone(), vel:forward.clone().multiplyScalar(w.launchSpeed||13),
     gravity:true, radius:0.3, groundOnly:true, spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
-      weaponImpactSound(wIdx, computePan(pos));
+      weaponImpactSound(wIdx, pos);
       spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult);
     }
   });
@@ -276,10 +276,12 @@ function updateBaits(delta, elapsed){
       for(const z of zombies){ if(z.luredBy===b){ z.luredBy=null; z.damageTakenMult=1; } }
       if(b.evolved){
         const mods = player.weaponMods[b.wIdx];
-        const dmg = (90 + (mods.explosionDamage||0)) * b.dmgMult * mods.dmgMult;
+        // Deliberately tight: the blast should catch whoever came to eat, not the street.
+        const blastRadius = Math.min(2, 1.6*mods.radiusMult);
+        const dmg = (45 + (mods.explosionDamage||0)) * b.dmgMult * mods.dmgMult;
         const bp = new THREE.Vector3(b.pos.x, b.pos.y, b.pos.z);
-        weaponExplodeSound(b.wIdx, computePan(bp));
-        explodeAt(bp, b.radius*0.45*mods.radiusMult, dmg, true);
+        weaponExplodeSound(b.wIdx, bp);
+        explodeAt(bp, blastRadius, dmg, true);
       }
       scene.remove(b.plate); scene.remove(b.ring);
       baits.splice(i,1);
@@ -406,14 +408,67 @@ function updateBeamVisual(){
   if(beamMesh && beamMesh.visible && clock.getElapsedTime() > (beamMesh.userData.hideAt||0)) beamMesh.visible = false;
 }
 
+// ---------- CAÑÓN DE CONFETTI ----------
+// A crowd-control tool rather than a damage one: everything caught in the cone is shoved out
+// to its far edge, which buys space in a way nothing else in the roster does. Damage is
+// deliberately modest so it isn't simply a better shotgun.
+function fireCone(wIdx, dmgMult, isCrit, critMultVal){
+  const w = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
+  const range = (w.coneRange||5) * mods.radiusMult;
+  const halfArc = THREE.MathUtils.degToRad((w.coneAngle||42)/2);
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
+  const dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
+
+  let hits = 0;
+  for(let i=zombies.length-1;i>=0;i--){
+    const z = zombies[i];
+    if(z.dying) continue;
+    const to = new THREE.Vector3(z.group.position.x-camera.position.x, 0, z.group.position.z-camera.position.z);
+    const d = to.length();
+    if(d > range + (z.collisionRadius||ZOMBIE_RADIUS)) continue;
+    to.normalize();
+    if(Math.acos(THREE.MathUtils.clamp(forward.dot(to),-1,1)) > halfArc) continue;
+    // Damage falls off across the cone, but the shove doesn't: the point is to clear the space.
+    damageZombie(z, dmg*(1 - 0.35*(d/range)), {crit:isCrit, stagger:true, knockFrom:camera.position});
+    // Pushed to the cone's far edge rather than by a fixed amount, so the area really empties.
+    const push = Math.max(0, range - d) * (mods.knockbackMult||1);
+    pushZombie(z, camera.position, push);
+    hits++;
+  }
+  spawnConeBurst(forward, range, halfArc);
+  return hits;
+}
+
+function spawnConeBurst(forward, range, halfArc){
+  const base = Math.max(0.4, range*Math.tan(halfArc));
+  const geo = new THREE.ConeGeometry(base, range, 14, 1, true);
+  geo.translate(0,-range/2,0);
+  const mat = new THREE.MeshBasicMaterial({ color:0xffd45c, transparent:true, opacity:0.4, side:THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(camera.position.x, feetY+1.1, camera.position.z);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,-1,0), forward.clone().normalize());
+  scene.add(mesh);
+  const t0 = clock.getElapsedTime();
+  const anim = ()=>{
+    const k = Math.min(1,(clock.getElapsedTime()-t0)/0.28);
+    mat.opacity = 0.4*(1-k);
+    if(k<1) requestAnimationFrame(anim);
+    else { scene.remove(mesh); geo.dispose(); mat.dispose(); }
+  };
+  anim();
+}
+
 // ---------- CONFETTI: FIESTA TOTAL (evolved) ----------
 // The evolution reframes the weapon: instead of a forward cone it becomes a panic button that
 // clears space in every direction.
 function fireNova(wIdx, dmgMult, isCrit, critMultVal){
   const w = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
-  const radius = 9 * mods.radiusMult;
-  const dmg = effectiveDamage(wIdx)*effectivePellets(wIdx)*0.55*dmgMult*(isCrit?critMultVal:1);
-  const kb = (w.knockback||1.1)*(mods.knockbackMult||1)*2.2;
+  // Evolving trades the cone for full coverage and more reach, not more damage — as a panic
+  // button its value is the space it clears, and it was badly overtuned as a damage option.
+  const radius = ((w.coneRange||5) + 2.5) * mods.radiusMult;
+  const dmg = effectiveDamage(wIdx)*0.45*dmgMult*(isCrit?critMultVal:1);
+  const kb = radius*(mods.knockbackMult||1);
   spawnExplosionVisual(camera.position.clone().setY(feetY+0.9), radius);
   soundExplosion(0);
   for(let i=zombies.length-1;i>=0;i--){
@@ -422,7 +477,7 @@ function fireNova(wIdx, dmgMult, isCrit, critMultVal){
     const d = Math.hypot(z.group.position.x-camera.position.x, z.group.position.z-camera.position.z);
     if(d > radius) continue;
     damageZombie(z, dmg*(1-d/radius*0.5), {crit:isCrit, stagger:true, knockFrom:camera.position});
-    pushZombie(z, camera.position, kb);
+    pushZombie(z, camera.position, Math.max(0, radius - d)*(mods.knockbackMult||1));
   }
 }
 

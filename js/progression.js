@@ -191,7 +191,7 @@ function updateHUD(){
     const kill = (player.instakillUntil||0) - now;
     const parts = [];
     if(remaining>0) parts.push('2x $/XP — '+Math.ceil(remaining)+'s');
-    if(kill>0) parts.push('VERMUT — '+Math.ceil(kill)+'s');
+    if(kill>0) parts.push('VERMUT x'+VERMUT_DAMAGE_MULT+' — '+Math.ceil(kill)+'s');
     if(parts.length){ doubleBadgeEl.textContent = parts.join('   |   '); doubleBadgeEl.classList.remove('hidden'); }
     else doubleBadgeEl.classList.add('hidden');
   }
