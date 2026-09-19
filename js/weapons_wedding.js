@@ -18,6 +18,9 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
 
   const dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
   let hitAny = false;
+
+  // Gather everything inside the arc, nearest first.
+  const inArc = [];
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
     if(z.dying) continue;
@@ -26,7 +29,16 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
     if(d > reach + (z.collisionRadius||ZOMBIE_RADIUS)) continue;
     to.normalize();
     if(Math.acos(THREE.MathUtils.clamp(forward.dot(to),-1,1)) > halfArc) continue;
-    damageZombie(z, dmg, {crit:isCrit, stagger:true, knockFrom:camera.position});
+    inArc.push({ z, d });
+  }
+  inArc.sort((a,b)=>a.d-b.d);
+
+  // The fists connect with one guest; the sword sweeps through the whole arc. Keeping the
+  // crowd-clearing sweep exclusive to the sword is most of what makes buying it feel like an
+  // upgrade rather than a damage bump.
+  const targets = w.singleTarget ? inArc.slice(0,1) : inArc;
+  for(const t of targets){
+    damageZombie(t.z, dmg, {crit:isCrit, stagger:true, knockFrom:camera.position});
     hitAny = true;
   }
   spawnMeleeArc(forward, reach);

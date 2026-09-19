@@ -59,6 +59,10 @@ const DROP_COLORS = { ammo:0xff8c26, health:0x5ce85c, double:0xffd54a, instakill
 const VERMUT_DURATION = 15;        // seconds
 const VERMUT_DAMAGE_MULT = 3;
 const BOX_COST = 1500;
+// Weapon stations and the party box are placed in this ring around the spawn point, so
+// everything is quick to reach when testing.
+const SHOP_MIN_DIST = 6;
+const SHOP_MAX_DIST = 22;
 
 // Enemy spawning. Points come from an optional SpawnZones model (see below); without it the
 // game falls back to sampling rings around the player as before.
@@ -233,7 +237,7 @@ const NAV_NODES = [
 const ALL_WEAPONS = [
   // 0 — melee, permanently occupies slot 0 and cannot be levelled or dropped.
   { name:'PUÑOS', type:'melee', dmg:34, fireRate:0.45, mag:1, reserveMax:0, cost:0, ammoCost:0,
-    meleeRange:2.6, meleeArc:70, noAmmo:true, noLevel:true },
+    meleeRange:2.6, meleeArc:70, noAmmo:true, noLevel:true, singleTarget:true },
   // 1 — the starting firearm, unchanged from the old pistol.
   { name:'PISTOLA DE PLOMOS', type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72, cost:0, ammoCost:0,
     spread:0.010, pellets:1 },
@@ -367,6 +371,16 @@ let guitarristaSpriteTexture = null;
 let navGridFine = null, navGridCoarse = null, levelMaxY = 10;
 let sunLight = null, ambientLight = null, levelBox = null;
 let minimapTransform = null, minimapCanvasEl = null, minimapCtx = null, minimapBgCanvas = null;
+// The map is drawn this many times the size of its HUD cell and clipped to it, with the
+// player pinned at the centre — raising this zooms in without losing your bearings.
+const MINIMAP_ZOOM = 2.5;
+// Olive against the map's ochres; the blue used elsewhere disappeared into them.
+const MINIMAP_PLAYER_COLOR = '#8fae3a';
+const MINIMAP_PLAYER_OUTLINE = '#20180c';
+const MINIMAP_PLAYER_BLOCK = 2;      // block size of the diamond, in canvas pixels
+const MINIMAP_ENEMY_COLOR = '#e8434a';
+const MINIMAP_ENEMY_SIZE = 5;        // enemy square, in canvas pixels
+const MINIMAP_GUITAR_COLOR = '#ffc46b';
 const MINIMAP_V_FLIP = false; // flip if markers end up vertically mirrored vs. the real map
 let currentInteractable = null;
 let pendingSwapTarget = null;

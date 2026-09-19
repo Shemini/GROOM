@@ -215,15 +215,8 @@ function updateStoneHUD(){
   }
 }
 
-// The minimap art is authored at ~60% alpha; js/minimap.js already composites a corrected
-// version, so reuse that rather than loading the file a second time.
-function hudApplyMinimapBackground(){
-  if(!hudRefs || !hudRefs.minimapViewport) return;
-  if(typeof minimapBgCanvas === 'undefined' || !minimapBgCanvas) return;
-  if(hudLast.minimapBg) return;
-  hudLast.minimapBg = true;
-  hudRefs.minimapViewport.style.backgroundImage = 'url(' + minimapBgCanvas.toDataURL() + ')';
-}
+// The minimap draws its own art on its canvas now (see js/minimap.js), so the HUD no longer
+// needs to push a CSS background into the cell.
 
 // The HUD deliberately does NOT follow the colour-depth setting: the banner reads better at
 // full depth, and an SVG filter over it forces an extra compositing layer for no real gain.

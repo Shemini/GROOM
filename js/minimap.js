@@ -87,35 +87,81 @@ function loadMinimapImage(){
   img.src = './Minimap.png';
 }
 
+// Draws the map and the blips through one shared transform, which is what keeps them in
+// agreement. Previously the map was a CSS background scaled independently of the canvas the
+// blips were drawn on, so the two could never line up.
+//
+// The view is centred on the player: the map slides underneath a fixed marker rather than the
+// marker moving across a fixed map. That reads better at this size, and it means the zoom can
+// be raised without losing track of where you are.
 function updateMinimap(){
   if(!minimapCtx) return;
   const canvas = minimapCanvasEl;
-  minimapCtx.clearRect(0,0,canvas.width,canvas.height);
-  hudApplyMinimapBackground(); // the map art is the cell's CSS background; this canvas is blips only
-  if(!minimapTransform) return; // markers wait on calibration; background can already show
-
-  minimapCtx.fillStyle = '#e8434a';
-  zombies.forEach(z=>{
-    const uv = worldToMinimapUV(z.group.position.x, z.group.position.z);
-    if(!uv) return;
-    const zx = uv.u*canvas.width;
-    const zy = (MINIMAP_V_FLIP ? (1-uv.v) : uv.v) * canvas.height;
-    minimapCtx.beginPath();
-    minimapCtx.arc(zx,zy,5,0,Math.PI*2);
-    minimapCtx.fill();
-  });
+  const cw = canvas.width, ch = canvas.height;
+  minimapCtx.clearRect(0,0,cw,ch);
+  if(!minimapTransform || !minimapBgCanvas) return;
 
   const playerUV = worldToMinimapUV(camera.position.x, camera.position.z);
-  if(playerUV){
-    const px = playerUV.u*canvas.width;
-    const py = (MINIMAP_V_FLIP ? (1-playerUV.v) : playerUV.v) * canvas.height;
-    minimapCtx.fillStyle = '#4ea8e8';
-    minimapCtx.beginPath();
-    minimapCtx.arc(px,py,6,0,Math.PI*2);
-    minimapCtx.fill();
-    minimapCtx.strokeStyle = '#ffffff';
-    minimapCtx.lineWidth = 2;
-    minimapCtx.stroke();
+  if(!playerUV) return;
+
+  // The map is drawn MINIMAP_ZOOM times the size of its cell, so only a fraction shows.
+  // Scaled uniformly from the width so the art keeps its aspect ratio whatever the cell's is.
+  const scale = (cw*MINIMAP_ZOOM)/minimapBgCanvas.width;
+  const drawW = minimapBgCanvas.width*scale;
+  const drawH = minimapBgCanvas.height*scale;
+
+  const vOf = uv => MINIMAP_V_FLIP ? (1-uv.v) : uv.v;
+  // Offset that puts the player's own position at the centre of the cell.
+  const offX = cw/2 - playerUV.u*drawW;
+  const offY = ch/2 - vOf(playerUV)*drawH;
+
+  minimapCtx.imageSmoothingEnabled = false;   // keep the map crisp, in keeping with the rest
+  minimapCtx.drawImage(minimapBgCanvas, offX, offY, drawW, drawH);
+
+  // Enemies: small hard-edged squares, drawn on the same offset as the map.
+  minimapCtx.fillStyle = MINIMAP_ENEMY_COLOR;
+  const es = MINIMAP_ENEMY_SIZE;
+  zombies.forEach(z=>{
+    if(z.dying) return;
+    const uv = worldToMinimapUV(z.group.position.x, z.group.position.z);
+    if(!uv) return;
+    const x = Math.round(offX + uv.u*drawW), y = Math.round(offY + vOf(uv)*drawH);
+    if(x < -es || x > cw+es || y < -es || y > ch+es) return;   // outside the cell
+    minimapCtx.fillRect(x-es/2, y-es/2, es, es);
+  });
+
+  // The Guitarrista, if he's out there, so he can be found again after a dismissal.
+  if(typeof guitarrista !== 'undefined' && guitarrista){
+    const uv = worldToMinimapUV(guitarrista.group.position.x, guitarrista.group.position.z);
+    if(uv){
+      const x = Math.round(offX + uv.u*drawW), y = Math.round(offY + vOf(uv)*drawH);
+      minimapCtx.fillStyle = MINIMAP_GUITAR_COLOR;
+      minimapCtx.fillRect(x-3, y-3, 6, 6);
+    }
+  }
+
+  drawPlayerMarker(cw/2, ch/2);
+}
+
+// A blocky diamond built from square blocks rather than a smooth path, so it matches the
+// pixelated look instead of sitting on top of it as clean vector art.
+function drawPlayerMarker(cx, cy){
+  const b = MINIMAP_PLAYER_BLOCK;
+  const rows = [1,3,5,7,5,3,1];          // widths in blocks, forming the diamond
+  const h = rows.length;
+  minimapCtx.fillStyle = MINIMAP_PLAYER_OUTLINE;
+  for(let r=0;r<h;r++){
+    const w = rows[r]+2;                  // one block of outline on each side
+    const x = Math.round(cx - (w*b)/2);
+    const y = Math.round(cy + (r - h/2)*b);
+    minimapCtx.fillRect(x, y-b*0.5, w*b, b*2);
+  }
+  minimapCtx.fillStyle = MINIMAP_PLAYER_COLOR;
+  for(let r=0;r<h;r++){
+    const w = rows[r];
+    const x = Math.round(cx - (w*b)/2);
+    const y = Math.round(cy + (r - h/2)*b);
+    minimapCtx.fillRect(x, y, w*b, b);
   }
 }
 

@@ -180,8 +180,9 @@
 
   /* MINIMAP */
   #cellMinimap{width:214px;padding:10px;justify-content:center;}
-  #minimapViewport{position:relative;width:100%;height:148px;background-color:#241b10;
-    background-size:auto 190%;background-position:50% 50%;background-repeat:no-repeat;overflow:hidden;}
+  /* The map itself is drawn on the canvas below (player-centred and clipped); this is just
+     the recess it sits in. */
+  #minimapViewport{position:relative;width:100%;height:148px;background-color:#241b10;overflow:hidden;}
   #minimapCanvas{position:absolute;inset:0;width:100%;height:148px;}
 
   /* FACE NICHE — overhangs the bar upward */

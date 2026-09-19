@@ -824,6 +824,27 @@ function nearestNavFloor(x, z){
 // =================================================================
 // STATIONS + BOX — randomly placed on the collision mesh
 // =================================================================
+// Like randomFloorPoint, but confined to a ring around a centre — used to keep the shops
+// within easy reach of the spawn so features can be tried without a hike across the map.
+// Falls back to the unconstrained search if the ring can't be satisfied, so a tight or
+// awkward spawn area can never leave a station unplaced.
+function randomFloorPointNear(center, minDist, maxDist, existingPoints, minSep){
+  for(let tries=0; tries<400; tries++){
+    const ang = Math.random()*Math.PI*2;
+    const r = minDist + Math.random()*(maxDist-minDist);
+    const x = center.x + Math.cos(ang)*r;
+    const z = center.z + Math.sin(ang)*r;
+    const fy = getFloorY(x, z, levelMaxY);
+    if(fy===null) continue;
+    if(isPositionBlocked(x, z)) continue;
+    let ok = true;
+    for(const p of existingPoints){ if(Math.hypot(x-p.x, z-p.z) < minSep){ ok=false; break; } }
+    if(ok) return { x, y:fy, z };
+  }
+  console.warn('Shop placement: no spot found within ' + maxDist + 'm of spawn, falling back to anywhere.');
+  return randomFloorPoint(existingPoints, minSep);
+}
+
 function randomFloorPoint(existingPoints, minSep){
   const box = new THREE.Box3();
   collisionMeshes.forEach(m=>box.expandByObject(m));
@@ -859,14 +880,15 @@ function placeStationsAndBox(){
   const placed = [{x:playerStart.x, z:playerStart.z}];
   const colors = [0xffb347, 0x66d9ff, 0xff6666];
   STATION_INDICES.forEach((weaponIndex,i)=>{
-    const p = randomFloorPoint(placed, 6);
+    const p = randomFloorPointNear(playerStart, SHOP_MIN_DIST, SHOP_MAX_DIST, placed, 5);
     if(!p) return;
     placed.push({x:p.x,z:p.z});
     const { core, group } = buildStationVisual(p, colors[i]);
     stationMarkers.push({ core, group, weaponIndex, pos:{x:p.x,z:p.z}, spinPhase:Math.random()*10 });
   });
 
-  const bp = randomFloorPoint(placed, 6) || { x: playerStart.x+5, y: playerStart.y||0, z: playerStart.z+5 };
+  const bp = randomFloorPointNear(playerStart, SHOP_MIN_DIST, SHOP_MAX_DIST, placed, 5)
+           || { x: playerStart.x+5, y: playerStart.y||0, z: playerStart.z+5 };
   boxPos = { x:bp.x, z:bp.z };
   const canvas = document.createElement('canvas');
   canvas.width=canvas.height=128;

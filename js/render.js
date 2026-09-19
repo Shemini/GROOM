@@ -50,6 +50,7 @@ function init(){
   renderer.domElement.addEventListener('mousedown', e => { if(e.button===0) mouseDown=true; });
   document.addEventListener('mouseup', e => { if(e.button===0) mouseDown=false; });
   document.addEventListener('pointerlockchange', onPointerLockChange);
+  renderer.domElement.addEventListener('wheel', onWheel, { passive:false });
 
   startBtn.addEventListener('click', requestLock);
   pauseOverlay.addEventListener('click', requestLock);
@@ -128,6 +129,19 @@ function onPointerLockChange(){
   updateToolPanelVisibility();
 }
 
+let wheelAccum = 0;
+const WHEEL_NOTCH = 40;   // accumulated deltaY that counts as one step
+function onWheel(e){
+  if(gameState !== 'playing') return;
+  e.preventDefault();
+  wheelAccum += e.deltaY;
+  while(Math.abs(wheelAccum) >= WHEEL_NOTCH){
+    const dir = wheelAccum > 0 ? 1 : -1;
+    wheelAccum -= dir*WHEEL_NOTCH;
+    cycleWeapon(dir);   // wheel down advances, wheel up goes back
+  }
+}
+
 function onMouseMove(e){
   if(!isLocked) return;
   const sens = settings.mouseSensitivity;
@@ -166,6 +180,19 @@ function handleKeyDown(e){
     if(wIdx!==null) switchWeapon(wIdx);
   }
 }
+// Wheel cycling walks the occupied slots in order, so it skips empty ones and wraps around
+// rather than stalling at the ends.
+function cycleWeapon(dir){
+  if(gameState !== 'playing') return;
+  const owned = [];
+  for(let i=0;i<player.slots.length;i++) if(player.slots[i] !== null) owned.push(player.slots[i]);
+  if(owned.length < 2) return;
+  let at = owned.indexOf(player.currentWeapon);
+  if(at === -1) at = 0;
+  const next = owned[(at + dir + owned.length) % owned.length];
+  if(next !== player.currentWeapon) switchWeapon(next);
+}
+
 function switchWeapon(idx){ player.currentWeapon = idx; player.reloading = false; updateHUD(); }
 
 function onResize(){
