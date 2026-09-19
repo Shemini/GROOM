@@ -46,12 +46,8 @@
   #waveNum{font-size:16px;letter-spacing:4px;color:var(--danger);}
   #moneyNum{font-size:13px;letter-spacing:3px;color:var(--gold);}
 
-  #statPanel{position:absolute;top:44px;right:16px;width:210px;font-size:10px;line-height:2;
-    color:var(--txt-2);background:rgba(14,14,17,0.78);border:1px solid var(--panel-line);padding:10px 12px;}
-  #statPanel .row{display:flex;justify-content:space-between;}
-  #statPanel .row .lvl{color:var(--gold);}
-  #statPanel .title{color:var(--toxic);font-size:11px;letter-spacing:3px;margin-bottom:5px;
-    border-bottom:1px solid var(--panel-line);padding-bottom:4px;}
+  /* The in-game stat panel is gone for now — it outgrew its corner once the icons went in.
+     The readout is intended to return in the pause menu in a layout that suits it. */
 
   #doubleBadge{position:absolute;top:46px;left:50%;transform:translateX(-50%);
     font-size:12px;letter-spacing:2px;color:var(--gold-lt);
@@ -263,7 +259,7 @@
   #lvlKeysHint{font-size:11px;letter-spacing:2px;color:var(--txt-muted);}
 
   #levelUpCards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
-  .lvlCard{min-height:300px;padding:16px 18px 18px;text-align:left;border:none;cursor:pointer;
+  .lvlCard{min-height:340px;padding:16px 18px 18px;text-align:left;border:none;cursor:pointer;
     font-family:'Silkscreen',monospace;
     background:var(--cell);
     background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.022) 0 2px,rgba(0,0,0,0) 2px 6px);
@@ -280,14 +276,15 @@
     padding:3px 8px 2px;
     box-shadow:inset 0 2px 0 rgba(255,244,214,.45), inset 0 -2px 0 rgba(90,66,32,.35);}
   .lvlCard .hotkey{font-size:12px;color:#0f0b05;background:var(--gold);padding:2px 8px 1px;}
-  /* Fixed height whatever the card holds, so titles and dot rows line up across the row. */
-  .lvlCard .art{height:96px;display:flex;align-items:center;justify-content:center;}
-  .lvlCard .art img{max-width:96px;max-height:96px;object-fit:contain;image-rendering:pixelated;}
+  /* Fixed height whatever the card holds, so titles and dot rows line up across the row.
+     Sized a little above the HUD's slot icons, since this screen is read at rest. */
+  .lvlCard .art{height:136px;display:flex;align-items:center;justify-content:center;}
+  .lvlCard .art img{width:128px;height:128px;object-fit:contain;image-rendering:pixelated;}
   .lvlCard .swatch{width:76px;height:76px;
     background:repeating-linear-gradient(45deg,#241c10 0 6px,#1b1409 6px 12px);
     box-shadow:inset 0 0 0 3px #33291a;}
   .lvlCard .name{font-size:17px;line-height:1.35;letter-spacing:1px;color:var(--gold-lt);
-    overflow-wrap:anywhere;margin:0;}
+    overflow-wrap:anywhere;margin:6px 0 0;}
   .lvlCard .desc{font-size:12px;line-height:1.8;color:var(--stone-chip);margin:0;min-height:0;}
   .lvlCard .dots{margin-top:auto;display:flex;gap:5px;}
   .lvlCard .dot{width:100%;height:10px;border-radius:0;background:#33291a;
@@ -357,7 +354,6 @@
     <div id="moneyNum">$ 0</div>
   </div>
   <div id="doubleBadge" class="hidden"></div>
-  <div id="statPanel"><div class="title">STATS</div><div id="statRows"></div></div>
   <div id="waveBanner"></div>
   <div id="interactPrompt"></div>
 

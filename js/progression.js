@@ -232,6 +232,9 @@ function updateWave(delta, elapsed){
 // HUD
 // =================================================================
 function updateStatPanel(){
+  // The panel was removed from the HUD; bail before building markup nothing will read. The
+  // function stays so the pause-menu version can reuse it when that lands.
+  if(!statRowsEl) return;
   let html='';
   STATS.forEach(s=>{
     const icon = s.icon ? '<img class="statIcon" src="'+STATS_DIR+encodeURIComponent(s.icon)+'.png" alt="">' : '';
