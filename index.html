@@ -173,10 +173,21 @@
   #stamTrack .pip{height:9px;background:var(--cell-dark);}
 
   /* TALLY */
-  #cellTally{flex:1;padding:12px 18px;justify-content:space-between;}
+  #cellTally{flex:1;padding:10px 14px;justify-content:space-between;}
+  /* Combo readout — deliberately explicit while the numbers are being balanced. */
+  #comboBox{border-top:2px solid var(--cell-line);padding-top:6px;}
+  #comboHead{display:flex;justify-content:space-between;align-items:baseline;}
+  #comboLabel{font-size:12px;letter-spacing:2px;color:var(--txt-2);}
+  #comboBonus{font-size:11px;color:var(--gold);}
+  #comboMeterOuter{height:8px;background:var(--cell-dark);margin:4px 0 3px;
+    box-shadow:inset 0 0 0 2px var(--txt-off);}
+  #comboMeterInner{height:100%;width:0%;background:var(--gold);}
+  #comboStats{display:flex;justify-content:space-between;font-size:10px;color:var(--txt-muted);}
+  #comboTimer.frozen{color:var(--stam);}
+  #comboTimer.urgent{color:var(--danger);}
   .tallyRow{display:flex;align-items:baseline;gap:10px;}
-  #tallyKills{font-family:'Press Start 2P',monospace;font-size:34px;color:var(--txt-2);}
-  #tallyScore{font-family:'Press Start 2P',monospace;font-size:24px;color:var(--txt-1);}
+  #tallyKills{font-family:'Press Start 2P',monospace;font-size:24px;color:var(--txt-2);}
+  #tallyScore{font-family:'Press Start 2P',monospace;font-size:18px;color:var(--txt-1);}
 
   /* MINIMAP */
   #cellMinimap{width:214px;padding:10px;justify-content:center;}
@@ -329,9 +340,13 @@
       </div>
 
       <div id="cellTally" class="cell">
-        <span class="chip">TALLY</span>
         <div class="tallyRow"><span id="tallyKills">0</span><span class="chip sm">DOWN</span></div>
         <div class="tallyRow"><span id="tallyScore">0</span><span class="chip sm">PTS</span></div>
+        <div id="comboBox">
+          <div id="comboHead"><span id="comboLabel">SERIO</span><span id="comboBonus">+0%</span></div>
+          <div id="comboMeterOuter"><div id="comboMeterInner"></div></div>
+          <div id="comboStats"><span id="comboCount">0/10</span><span id="comboTimer">—</span></div>
+        </div>
       </div>
 
       <div id="cellMinimap" class="cell">
@@ -493,6 +508,7 @@
 <script src="js/zombies.js"></script>
 <script src="js/guitarrista.js"></script>
 <script src="js/face.js"></script>
+<script src="js/combo.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/fpv.js"></script>
 <script src="js/progression.js"></script>

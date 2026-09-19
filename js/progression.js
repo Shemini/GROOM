@@ -3,7 +3,8 @@
 // =================================================================
 function takeDamage(amount){
   if(gameState!=='playing') return;
-  player.health -= amount;
+  // Higher combo, harder hits: the reward for pushing is paid for with real risk.
+  player.health -= amount * comboDamageTakenMult();
   soundHurt();
   faceOnHit();
   damageFlashEl.style.opacity=0.55;
@@ -132,9 +133,9 @@ function startWave(){
   const intensity = statValue('enemyIntensity');
   wave.toSpawn = Math.round((5+wave.number*2)*(1+intensity*0.10));
   wave.spawned=0; wave.spawnTimer=0;
-  wave.spawnInterval = Math.max(0.45, 1.2-wave.number*0.05);
+  wave.spawnInterval = Math.max(0.25, 0.8-wave.number*0.04);   // quicker, so a combo has a chance to build
   scheduleDrops();
-  cycleFaceMoodForWave(wave.number); // temporary: cycles moods so each can be seen
+  comboSetFrozen(false);
   showWaveBanner('WAVE '+wave.number, 'Zombies incoming');
   soundWaveStart();
 }
@@ -145,11 +146,16 @@ function showWaveBanner(main, sub){
 }
 function updateWave(delta, elapsed){
   if(wave.betweenWaves){
+    // Nothing to kill, so the combo is held rather than decaying through dead time. Without
+    // this the gap between waves would quietly eat a stage every single time.
+    comboSetFrozen(true);
     wave.betweenTimer -= delta;
-    if(wave.betweenTimer<=0){ wave.number++; wave.betweenTimer=6; startWave(); }
+    if(wave.betweenTimer<=0){ wave.number++; wave.betweenTimer=WAVE_GAP; startWave(); }
     return;
   }
   if(wave.spawned<wave.toSpawn){
+    // Released as soon as the first enemy is actually out there to be killed.
+    comboSetFrozen(wave.spawned === 0);
     wave.spawnTimer -= delta;
     if(wave.spawnTimer<=0){ spawnZombie(); wave.spawnTimer=wave.spawnInterval; }
   } else if(zombies.length===0){
@@ -158,7 +164,9 @@ function updateWave(delta, elapsed){
     showWaveBanner('WAVE '+wave.number+' CLEAR', '+$'+bonus+' — next wave incoming');
     soundWaveClear();
     guitarristaOnWaveClear();
-    wave.betweenWaves=true; wave.betweenTimer=6;
+    wave.betweenWaves=true; wave.betweenTimer=WAVE_GAP;
+  } else {
+    comboSetFrozen(false);
   }
 }
 

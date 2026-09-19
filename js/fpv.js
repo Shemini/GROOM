@@ -120,7 +120,14 @@ function fpvBuildLayers(wIdx){
     const tex = fpvTextures[layer.name];
     if(!tex) return;
     const mat = new THREE.MeshBasicMaterial({
-      map: tex, transparent:true, alphaTest:0.02, depthWrite:true, depthTest:false,
+      map: tex, transparent:true, alphaTest:0.02,
+      // The depth test must stay ENABLED: WebGL only writes depth when it's on, so
+      // depthTest:false silently discarded the write as well. Without a depth value the
+      // grading pass read the sky behind the weapon, classified those pixels as background
+      // and skipped the LUT — which is why the weapon darkened against open sky but looked
+      // right against geometry. AlwaysDepth keeps the test on (so the write happens) while
+      // letting the weapon draw over everything regardless of what's behind it.
+      depthWrite:true, depthTest:true, depthFunc:THREE.AlwaysDepth,
       toneMapped:false,
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), mat);

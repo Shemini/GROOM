@@ -92,10 +92,7 @@ function setFaceMood(mood){
   if(faceMode !== 'hit'){ faceMode = 'rest'; faceCurrent = null; }
 }
 
-// Cycles moods so every state can be seen before the combo system exists to drive them.
-function cycleFaceMoodForWave(waveNumber){
-  setFaceMood(FACE_MOODS[(waveNumber-1) % FACE_MOODS.length]);
-}
+// Mood is driven by the combo stage (see js/combo.js), not by the wave number.
 
 function updateFace(delta){
   if(!faceCtx) return;

@@ -587,7 +587,9 @@ function damageZombie(z, amount, opts){
   // Vermut multiplies damage rather than killing outright: an instant kill ignored how much
   // a weapon actually hit for, which made area and rapid-tick weapons trivially strong.
   const vermut = (player.instakillUntil && clock.getElapsedTime() < player.instakillUntil) ? VERMUT_DAMAGE_MULT : 1;
-  z.hp -= amount * (z.damageTakenMult||1) * vermut;
+  // Applied here rather than at each weapon, so damage-over-time and chained effects benefit
+  // from the combo too instead of only direct hits.
+  z.hp -= amount * (z.damageTakenMult||1) * vermut * comboDamageDealtMult();
   triggerZombieFlash(z);
   spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount*(z.damageTakenMult||1)), !!opts.crit);
   if(opts.stagger){
@@ -618,9 +620,13 @@ function killZombie(z, headshot){
   if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
     playEnemyClip('dying', computePan(z.group.position), 0.55);
   }
-  const rewardMult = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult;
+  // The combo advances before the payout is worked out, so the kill that raises a stage is
+  // itself paid at the new rate.
+  comboOnKill();
+  const rewardMult = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult * comboRewardMult();
   addMoney((BASE_MONEY_REWARD+Math.floor(Math.random()*8)+(headshot?BASE_MONEY_HEADSHOT_BONUS:0))*rewardMult);
   addXP((BASE_XP_REWARD+wave.number*1.4)*rewardMult);
+  player.points += Math.round((BASE_MONEY_REWARD+(headshot?BASE_MONEY_HEADSHOT_BONUS:0))*rewardMult);
   player.kills++;
   wave.killedThisWave++;
   const dropIdx = wave.dropSchedule.findIndex(d=>d.killIndex===wave.killedThisWave);

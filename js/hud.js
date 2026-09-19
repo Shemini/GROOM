@@ -47,6 +47,8 @@ function initHUD(){
     stamTrack: el('stamTrack'),
     tallyKills: el('tallyKills'), tallyScore: el('tallyScore'),
     nowPlaying: el('nowPlaying'), trackTitle: el('trackTitle'),
+    comboLabel: el('comboLabel'), comboBonus: el('comboBonus'),
+    comboMeter: el('comboMeterInner'), comboCount: el('comboCount'), comboTimer: el('comboTimer'),
     minimapViewport: el('minimapViewport'),
   };
 
@@ -203,8 +205,35 @@ function updateStoneHUD(){
   }
 
   // --- tally ---
+  // Points, not money: spending shouldn't be able to reduce the score for the run.
   hudSet('kills', hudRefs.tallyKills, String(player.kills));
-  hudSet('score', hudRefs.tallyScore, player.money.toLocaleString());
+  hudSet('score', hudRefs.tallyScore, (player.points||0).toLocaleString());
+
+  // --- combo ---
+  if(typeof combo !== 'undefined'){
+    const def = COMBO_STAGES[combo.stage] || COMBO_STAGES[0];
+    hudSet('comboLabel', hudRefs.comboLabel, def.label);
+    hudSet('comboBonus', hudRefs.comboBonus, '+'+Math.round(combo.stage*COMBO_DAMAGE_BONUS*100)+'%');
+    hudSet('comboCount', hudRefs.comboCount, combo.count+'/'+COMBO_KILLS_PER_STAGE);
+    if(hudRefs.comboMeter){
+      const pct = Math.round((combo.count/COMBO_KILLS_PER_STAGE)*100);
+      if(hudLast.comboPct !== pct){ hudLast.comboPct = pct; hudRefs.comboMeter.style.width = pct+'%'; }
+    }
+    if(hudRefs.comboTimer){
+      const t = hudRefs.comboTimer;
+      const frozen = combo.frozen;
+      const label = frozen ? 'EN PAUSA' : (combo.timer>0 ? combo.timer.toFixed(1)+'s' : '—');
+      hudSet('comboTimer', t, label);
+      // The colour states matter more than the number while balancing: at a glance you can
+      // see whether a stage is about to drop.
+      const urgent = !frozen && combo.timer>0 && combo.timer < def.timer*0.35;
+      if(hudLast.comboFrozen !== frozen || hudLast.comboUrgent !== urgent){
+        hudLast.comboFrozen = frozen; hudLast.comboUrgent = urgent;
+        t.classList.toggle('frozen', frozen);
+        t.classList.toggle('urgent', urgent);
+      }
+    }
+  }
 
   // --- now playing ---
   const title = (typeof musicCurrentTitle === 'string') ? musicCurrentTitle : '';

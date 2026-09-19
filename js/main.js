@@ -18,6 +18,7 @@ function animate(){
     updateFace(delta);
     updateFPV(delta, elapsed);
     updateStatusEffects(delta, elapsed);
+    updateCombo(delta);
     updateWave(delta, elapsed);
     updateInteractables(delta, elapsed);
     updateSoap(delta, elapsed);

@@ -59,6 +59,25 @@ const DROP_COLORS = { ammo:0xff8c26, health:0x5ce85c, double:0xffd54a, instakill
 const VERMUT_DURATION = 15;        // seconds
 const VERMUT_DAMAGE_MULT = 3;
 const BOX_COST = 1500;
+
+// =================================================================
+// COMBO
+// Timers shorten sharply with each stage: Mad is meant to be barely holdable, which is what
+// makes its payout defensible.
+// =================================================================
+// Shorter than the original 6s: a long lull between waves makes combos nearly impossible to
+// carry, and the wait wasn't doing anything for pacing either.
+const WAVE_GAP = 2.5;
+const COMBO_KILLS_PER_STAGE = 10;
+const COMBO_STAGES = [
+  { label:'SERIO',     mood:'serious', timer:10.0 },
+  { label:'CONTENTO',  mood:'happy',   timer:7.5  },
+  { label:'EUFÓRICO',  mood:'excited', timer:5.0  },
+  { label:'CABREADO',  mood:'mad',     timer:2.5  },
+];
+const COMBO_DAMAGE_BONUS = 0.15;           // per stage, additive -> +45% at Mad
+const COMBO_REWARD_BONUS = 0.15;           // gold and XP, same scale
+const COMBO_DAMAGE_TAKEN_PENALTY = 0.10;   // per stage -> +30% incoming at Mad
 // Weapon stations and the party box are placed in this ring around the spawn point, so
 // everything is quick to reach when testing.
 const SHOP_MIN_DIST = 6;
@@ -440,6 +459,7 @@ const player = {
   stats: {}, level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,
   weaponLevel: { 1:1 }, weaponEvolved: { 1:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods(), 1: createDefaultMods() },
   burstState: {}, doubleUntil: 0, instakillUntil: 0,
+  points: 0,   // score: unlike money, never spent, so it stands as a record of the run
 };
 
 const wave = {
