@@ -206,6 +206,84 @@
   #faceClip{width:256px;height:256px;overflow:hidden;}
   #faceCanvas{width:256px;height:256px;}
 
+  /* ---- TITLE / LANDING ---- */
+  #startOverlay{position:fixed;inset:0;z-index:30;overflow:hidden;
+    background:#10131a url('./Cover.jpg') center center / cover no-repeat;
+    image-rendering:pixelated;}
+  #titleVignette{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg, rgba(6,8,14,.18) 0%, rgba(6,8,14,0) 26%,
+      rgba(6,8,14,.35) 66%, rgba(6,8,14,.78) 100%);}
+  /* 2px on, 2px off — deliberately NOT scaled with the viewport, or it moirés. */
+  #titleScanlines{position:absolute;inset:0;pointer-events:none;z-index:2;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 2px, transparent 2px 4px);
+    mix-blend-mode:multiply;}
+
+  /* Centred by a full-width flex row rather than a left/translate pair, which drifts. */
+  #titleLogoRow{position:absolute;left:0;right:0;top:20%;display:flex;justify-content:center;
+    z-index:3;pointer-events:none;}
+  #titleLogoWrap{position:relative;width:26.666%;filter:drop-shadow(0 6px 0 rgba(6,8,14,.55));
+    opacity:0;}
+  #titleLogoWrap.in{animation:groomLogoIn 900ms steps(6) forwards;}
+  #titleLogoWrap.shown{opacity:1;}
+  #titleLogo{display:block;width:100%;height:auto;image-rendering:pixelated;}
+  /* The logo gets its own scanline pass, masked to its alpha so the lines stay off the sky. */
+  #titleLogoScan{position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.34) 0 2px, transparent 2px 4px);
+    -webkit-mask-image:url('./CoverTittle.png'); mask-image:url('./CoverTittle.png');
+    -webkit-mask-size:100% 100%; mask-size:100% 100%;
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;}
+  @keyframes groomLogoIn{
+    0%{opacity:0;transform:scale(1.12);}
+    60%{opacity:1;transform:scale(.985);}
+    100%{opacity:1;transform:scale(1);}
+  }
+
+  #titlePrompt{position:absolute;left:0;right:0;bottom:7%;z-index:3;text-align:center;
+    font-family:'Press Start 2P',monospace;font-size:15px;letter-spacing:8px;color:#f0e4c6;
+    text-shadow:0 2px 0 rgba(6,8,14,.85);opacity:0;pointer-events:none;}
+  /* Hard steps rather than a fade, and slow enough not to read as a strobe. */
+  #titlePrompt.on{animation:groomFlicker 2.6s steps(1,end) infinite;}
+  @keyframes groomFlicker{
+    0%,44%{opacity:.95;} 50%,94%{opacity:.18;} 100%{opacity:.95;}
+  }
+
+  #titleMenu{position:absolute;left:0;right:0;top:66%;bottom:3%;z-index:3;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;
+    opacity:0;pointer-events:none;}
+  #titleMenu.on{opacity:1;pointer-events:auto;}
+  .titleBtn{width:340px;padding:13px 22px 11px;border:none;cursor:pointer;
+    font-family:'Silkscreen',monospace;font-size:15px;letter-spacing:6px;text-align:center;
+    color:#c9ab7e;background:#1e160c;
+    box-shadow:inset 3px 3px 0 #161007, inset -3px -3px 0 #624d25, 0 0 0 2px #6b5330,
+      0 4px 0 rgba(6,8,14,.5);}
+  .titleBtn.primary{color:#ffcf5c;background:#2a2013;
+    box-shadow:inset 0 0 0 3px #ffcf5c, 0 4px 0 rgba(6,8,14,.5);}
+  .titleBtn:hover:not(:disabled){color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
+  .titleBtn:active:not(:disabled){transform:translateY(2px);}
+  .titleBtn:disabled{color:#4a3d2b;background:#181207;
+    box-shadow:inset 3px 3px 0 #0d0904, inset -3px -3px 0 #33291a, 0 0 0 2px #33291a;
+    cursor:not-allowed;}
+  #titleMenu.on .titleBtn{animation:groomRiseIn 260ms steps(4) both;}
+  #titleMenu.on .titleBtn:nth-child(1){animation-delay:0ms;}
+  #titleMenu.on .titleBtn:nth-child(2){animation-delay:90ms;}
+  #titleMenu.on .titleBtn:nth-child(3){animation-delay:180ms;}
+  @keyframes groomRiseIn{ from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:none;} }
+
+  /* Photo-backed text needs full-strength ink behind it. */
+  #titleHelper{margin-top:6px;text-align:center;font-size:11px;letter-spacing:3px;color:#e5c68b;
+    text-shadow:0 2px 0 rgba(6,8,14,.85);}
+  #titleHelper #loadingBar{width:340px;height:6px;background:rgba(6,8,14,.6);
+    box-shadow:inset 0 0 0 2px #6b5330;margin:0 auto 5px;border:none;}
+  #titleHelper #loadingFill{height:100%;width:0%;background:#ffcf5c;transition:width .2s;}
+  #titleHelper #loadingLabel{margin:0;font-size:11px;letter-spacing:3px;color:#e5c68b;}
+
+  #btnTitleMute{position:absolute;right:22px;bottom:20px;z-index:4;
+    font-family:'Silkscreen',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;
+    padding:9px 14px 7px;border:none;color:#c9ab7e;background:#1e160c;
+    box-shadow:inset 3px 3px 0 #161007, inset -3px -3px 0 #624d25, 0 0 0 2px #6b5330;}
+  #btnTitleMute:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
+  #btnTitleMute.muted{color:#7a3a1e;}
+
   .overlay{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
     background:rgba(4,4,5,0.9);flex-direction:column;text-align:center;}
   .hidden{display:none !important;}
@@ -512,16 +590,32 @@
   <textarea id="jsonOut" readonly></textarea>
 </div>
 
-<div id="startOverlay" class="overlay">
-  <h1>GROOM</h1>
-  <p>Loading the cathedral. The environment file is large — this may take a little while.<br><br>
-  <span class="key">WASD</span> move &nbsp; <span class="key">MOUSE</span> look &nbsp;
-  <span class="key">CLICK</span> shoot &nbsp; <span class="key">E</span> interact &nbsp;
-  <span class="key">B</span> cursor</p>
-  <div id="loadingBar"><div id="loadingFill"></div></div>
-  <div id="loadingLabel">0%</div>
-  <button id="startBtn" class="btn hidden">CLICK TO START</button>
+<div id="startOverlay">
+  <div id="titleScanlines"></div>
+  <div id="titleVignette"></div>
+
+  <div id="titleLogoRow">
+    <div id="titleLogoWrap">
+      <img id="titleLogo" src="./CoverTittle.png" alt="GROOM">
+      <div id="titleLogoScan"></div>
+    </div>
+  </div>
+
+  <div id="titlePrompt">PRESS ENTER</div>
+
+  <div id="titleMenu">
+    <button id="startBtn" class="titleBtn primary" disabled>PLAY</button>
+    <button id="btnSettingsMenu" class="titleBtn" disabled>SETTINGS</button>
+    <button id="btnLanguageMenu" class="titleBtn" disabled>LANGUAGE</button>
+    <div id="titleHelper">
+      <div id="loadingBar"><div id="loadingFill"></div></div>
+      <div id="loadingLabel">0%</div>
+    </div>
+  </div>
+
+  <button id="btnTitleMute" title="Mute (M)">♪ ON</button>
 </div>
+
 
 <div id="pauseOverlay" class="overlay hidden">
   <h1 style="color:var(--bone)">PAUSED</h1>
@@ -592,6 +686,7 @@
 <script src="js/guitarrista.js"></script>
 <script src="js/face.js"></script>
 <script src="js/combo.js"></script>
+<script src="js/landing.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/fpv.js"></script>
 <script src="js/progression.js"></script>

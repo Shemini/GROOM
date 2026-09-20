@@ -53,7 +53,7 @@ function init(){
   document.addEventListener('pointerlockchange', onPointerLockChange);
   renderer.domElement.addEventListener('wheel', onWheel, { passive:false });
 
-  startBtn.addEventListener('click', requestLock);
+  startBtn.addEventListener('click', ()=>{ if(startBtn.disabled) return; stopTitleAudio(); requestLock(); });
   pauseOverlay.addEventListener('click', requestLock);
   el('btnToggleLock').addEventListener('click', toggleCursorLock);
   el('restartBtn').addEventListener('click', () => window.location.reload());
@@ -77,6 +77,7 @@ function init(){
     wave.spawned = wave.toSpawn;
   });
 
+  initLanding();
   wireSettingsUI();
   applySettingsToUI();
   updateToolPanelVisibility();
@@ -167,7 +168,7 @@ function onMouseMove(e){
 
 function handleKeyDown(e){
   if(e.code==='KeyR' && gameState==='playing') startReload();
-  if(e.code==='KeyM') toggleMute();
+  if(e.code==='KeyM' && gameState!=='loading' && gameState!=='menu') toggleMute();
   if(e.code==='KeyB') toggleCursorLock();
   if(e.code==='Backquote'){ debugPanelEl.classList.toggle('hidden'); debugPanelEl.style.display=''; updateToolPanelVisibility(); }
   if(e.code==='KeyE' && gameState==='playing' && currentInteractable){

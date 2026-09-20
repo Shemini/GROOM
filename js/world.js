@@ -133,8 +133,7 @@ function loadAssets(){
       placeStationsAndBox();
       spawnGuitarrista();
       gameState = 'menu';
-      loadingLabel.textContent = 'Ready';
-      startBtn.classList.remove('hidden');
+      landingSetReady();   // unlocks PLAY on the title screen
     }, 10);
   }
 }
