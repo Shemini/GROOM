@@ -19,6 +19,15 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   const dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
   let hitAny = false;
 
+  // Spend stamina for the shove. With none left the blade still bites, but nothing is pushed
+  // back — which is the moment the weapon stops holding a crowd off you.
+  const cost = w.staminaCost || 0;
+  let canShove = true;
+  if(cost > 0){
+    if(playerStamina >= cost){ playerStamina -= cost; }
+    else { playerStamina = 0; playerExhausted = true; canShove = false; }
+  }
+
   // Gather everything inside the arc, nearest first.
   const inArc = [];
   for(let i=zombies.length-1;i>=0;i--){
@@ -38,7 +47,7 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   // upgrade rather than a damage bump.
   const targets = w.singleTarget ? inArc.slice(0,1) : inArc;
   for(const t of targets){
-    damageZombie(t.z, dmg, {crit:isCrit, stagger:true, knockFrom:camera.position});
+    damageZombie(t.z, dmg, {crit:isCrit, stagger:canShove, knockFrom:canShove?camera.position:null});
     hitAny = true;
   }
   spawnMeleeArc(forward, reach);
@@ -153,16 +162,33 @@ function updateBubbles(delta, elapsed){
       const d = Math.hypot(z.group.position.x-b.mesh.position.x, z.group.position.z-b.mesh.position.z);
       const dy = Math.abs((z.feetY+(z.height||1.8)*0.5) - b.mesh.position.y);
       if(d < b.radius+(z.collisionRadius||ZOMBIE_RADIUS) && dy < (z.height||1.8)*0.7){
-        damageZombie(z, b.dmg, {});
-        if(b.infect) tryInfect(z, b.infectChance, elapsed);
-        weaponBubblePopSound(b.mesh.position);
-        b.popped = true; break;
+        popBubble(b, z, elapsed);
+        break;
       }
     }
     if(b.popped || b.age >= b.life){
-      if(!b.popped) weaponBubblePopSound(b.mesh.position);
+      if(!b.popped){ popBubble(b, null, elapsed); }
       scene.remove(b.mesh); b.geo.dispose(); b.mat.dispose(); bubbles.splice(i,1);
     }
+  }
+}
+
+// A burst catches everything in a small radius, not just whoever walked into it. Individually
+// still slight, but a stream of them finally means something against a crowd — which was the
+// weapon's whole point and the thing it wasn't delivering.
+function popBubble(b, directHit, elapsed){
+  if(b.popped) return;
+  b.popped = true;
+  weaponBubblePopSound(b.mesh.position);
+  const splash = b.radius * BUBBLE_POP_RADIUS_MULT;
+  for(const z of zombies){
+    if(z.dying) continue;
+    const d = Math.hypot(z.group.position.x-b.mesh.position.x, z.group.position.z-b.mesh.position.z);
+    if(d > splash + (z.collisionRadius||ZOMBIE_RADIUS)) continue;
+    // The guest actually struck takes it in full; everyone else catches the spray.
+    const dmg = (z === directHit) ? b.dmg : b.dmg*BUBBLE_SPLASH_FRACTION;
+    damageZombie(z, dmg, {});
+    if(b.infect) tryInfect(z, b.infectChance * (z===directHit ? 1 : 0.6), elapsed);
   }
 }
 
@@ -367,6 +393,10 @@ function updateStream(delta, elapsed){
 
 // ---------- LASER POINTER (beam) ----------
 let beamMesh = null, beamLastTick = -999;
+// Holding the beam on one guest winds the damage up; looking away, switching target or
+// releasing the trigger drops it straight back to the base rate. This is what turns the laser
+// from chip damage into something worth committing to a single target for.
+let beamRamp = 1, beamRampTarget = null, beamRampLastSeen = -999;
 function fireBeam(wIdx, dmgMult, isCrit, critMultVal){
   const w = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
   const elapsed = clock.getElapsedTime();
@@ -390,8 +420,17 @@ function fireBeam(wIdx, dmgMult, isCrit, critMultVal){
   const dtTick = Math.min(0.25, elapsed - beamLastTick);
   beamLastTick = elapsed;
   if(!hitZ) return;
+  // Ramp only survives if it's the same body, hit continuously.
+  if(hitZ === beamRampTarget && (elapsed - beamRampLastSeen) < 0.25){
+    beamRamp = Math.min(BEAM_RAMP_MAX, beamRamp + dtTick/BEAM_RAMP_TIME*(BEAM_RAMP_MAX-1));
+  } else {
+    beamRamp = 1;
+    beamRampTarget = hitZ;
+  }
+  beamRampLastSeen = elapsed;
+
   const dps = (w.beamDps||52)*mods.dpsMult*dmgMult;
-  const dmg = dps*dtTick*(headshot ? (w.beamHeadMult||2) : 1);
+  const dmg = dps*dtTick*(headshot ? (w.beamHeadMult||2) : 1)*beamRamp;
   const before = hitZ.dying;
   damageZombie(hitZ, dmg, {headshot});
   // Evolved: a lethal hit pops the head.
@@ -400,6 +439,8 @@ function fireBeam(wIdx, dmgMult, isCrit, critMultVal){
       2.4 + (mods.explosionRadius||0), 55 + (mods.explosionDamage||0), true);
   }
 }
+
+function resetBeamRamp(){ beamRamp = 1; beamRampTarget = null; }
 
 function drawBeam(from, to){
   if(!beamMesh){
@@ -415,6 +456,10 @@ function drawBeam(from, to){
   beamMesh.scale.set(1, len, 1);
   beamMesh.position.copy(from).add(to).multiplyScalar(0.5);
   beamMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  // Shifts red -> white-hot as the ramp builds, so the wind-up is legible without a readout.
+  const k = (beamRamp-1)/(BEAM_RAMP_MAX-1);
+  beamMesh.material.color.setRGB(1, 0.19 + 0.75*k, 0.25 + 0.7*k);
+  beamMesh.scale.set(1 + k*1.2, beamMesh.scale.y, 1 + k*1.2);
   beamMesh.userData.hideAt = clock.getElapsedTime() + 0.08;
 }
 
@@ -516,6 +561,9 @@ function pushZombie(z, fromPos, distance){
 
 // ---------- shared per-frame update ----------
 function updateWeddingWeapons(delta, elapsed){
+  // Anything other than a held beam on a live target unwinds it.
+  if(!mouseDown || ALL_WEAPONS[player.currentWeapon].type !== 'beam' ||
+     (elapsed - beamRampLastSeen) > 0.25) resetBeamRamp();
   updateWindSlashes(delta);
   updateBubbles(delta, elapsed);
   updateInfections(delta, elapsed);

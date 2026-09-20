@@ -18,6 +18,9 @@ const PLAYER_STAMINA_RECOVER = 2;   // units per second while not sprinting (ful
 // bar would flicker between empty and one frame's worth of recovery, letting you stutter-sprint
 // indefinitely at zero stamina.
 const PLAYER_STAMINA_RESUME = 2;
+// Below this, the panting cue plays — a warning that a sword swing is about to lose its shove
+// and that sprinting is about to be unavailable.
+const PLAYER_STAMINA_LOW = 2.5;
 const GRAVITY = 22;
 // Nav grid cell size in metres. Finer = more faithful to real doorways and pillars (a zombie
 // is only ~0.4m wide, so 2m cells were very coarse). Build cost is no longer the constraint
@@ -59,6 +62,13 @@ const DROP_COLORS = { ammo:0xff8c26, health:0x5ce85c, double:0xffd54a, instakill
 const VERMUT_DURATION = 15;        // seconds
 const VERMUT_DAMAGE_MULT = 3;
 const BOX_COST = 1500;
+
+// Laser wind-up: held on one target, damage climbs to this multiple over this many seconds.
+const BEAM_RAMP_MAX = 2.5;
+const BEAM_RAMP_TIME = 2.2;
+// Bubbles burst for a small area hit rather than only striking whoever touched them.
+const BUBBLE_POP_RADIUS_MULT = 2.6;      // of the bubble's own radius
+const BUBBLE_SPLASH_FRACTION = 0.55;     // damage to everyone but the guest actually hit
 
 // =================================================================
 // COMBO
@@ -398,8 +408,12 @@ const ALL_WEAPONS = [
   { name:'PUNTERO LÁSER', type:'beam', dmg:0, fireRate:0.05, mag:100, reserveMax:400,
     beamTick:0.05, beamDps:52, beamHeadMult:2.0, beamRange:60 },
   // 11 — melee upgrade from the party box; replaces the fists in slot 0.
+  // Swinging costs stamina: with an arc, knockback and no ammo it otherwise kept every guest
+  // permanently out of reach for free. Run dry and it still cuts, but nothing gets pushed —
+  // and you can't sprint away either.
   { name:'ESPADA DE TARTA', type:'melee', dmg:72, fireRate:0.5, mag:1, reserveMax:0,
-    meleeRange:3.2, meleeArc:85, noAmmo:true, windDmg:0.45, windSpeed:26, windRange:14 },
+    meleeRange:3.2, meleeArc:85, noAmmo:true, windDmg:0.45, windSpeed:26, windRange:14,
+    staminaCost:0.3 },
 ];
 // Weapons that live in the melee slot (slot 0) rather than the three carry slots.
 const MELEE_INDICES = [0, 11];
@@ -454,7 +468,7 @@ const BASE_LEVEL_TABLES = {
 };
 
 const EVOLUTIONS = {
-  1:  { name:'PISTOLA DE FERIA',  rotation:['damage','fireRate','ammo'] },
+  1:  { name:'PISTOLAS GEMELAS', rotation:['damage','fireRate','ammo'] },   // dual wield
   2:  { name:'RIFLE PERFORANTE',  rotation:['damage','pierceCount','ammo'] },
   3:  { name:'METRALLETA AUTOMÁTICA', rotation:['damage','bounce','fireRate','ammo'] },
   4:  { name:'PACIENTE CERO',     rotation:['infectChance','coughDamage','coughSpread'] },

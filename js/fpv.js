@@ -11,6 +11,7 @@
 //   kick   — recoil back/down with a spring return (firearms)
 //   toss   — dip, rise, swap sprite at the zenith, drop away (thrown weapons)
 //   punch  — alternating left/right jab (fists)
+//   dual   — two guns firing alternately, each recoiling on its own turn
 //   hold   — slide to an offset and stay there while the trigger is down (bubble wand)
 //   toggle — two states, no movement beyond the idle sway (laser)
 //   vibrate— continuous jitter while the trigger is held (CO2 cannon)
@@ -32,7 +33,11 @@ const HUD_BAR_DESIGN_HEIGHT = 206;     // matches #hudBar in index.html
 const FPV_WEAPONS = {
   0:  { motion:'punch',  layers:[{name:'PuñosLeft', hand:'left'}, {name:'PuñosRight', hand:'right'}],
         punch:130, punchRot:0.10, punchSide:70, settle:0.26 },
-  1:  { motion:'kick',   layers:[{name:'Pistola'}],   kick:16, kickRot:0.09 },
+  1:  { motion:'kick',   layers:[{name:'Pistola'}],   kick:16, kickRot:0.09,
+        // Evolved: the same sprite twice, one mirrored, firing alternately like the fists.
+        evolved:{ motion:'dual', kick:14, kickRot:0.08, settle:0.16,
+                  layers:[{name:'Pistola', hand:'right', offsetX:120},
+                          {name:'Pistola', hand:'left',  offsetX:-120, mirror:true}] } },
   2:  { motion:'kick',   layers:[{name:'Rifle'}],     kick:34, kickRot:0.16, settle:0.55 },
   3:  { motion:'kick',   layers:[{name:'Metralleta'}],kick:9,  kickRot:0.05, settle:0.12 },
   4:  { motion:'hold',   layers:[{name:'BurbujasLeft', hand:'left'}, {name:'BurbujasRight', hand:'right', holdOffset:{x:120, y:70}}] },
@@ -66,6 +71,7 @@ const TOSS_FALL = 0.20;     // back down to rest
 let fpvScene = null, fpvCamera = null;
 let fpvLayers = [];          // active THREE.Mesh planes for the current weapon
 let fpvCurrentIdx = -1;
+let fpvCurrentEvolved = false;
 let fpvTextures = {};        // name -> THREE.Texture
 let fpvState = {
   phase:'idle',              // idle | kick | toss | swap
@@ -108,12 +114,21 @@ function initFPV(){
   });
 }
 
+// Returns the evolved variant of an entry when the weapon has evolved and one is defined.
+function fpvDefFor(wIdx){
+  const base = FPV_WEAPONS[wIdx];
+  if(!base) return null;
+  if(base.evolved && player.weaponEvolved[wIdx]) return Object.assign({}, base, base.evolved);
+  return base;
+}
+
 function fpvBuildLayers(wIdx){
   // Tear down the previous weapon's planes.
   fpvLayers.forEach(l=>{ fpvScene.remove(l.mesh); l.mesh.geometry.dispose(); l.mesh.material.dispose(); });
   fpvLayers = [];
   fpvCurrentIdx = wIdx;
-  const def = FPV_WEAPONS[wIdx];
+  fpvCurrentEvolved = !!player.weaponEvolved[wIdx];
+  const def = fpvDefFor(wIdx);
   if(!def) return;
 
   def.layers.forEach((layer, i)=>{
@@ -132,6 +147,7 @@ function fpvBuildLayers(wIdx){
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), mat);
     mesh.renderOrder = i;
+    mesh.userData.mirror = !!layer.mirror;
     mesh.frustumCulled = false;
     fpvScene.add(mesh);
     fpvLayers.push({ mesh, mat, def:layer });
@@ -154,7 +170,7 @@ function fpvLayoutLayers(){
     const spriteAspect = img.height/img.width;
     const widthUnits = WEAPON_SCREEN_FRACTION * 2;                 // x spans 2 units
     const heightUnits = widthUnits * (W/H) * spriteAspect;
-    l.mesh.scale.set(widthUnits, heightUnits, 1);
+    l.mesh.scale.set(l.mesh.userData.mirror ? -widthUnits : widthUnits, heightUnits, 1);
     l.baseY = -1 + (basePx*2/H) + heightUnits/2;                   // bottom edge at basePx
     l.mesh.position.set(0, l.baseY, 0);
     l.heightUnits = heightUnits;
@@ -190,6 +206,14 @@ function fpvOnFire(wIdx, fireFn){
     fpvState.recoilRot = def.kickRot || 0.08;
     fpvState.phase = 'kick';
     fpvState.t = 0;
+  } else if(def.motion === 'dual'){
+    // Alternate hands so a held trigger reads as two guns trading shots rather than one
+    // sprite bouncing twice as fast.
+    fpvState.punchHand = 1 - fpvState.punchHand;
+    fpvState.phase = 'kick';
+    fpvState.t = 0;
+    fpvState.recoil = def.kick || 14;
+    fpvState.recoilRot = def.kickRot || 0.08;
   } else if(def.motion === 'punch'){
     fpvState.punchHand = 1 - fpvState.punchHand;
     fpvState.phase = 'kick';
@@ -215,7 +239,7 @@ function updateFPV(delta, elapsed){
   if(!fpvScene) return;
 
   const wIdx = player.currentWeapon;
-  const def = FPV_WEAPONS[wIdx];
+  const def = fpvDefFor(wIdx);
 
   // Halfway through a swap, switch to the new weapon's sprites while they're off-screen.
   if(fpvState.phase === 'swap'){
@@ -227,8 +251,8 @@ function updateFPV(delta, elapsed){
     } else if(!fpvState.swapOut && fpvState.t >= SWAP_IN_TIME){
       fpvState.phase = 'idle';
     }
-  } else if(wIdx !== fpvCurrentIdx){
-    fpvBuildLayers(wIdx);
+  } else if(wIdx !== fpvCurrentIdx || !!player.weaponEvolved[wIdx] !== fpvCurrentEvolved){
+    fpvBuildLayers(wIdx);   // also rebuilds the instant a weapon evolves
   }
 
   if(!fpvLayers.length) return;
@@ -381,6 +405,13 @@ function updateFPV(delta, elapsed){
       l.holdK = (l.holdK===undefined) ? 0 : l.holdK + (want - l.holdK)*Math.min(1, delta*10);
       lx += layerDef.holdOffset.x * l.holdK;
       ly += layerDef.holdOffset.y * l.holdK;
+    }
+
+    // Dual wield: each gun sits at its own offset, and only the one that just fired kicks.
+    if(def && def.motion === 'dual'){
+      lx += layerDef.offsetX || 0;
+      const firing = (fpvState.punchHand === 0) ? (layerDef.hand === 'right') : (layerDef.hand === 'left');
+      if(!firing){ ly -= offY; rot = 0; }
     }
 
     // Fists: only the punching hand moves, and it alternates each swing.

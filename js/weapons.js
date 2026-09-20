@@ -106,7 +106,9 @@ function applyEvolution(wIdx){
   const mods = player.weaponMods[wIdx];
   const w = ALL_WEAPONS[wIdx];
   switch(wIdx){
-    case 1:  mods.fireRateMult*=1.25; mods.dmgMult*=1.15; break;                 // pistola de feria
+    // Two guns instead of one: the rate jump is the point of the evolution, so it's larger
+    // than a normal level-up step. Magazine grows to match, or it would be reloading constantly.
+    case 1:  mods.fireRateMult*=1.9; mods.dmgMult*=1.1; mods.ammoMult*=1.6; break;  // pistolas gemelas
     case 2:  mods.pierceCount=0; break;                                          // rifle perforante: 1 pierce, +1/level
     case 3:  mods.bounceBonus+=2; mods.fireRateMult*=1.15; break;                // metralleta de balines
     case 4:  mods.infectChance=0; mods.coughDamage=0; mods.coughSpread=0; break; // paciente cero
