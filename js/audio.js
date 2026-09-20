@@ -22,12 +22,17 @@ function computePan(worldPos){
 // Files are entirely optional: a missing file just means that attempt produces no sound
 // (cached after the first failure so we don't keep re-requesting a known-404 file).
 // =================================================================
-const ENEMY_AUDIO_TYPE = 'TrajeA';
+// Every enemy type keeps the same folder layout under its own name, so the actor is passed in
+// rather than fixed — this was hardcoded to TrajeA, which meant TrajeB borrowed its voice.
+const ENEMY_AUDIO_TYPE = 'TrajeA';   // fallback only, for a caller that doesn't say who
 const AUDIO_CATEGORIES = {
   dying:   { folder:'Dying',   count:5, rareProb:0.04  },
   passive: { folder:'Passive', count:8, rareProb:0.005 },
   callout: { folder:'Callout', count:8, rareProb:0.005 },
   attack:  { folder:'Attack',  count:5, rareProb:0.04  }, // no exact rare % was given for attack — reused Dying's 4% as a sensible default; adjust AUDIO_CATEGORIES.attack.rareProb if you want it different
+  // No rare slot on these two, so every file is equally likely.
+  coughing:{ folder:'Coughing', count:5, rareProb:0 },
+  vomit:   { folder:'Vomit',    count:5, rareProb:0 },
 };
 const CALLOUT_RANGE = 15; // meters — no exact distance was specified; tune this constant to taste
 const CALLOUT_COOLDOWN = 30; // seconds, per enemy
@@ -54,11 +59,12 @@ const dyingSoundLimiter = createRateLimiter(3);
 const calloutSoundLimiter = createRateLimiter(3);
 const attackSoundLimiter = createRateLimiter(6);
 
-function playEnemyClip(categoryKey, pan, volume){
+function playEnemyClip(categoryKey, pan, volume, actor){
   const cat = AUDIO_CATEGORIES[categoryKey];
   if(!cat || !audioCtx) return;
+  const who = actor || ENEMY_AUDIO_TYPE;
   const idx = pickRareLastIndex(cat.count, cat.rareProb);
-  const url = `./Audio/${ENEMY_AUDIO_TYPE}/${cat.folder}/${ENEMY_AUDIO_TYPE}_${cat.folder}_${idx}.${AUDIO_EXT}`;
+  const url = `./Audio/${who}/${cat.folder}/${who}_${cat.folder}_${idx}.${AUDIO_EXT}`;
   if(audioMissingCache.has(url)) return;
   try{
     const audioEl = new Audio(url);

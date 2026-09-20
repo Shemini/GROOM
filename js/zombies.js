@@ -352,12 +352,12 @@ function updateZombies(delta, elapsed){
     }
 
     z.groanTimer -= delta;
-    if(z.groanTimer<=0 && distToPlayer<24){ playEnemyClip('passive', computePan(z.group.position), 0.4); z.groanTimer=4+Math.random()*5; }
+    if(z.groanTimer<=0 && distToPlayer<24){ playEnemyClip('passive', computePan(z.group.position), 0.4, z.def.id); z.groanTimer=4+Math.random()*5; }
 
     if(distToPlayer < CALLOUT_RANGE){
       if(!z.wasInCalloutRange){
         if(elapsed - z.calloutLastTime >= CALLOUT_COOLDOWN && calloutSoundLimiter(elapsed)){
-          playEnemyClip('callout', computePan(z.group.position), 0.45);
+          playEnemyClip('callout', computePan(z.group.position), 0.45, z.def.id);
           z.calloutLastTime = elapsed;
         }
         z.wasInCalloutRange = true;
@@ -497,7 +497,7 @@ function fireFrameEvents(z, key, frame){
       // Deliberately no range re-check: the swing was committed when it started, so stepping
       // out of reach mid-animation doesn't save the player.
       takeDamage(z.dmg);
-      if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', computePan(z.group.position), 0.6);
+      if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', computePan(z.group.position), 0.6, z.def.id);
     }
   }
 
@@ -536,6 +536,7 @@ function updateStatusEffects(delta, elapsed){
       if(z.pukeTimer <= 0){
         z.pukeTimer = 1.4 + Math.random()*0.8;
         spawnPuddle(z.group.position, 1.1, z.drunkPukeDps||9, 3.0, false, 0, 0, 'puke');
+        playEnemyClip('vomit', computePan(z.group.position), 0.55, z.def.id);
       }
     }
     if(z.stain){
@@ -618,7 +619,7 @@ function killZombie(z, headshot){
   z.deathAnimDone = false;
   soundDeath(computePan(z.group.position));
   if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
-    playEnemyClip('dying', computePan(z.group.position), 0.55);
+    playEnemyClip('dying', computePan(z.group.position), 0.55, z.def.id);
   }
   // The combo advances before the payout is worked out, so the kill that raises a stage is
   // itself paid at the new rate.

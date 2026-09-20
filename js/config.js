@@ -401,9 +401,14 @@ const MINIMAP_ZOOM = 2.5;
 // Olive against the map's ochres; the blue used elsewhere disappeared into them.
 const MINIMAP_PLAYER_COLOR = '#8fae3a';
 const MINIMAP_PLAYER_OUTLINE = '#20180c';
-const MINIMAP_PLAYER_BLOCK = 2;      // block size of the diamond, in canvas pixels
+const MINIMAP_PLAYER_RADIUS = 4;     // player dot, in canvas pixels
 const MINIMAP_ENEMY_COLOR = '#e8434a';
+const MINIMAP_ENEMY_EDGE_COLOR = '#a82f34';   // pinned to the rim: dimmer, so it reads as distant
 const MINIMAP_ENEMY_SIZE = 5;        // enemy square, in canvas pixels
+// Vision cone: matches the camera's horizontal field of view.
+const MINIMAP_CONE_RADIUS = 34;
+const MINIMAP_CONE_COLOR_NEAR = 'rgba(232,196,107,0.38)';
+const MINIMAP_CONE_COLOR_FAR  = 'rgba(232,196,107,0.02)';
 const MINIMAP_GUITAR_COLOR = '#ffc46b';
 const MINIMAP_V_FLIP = false; // flip if markers end up vertically mirrored vs. the real map
 let currentInteractable = null;

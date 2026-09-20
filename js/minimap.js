@@ -33,6 +33,15 @@ function solveAffineFromPoints(pts){
   }
   return { uCoef: solveFor([p0.u,p1.u,p2.u]), vCoef: solveFor([p0.v,p1.v,p2.v]) };
 }
+// A direction, not a position: the map transform can include rotation and scale, so a world
+// heading has to be pushed through the same matrix (minus the translation) or the vision cone
+// points somewhere other than the player is actually facing.
+function worldDirToMinimapDir(dx, dz){
+  if(!minimapTransform) return null;
+  const { uCoef, vCoef } = minimapTransform;
+  return { du: uCoef.A*dx + uCoef.B*dz, dv: vCoef.A*dx + vCoef.B*dz };
+}
+
 function worldToMinimapUV(x,z){
   if(!minimapTransform) return null;
   const { uCoef, vCoef } = minimapTransform;
@@ -118,16 +127,33 @@ function updateMinimap(){
   minimapCtx.imageSmoothingEnabled = false;   // keep the map crisp, in keeping with the rest
   minimapCtx.drawImage(minimapBgCanvas, offX, offY, drawW, drawH);
 
-  // Enemies: small hard-edged squares, drawn on the same offset as the map.
-  minimapCtx.fillStyle = MINIMAP_ENEMY_COLOR;
+  // Drawn over the map but under the markers, so it reads as a light cast across the streets.
+  drawVisionCone(cw/2, ch/2, drawW, drawH);
+
+  // Enemies: small hard-edged squares. Anything beyond the visible window is pinned to the
+  // border along its true bearing rather than dropped — with a wave down to its last few
+  // stragglers, knowing roughly which way to head matters more than exact positions.
   const es = MINIMAP_ENEMY_SIZE;
+  const pad = es/2 + 1;
   zombies.forEach(z=>{
     if(z.dying) return;
     const uv = worldToMinimapUV(z.group.position.x, z.group.position.z);
     if(!uv) return;
-    const x = Math.round(offX + uv.u*drawW), y = Math.round(offY + vOf(uv)*drawH);
-    if(x < -es || x > cw+es || y < -es || y > ch+es) return;   // outside the cell
-    minimapCtx.fillRect(x-es/2, y-es/2, es, es);
+    let x = offX + uv.u*drawW, y = offY + vOf(uv)*drawH;
+    const outside = (x < pad || x > cw-pad || y < pad || y > ch-pad);
+    if(outside){
+      // Scale the vector from the centre until it meets the nearer edge.
+      const dx = x - cw/2, dy = y - ch/2;
+      const halfW = cw/2 - pad, halfH = ch/2 - pad;
+      const t = Math.min(
+        Math.abs(dx) > 0.001 ? halfW/Math.abs(dx) : Infinity,
+        Math.abs(dy) > 0.001 ? halfH/Math.abs(dy) : Infinity);
+      if(!isFinite(t)) return;
+      x = cw/2 + dx*t; y = ch/2 + dy*t;
+    }
+    minimapCtx.fillStyle = outside ? MINIMAP_ENEMY_EDGE_COLOR : MINIMAP_ENEMY_COLOR;
+    const s = outside ? es-1 : es;   // slightly smaller at the rim, so it reads as "far off"
+    minimapCtx.fillRect(Math.round(x-s/2), Math.round(y-s/2), s, s);
   });
 
   // The Guitarrista, if he's out there, so he can be found again after a dismissal.
@@ -143,25 +169,50 @@ function updateMinimap(){
   drawPlayerMarker(cw/2, ch/2);
 }
 
-// A blocky diamond built from square blocks rather than a smooth path, so it matches the
-// pixelated look instead of sitting on top of it as clean vector art.
+// A circle now rather than a diamond: the vision cone carries the facing, so the marker only
+// has to say "you are here" and a circle reads more clearly at this size.
 function drawPlayerMarker(cx, cy){
-  const b = MINIMAP_PLAYER_BLOCK;
-  const rows = [1,3,5,7,5,3,1];          // widths in blocks, forming the diamond
-  const h = rows.length;
+  const r = MINIMAP_PLAYER_RADIUS;
+  minimapCtx.beginPath();
+  minimapCtx.arc(cx, cy, r+1.5, 0, Math.PI*2);
   minimapCtx.fillStyle = MINIMAP_PLAYER_OUTLINE;
-  for(let r=0;r<h;r++){
-    const w = rows[r]+2;                  // one block of outline on each side
-    const x = Math.round(cx - (w*b)/2);
-    const y = Math.round(cy + (r - h/2)*b);
-    minimapCtx.fillRect(x, y-b*0.5, w*b, b*2);
-  }
+  minimapCtx.fill();
+  minimapCtx.beginPath();
+  minimapCtx.arc(cx, cy, r, 0, Math.PI*2);
   minimapCtx.fillStyle = MINIMAP_PLAYER_COLOR;
-  for(let r=0;r<h;r++){
-    const w = rows[r];
-    const x = Math.round(cx - (w*b)/2);
-    const y = Math.round(cy + (r - h/2)*b);
-    minimapCtx.fillRect(x, y, w*b, b);
-  }
+  minimapCtx.fill();
+}
+
+// A wedge matching the camera's real horizontal field of view, so what's lit on the map is
+// what's actually on screen.
+function drawVisionCone(cx, cy, drawW, drawH){
+  if(!camera) return;
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  if(Math.abs(fwd.x) < 1e-6 && Math.abs(fwd.z) < 1e-6) return;   // looking straight up or down
+
+  const d = worldDirToMinimapDir(fwd.x, fwd.z);
+  if(!d) return;
+  // Into canvas space, where the vertical axis may be flipped.
+  const cxDir = d.du*drawW;
+  const cyDir = (MINIMAP_V_FLIP ? -d.dv : d.dv)*drawH;
+  const len = Math.hypot(cxDir, cyDir);
+  if(len < 1e-6) return;
+  const heading = Math.atan2(cyDir, cxDir);
+
+  // camera.fov is vertical; the cone should match what the player sees across the screen.
+  const halfV = THREE.MathUtils.degToRad(camera.fov)/2;
+  const halfH = Math.atan(Math.tan(halfV)*camera.aspect);
+
+  const R = MINIMAP_CONE_RADIUS;
+  const grad = minimapCtx.createRadialGradient(cx, cy, 0, cx, cy, R);
+  grad.addColorStop(0, MINIMAP_CONE_COLOR_NEAR);
+  grad.addColorStop(1, MINIMAP_CONE_COLOR_FAR);
+  minimapCtx.beginPath();
+  minimapCtx.moveTo(cx, cy);
+  minimapCtx.arc(cx, cy, R, heading-halfH, heading+halfH);
+  minimapCtx.closePath();
+  minimapCtx.fillStyle = grad;
+  minimapCtx.fill();
 }
 
