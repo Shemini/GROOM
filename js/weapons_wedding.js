@@ -196,7 +196,7 @@ function updateInfections(delta, elapsed){
       continue;
     }
 
-    playEnemyClip('coughing', computePan(z.group.position), 0.55, z.def.id);
+    playEnemyClip('coughing', z.group.position, 0.55, z.def.id);
     damageZombie(z, coughDmg, {});
     if(z.dying) continue;
     for(const other of zombies){

@@ -41,6 +41,18 @@ const audioMissingCache = new Set();
 // The last file in a numbered set is normally the rare one, chosen only on a `rareProb` roll.
 // A rareProb of 0 means "no rare slot" rather than "never play the last file" — without this
 // the final clip of any set called that way was simply unreachable.
+// Distance falloff for voice clips. These used to be given a pan but no attenuation, so an
+// enemy groan or one of the Guitarrista's remarks played at full volume from anywhere on the
+// map — only the music was ever positional.
+const VOICE_FALLOFF = 30;   // metres to silence
+function voiceLevel(pos, baseVolume, falloff){
+  if(!pos || !camera) return { volume:baseVolume, pan:0 };
+  const d = Math.hypot(pos.x-camera.position.x, pos.z-camera.position.z);
+  const reach = falloff || VOICE_FALLOFF;
+  const atten = Math.max(0, 1 - d/reach);
+  return { volume: baseVolume*atten*atten, pan: computePan(pos) };   // squared: a softer, more natural rolloff
+}
+
 function pickRareLastIndex(count, rareProb){
   if(count <= 1) return 1;
   if(!rareProb) return 1 + Math.floor(Math.random()*count);   // uniform over every file
@@ -59,18 +71,20 @@ const dyingSoundLimiter = createRateLimiter(3);
 const calloutSoundLimiter = createRateLimiter(3);
 const attackSoundLimiter = createRateLimiter(6);
 
-function playEnemyClip(categoryKey, pan, volume, actor){
+function playEnemyClip(categoryKey, pos, volume, actor){
   const cat = AUDIO_CATEGORIES[categoryKey];
   if(!cat || !audioCtx) return;
   const who = actor || ENEMY_AUDIO_TYPE;
+  const lvl = voiceLevel(pos, (volume===undefined?0.6:volume));
+  if(lvl.volume <= 0.001) return;
   const idx = pickRareLastIndex(cat.count, cat.rareProb);
   const url = `./Audio/${who}/${cat.folder}/${who}_${cat.folder}_${idx}.${AUDIO_EXT}`;
   if(audioMissingCache.has(url)) return;
   try{
     const audioEl = new Audio(url);
     const source = audioCtx.createMediaElementSource(audioEl);
-    const gain = audioCtx.createGain(); gain.gain.value = volume;
-    const panner = audioCtx.createStereoPanner(); panner.pan.value = pan;
+    const gain = audioCtx.createGain(); gain.gain.value = lvl.volume;
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = lvl.pan;
     source.connect(gain).connect(panner).connect(masterGain);
     audioEl.play().catch(()=>{ audioMissingCache.add(url); });
   } catch(e){ audioMissingCache.add(url); }
@@ -140,23 +154,25 @@ function soundDropPickup(){ [700,1000,1300].forEach((f,i)=>setTimeout(()=>playTo
 // Plays a specific named file, for clips that aren't part of a numbered set
 // (e.g. Guitarrista_Quejas_Quiebrodeguitarra). Missing files fail silently and are cached
 // as missing so we don't keep re-requesting a known 404.
-function playNamedClip(actor, folder, name, pan, volume){
+function playNamedClip(actor, folder, name, pos, volume, falloff){
   if(!audioCtx) return;
+  const lvl = voiceLevel(pos, (volume===undefined?0.8:volume), falloff);
+  if(lvl.volume <= 0.001) return;   // too far to be worth starting
   const url = `./Audio/${actor}/${folder}/${name}.${AUDIO_EXT}`;
   if(audioMissingCache.has(url)) return;
   try{
     const audioEl = new Audio(url);
     const source = audioCtx.createMediaElementSource(audioEl);
-    const gain = audioCtx.createGain(); gain.gain.value = volume;
-    const panner = audioCtx.createStereoPanner(); panner.pan.value = pan;
+    const gain = audioCtx.createGain(); gain.gain.value = lvl.volume;
+    const panner = audioCtx.createStereoPanner(); panner.pan.value = lvl.pan;
     source.connect(gain).connect(panner).connect(masterGain);
     audioEl.play().catch(()=>{ audioMissingCache.add(url); });
   } catch(e){ audioMissingCache.add(url); }
 }
 
 // Numbered clip from any actor/folder: <Actor>_<Folder>_<N>.ogg
-function playNumberedClip(actor, folder, count, pan, volume, rareProb){
+function playNumberedClip(actor, folder, count, pos, volume, rareProb, falloff){
   if(!audioCtx || count<1) return;
   const idx = pickRareLastIndex(count, rareProb||0);
-  playNamedClip(actor, folder, `${actor}_${folder}_${idx}`, pan, volume);
+  playNamedClip(actor, folder, `${actor}_${folder}_${idx}`, pos, volume, falloff);
 }

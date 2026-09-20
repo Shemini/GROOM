@@ -172,8 +172,10 @@ function guitarristaOnShot(){
   guitarrista.hitTimes.push(now);
 
   stopMusic();
-  const pan = computePan(guitarrista.group.position);
-  playNamedClip(GUITARRISTA_ACTOR, 'Quejas', GUITARRISTA_BREAK_CLIP, pan, 0.7);
+  // Heard from where he's standing, and only within earshot — these used to play at full
+  // volume from anywhere on the map.
+  playNamedClip(GUITARRISTA_ACTOR, 'Quejas', GUITARRISTA_BREAK_CLIP,
+                guitarrista.group.position, 0.7, GUITARRISTA_VOICE_FALLOFF);
 
   if(guitarrista.hitTimes.length >= GUITARRISTA_DISMISS_HITS){ dismissGuitarrista(); return; }
 
@@ -181,7 +183,7 @@ function guitarristaOnShot(){
   setTimeout(()=>{
     if(!guitarrista || (guitarrista.state!=='home_playing' && guitarrista.state!=='following')) return;
     playNumberedClip(GUITARRISTA_ACTOR, 'Quejas', GUITARRISTA_QUEJAS_COUNT,
-                     computePan(guitarrista.group.position), 0.6, 0);
+                     guitarrista.group.position, 0.6, 0, GUITARRISTA_VOICE_FALLOFF);
   }, 600);
   guitarrista.resumeAt = now + GUITARRISTA_SKIP_DELAY;
 }
@@ -192,7 +194,7 @@ function dismissGuitarrista(){
   guitarrista.state = 'returning';
   guitarrista.hitTimes = [];
   playNumberedClip(GUITARRISTA_ACTOR, 'Insultos', GUITARRISTA_INSULTOS_COUNT,
-                   computePan(guitarrista.group.position), 0.75, 0);
+                   guitarrista.group.position, 0.75, 0, GUITARRISTA_VOICE_FALLOFF);
   showWaveBanner('GUITARRISTA', 'Se marcha ofendido');
 }
 
@@ -213,7 +215,7 @@ function guitarristaOnWaveClear(){
   if(!guitarrista) return;
   if(guitarrista.state!=='following' && guitarrista.state!=='home_playing') return;
   playNumberedClip(GUITARRISTA_ACTOR, 'Felicitaciones', GUITARRISTA_FELICITACIONES_COUNT,
-                   computePan(guitarrista.group.position), 0.7, 0);
+                   guitarrista.group.position, 0.7, 0, GUITARRISTA_VOICE_FALLOFF);
 }
 
 // --- per-frame update -----------------------------------------------------

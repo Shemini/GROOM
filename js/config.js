@@ -123,6 +123,14 @@ const BASE_MONEY_REWARD = 10;      // plus a small random spread, see killZombie
 const BASE_MONEY_HEADSHOT_BONUS = 8;
 const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie()
 
+// Optional per-type fields beyond the basics:
+//   tint          multiplies the sprite's colours — lets several enemies share one sheet
+//                 until each has art of its own
+//   attackRange   distance at which it starts attacking (default 1.0, i.e. melee)
+//   rangedAttack  { aoeRadius, fallTime, particles } — throws instead of striking; the damage
+//                 lands where the player WAS, so it can be dodged
+//   swarmSize     [min,max] spawned together as a group rather than one at a time
+//   wander        sideways drift on its approach, in radians of heading noise
 const ENEMY_TYPES = {
   TrajeA: {
     id:'TrajeA',
@@ -171,6 +179,107 @@ const ENEMY_TYPES = {
     slowField:{ radius:15, innerRadius:4, minMult:0.75 },
     // On death, damages every OTHER enemy nearby for a share of his own maximum health.
     deathExplosion:{ radius:4.5, healthFraction:0.10, frame:13 },
+  },
+
+  // --- Borrowing TrajeA's sheet until each has its own; `tint` keeps them distinguishable. ---
+  MujerA: {
+    id:'MujerA',
+    texture:'./TrajeA.png',
+    cols:8, rows:4,
+    anims:{
+      walkToward:{ startRow:0, frames:8,  duration:1.0 },
+      walkAway:  { startRow:1, frames:8,  duration:1.0 },
+      attack:    { startRow:2, frames:8,  duration:1.2 },
+      death:     { startRow:3, frames:8,  duration:1.0 },
+    },
+    tint:0xff9ec4,              // placeholder dress colour
+    heightMult:0.96,
+    widthStretch:1.0,
+    hitboxWidthFraction:100/256,
+    headHeightFraction:80/512,
+    hpMult:0.7, speedMult:1.0, damageMult:0.5, rewardMult:1.1,
+    attackRange:4.5,
+    // Thrown at the two-thirds mark of a 8-frame swing.
+    attackDamageFrame:6,
+    attackSpeedMult:0.0,        // plants her feet to throw
+    rangedAttack:{ aoeRadius:1.9, fallTime:0.45, particles:34 },
+    minWave:2,
+    spawnWeight:0.55,
+    slowField:null,
+    deathExplosion:null,
+  },
+  MujerB: {
+    id:'MujerB',
+    texture:'./TrajeA.png',
+    cols:8, rows:4,
+    anims:{
+      walkToward:{ startRow:0, frames:8,  duration:1.1 },
+      walkAway:  { startRow:1, frames:8,  duration:1.1 },
+      attack:    { startRow:2, frames:8,  duration:1.0 },
+      death:     { startRow:3, frames:8,  duration:1.0 },
+    },
+    tint:0xb58cd8,              // placeholder dress colour
+    heightMult:0.98,
+    widthStretch:1.12,          // a little broader
+    hitboxWidthFraction:115/256,
+    headHeightFraction:80/512,
+    hpMult:0.9, speedMult:0.9, damageMult:1.25, rewardMult:1.2,
+    attackDamageFrame:5,
+    attackSpeedMult:1.0,
+    minWave:3,
+    spawnWeight:0.45,
+    slowField:null,
+    deathExplosion:null,
+  },
+  NinoA: {
+    id:'NinoA',
+    texture:'./TrajeA.png',
+    cols:8, rows:4,
+    anims:{
+      walkToward:{ startRow:0, frames:8,  duration:0.65 },   // quicker legs
+      walkAway:  { startRow:1, frames:8,  duration:0.65 },
+      attack:    { startRow:2, frames:8,  duration:0.7 },
+      death:     { startRow:3, frames:8,  duration:0.9 },
+    },
+    tint:0x7fc4ff,              // boy
+    heightMult:0.62,
+    widthStretch:1.0,
+    hitboxWidthFraction:100/256,
+    headHeightFraction:110/512, // proportionally bigger head
+    hpMult:0.33, speedMult:1.5, damageMult:0.25, rewardMult:0.45,
+    attackDamageFrame:4,
+    attackSpeedMult:1.0,
+    swarmSize:[3,6],
+    wander:0.55,
+    minWave:5,
+    spawnWeight:0.30,
+    slowField:null,
+    deathExplosion:null,
+  },
+  NinaA: {
+    id:'NinaA',
+    texture:'./TrajeA.png',
+    cols:8, rows:4,
+    anims:{
+      walkToward:{ startRow:0, frames:8,  duration:0.65 },
+      walkAway:  { startRow:1, frames:8,  duration:0.65 },
+      attack:    { startRow:2, frames:8,  duration:0.7 },
+      death:     { startRow:3, frames:8,  duration:0.9 },
+    },
+    tint:0xffe07f,              // girl
+    heightMult:0.62,
+    widthStretch:1.0,
+    hitboxWidthFraction:100/256,
+    headHeightFraction:110/512,
+    hpMult:0.33, speedMult:1.5, damageMult:0.25, rewardMult:0.45,
+    attackDamageFrame:4,
+    attackSpeedMult:1.0,
+    swarmSize:[3,6],
+    wander:0.55,
+    minWave:5,
+    spawnWeight:0.30,
+    slowField:null,
+    deathExplosion:null,
   },
 };
 const DEFAULT_ENEMY_TYPE = 'TrajeA';
@@ -547,6 +656,9 @@ const GUITARRISTA_HIRE_COST = 50;
 const GUITARRISTA_FOLLOW_RADIUS = 10;        // metres — hangs back once this close
 // Metres at which the music fades to nothing. Wider once he's hired, since he's meant to be
 // your travelling companion rather than a landmark you stumble across.
+// His speaking voice carries less far than his guitar, which is the point of having him
+// follow you at all.
+const GUITARRISTA_VOICE_FALLOFF = 35;
 const GUITARRISTA_HEAR_RADIUS_IDLE = 60;     // not hired (2x the original 30m)
 const GUITARRISTA_HEAR_RADIUS_HIRED = 90;    // hired (3x the original 30m)
 // Exponent on the distance falloff. 1 = linear. The previous value was effectively 2, which

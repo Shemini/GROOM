@@ -26,7 +26,10 @@ function createZombieVisual(def, heightWorld, widthWorld){
   tex.repeat.set(1/def.cols, 1/def.rows);
   const first = def.anims.walkToward;
   tex.offset.set(0, 1-(first.startRow+1)/def.rows);
-  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent:true, alphaTest:0.5, color:0xffffff, side:THREE.DoubleSide });
+  // `tint` multiplies the sheet's colours, so several enemies can share one sprite sheet
+  // until each has its own art. Leaving it white is a no-op.
+  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent:true, alphaTest:0.5,
+    color: def.tint !== undefined ? def.tint : 0xffffff, side:THREE.DoubleSide });
   const billboard = new THREE.Mesh(getBillboardGeometry(), mat);
   billboard.scale.set(widthWorld, heightWorld, 1);
   billboard.position.y = heightWorld/2; // group.position tracks feet; billboard is centered above it
@@ -126,9 +129,20 @@ function pickEnemyType(){
   return eligible[eligible.length-1];
 }
 
+// Spawns one enemy, or a whole group for types that arrive in packs.
 function spawnZombie(){
   const def = pickEnemyType();
   if(!enemyTextures[def.id]) return;
+  if(def.swarmSize){
+    const [lo,hi] = def.swarmSize;
+    const n = lo + Math.floor(Math.random()*(hi-lo+1));
+    for(let i=0;i<n;i++) spawnOneEnemy(def);
+    return;
+  }
+  spawnOneEnemy(def);
+}
+
+function spawnOneEnemy(def){
   const pos = findSpawnPosition();
 
   const heightMult = 1 + (Math.random()-0.5)*ZOMBIE_HEIGHT_VARIATION;
@@ -168,6 +182,7 @@ function spawnZombie(){
     slowUntil:-999, slowMult:1, streamUntil:-999, streamDps:0,
     burnUntil:-999, burnDps:0, drunkUntil:-999, pukeTimer:0,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
+    wanderPhase: Math.random()*6.28, wanderSeed: Math.random(),
   };
   billboard.userData.zombieRef=z;
   zombies.push(z);
@@ -233,7 +248,9 @@ function updateZombies(delta, elapsed){
     }
 
     const vertGap = Math.abs(z.feetY - feetY);
-    const inMeleeRange = !z.luredBy && distToPlayer <= 1.0 && vertGap < 2.0;
+    // Ranged types engage from much further out; melee types keep the old close range.
+    const engageRange = z.def.attackRange || 1.0;
+    const inMeleeRange = !z.luredBy && distToPlayer <= engageRange && vertGap < 2.0;
 
     // Direct approach whenever there's a clear straight line to the player. This is what
     // makes the last stretch look natural: the flow field steps cell-to-cell, which reads as
@@ -352,12 +369,12 @@ function updateZombies(delta, elapsed){
     }
 
     z.groanTimer -= delta;
-    if(z.groanTimer<=0 && distToPlayer<24){ playEnemyClip('passive', computePan(z.group.position), 0.4, z.def.id); z.groanTimer=4+Math.random()*5; }
+    if(z.groanTimer<=0 && distToPlayer<24){ playEnemyClip('passive', z.group.position, 0.4, z.def.id); z.groanTimer=4+Math.random()*5; }
 
     if(distToPlayer < CALLOUT_RANGE){
       if(!z.wasInCalloutRange){
         if(elapsed - z.calloutLastTime >= CALLOUT_COOLDOWN && calloutSoundLimiter(elapsed)){
-          playEnemyClip('callout', computePan(z.group.position), 0.45, z.def.id);
+          playEnemyClip('callout', z.group.position, 0.45, z.def.id);
           z.calloutLastTime = elapsed;
         }
         z.wasInCalloutRange = true;
@@ -494,10 +511,16 @@ function fireFrameEvents(z, key, frame){
     if(frame >= dmgFrame){
       z.attackDamageDone = true;
       z.lastAttack = clock.getElapsedTime();
-      // Deliberately no range re-check: the swing was committed when it started, so stepping
-      // out of reach mid-animation doesn't save the player.
-      takeDamage(z.dmg);
-      if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', computePan(z.group.position), 0.6, z.def.id);
+      if(def.rangedAttack){
+        // Thrown at where the player IS RIGHT NOW, landing a moment later — so unlike a melee
+        // swing, this one genuinely can be side-stepped once it's in the air.
+        throwRice(z, def.rangedAttack);
+      } else {
+        // Deliberately no range re-check: the swing was committed when it started, so stepping
+        // out of reach mid-animation doesn't save the player.
+        takeDamage(z.dmg);
+      }
+      if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', z.group.position, 0.6, z.def.id);
     }
   }
 
@@ -536,7 +559,7 @@ function updateStatusEffects(delta, elapsed){
       if(z.pukeTimer <= 0){
         z.pukeTimer = 1.4 + Math.random()*0.8;
         spawnPuddle(z.group.position, 1.1, z.drunkPukeDps||9, 3.0, false, 0, 0, 'puke');
-        playEnemyClip('vomit', computePan(z.group.position), 0.55, z.def.id);
+        playEnemyClip('vomit', z.group.position, 0.55, z.def.id);
       }
     }
     if(z.stain){
@@ -619,7 +642,7 @@ function killZombie(z, headshot){
   z.deathAnimDone = false;
   soundDeath(computePan(z.group.position));
   if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
-    playEnemyClip('dying', computePan(z.group.position), 0.55, z.def.id);
+    playEnemyClip('dying', z.group.position, 0.55, z.def.id);
   }
   // The combo advances before the payout is worked out, so the kill that raises a stage is
   // itself paid at the new rate.
@@ -755,3 +778,45 @@ function updateDrops(delta, elapsed){
 }
 
 // =================================================================
+
+// Rice thrown at the player's position at the moment of release. Small, slow, falling
+// straight down — and the damage only lands when it does, so moving out of the ring works.
+function throwRice(z, cfg){
+  const target = { x: camera.position.x, z: camera.position.z };
+  const groundY = getFloorY(target.x, target.z, camera.position.y+2);
+  const y = (groundY !== null) ? groundY : feetY;
+
+  // A ring on the floor so the danger is readable before it lands.
+  const geo = new THREE.RingGeometry(cfg.aoeRadius-0.12, cfg.aoeRadius, 24);
+  const mat = new THREE.MeshBasicMaterial({ color:0xffe9c0, transparent:true, opacity:0.5, side:THREE.DoubleSide });
+  const ring = new THREE.Mesh(geo, mat);
+  ring.rotation.x = -Math.PI/2;
+  ring.position.set(target.x, y+0.05, target.z);
+  scene.add(ring);
+
+  // Dropped from above rather than thrown outward: it should read as rain, not a shotgun.
+  if(typeof spawnParticles === 'function'){
+    spawnParticles(new THREE.Vector3(target.x, y+3.2, target.z), {
+      count: cfg.particles || 30,
+      dir: new THREE.Vector3(0,-1,0), spread: 0.45,
+      speed:[1.4, 2.6], colors:[0xfff6e2, 0xf2e6cc, 0xffffff],
+      size:[0.05,0.05], drag:0.9, gravity:6, life:1.4, groundY:y,
+    });
+  }
+
+  const dmg = z.dmg;
+  const t0 = clock.getElapsedTime();
+  const fall = cfg.fallTime || 0.45;
+  const tick = ()=>{
+    const k = (clock.getElapsedTime()-t0)/fall;
+    if(k < 1){
+      mat.opacity = 0.5 + 0.3*Math.sin(k*Math.PI*4);
+      requestAnimationFrame(tick);
+      return;
+    }
+    const d = Math.hypot(camera.position.x-target.x, camera.position.z-target.z);
+    if(d <= cfg.aoeRadius) takeDamage(dmg);
+    scene.remove(ring); geo.dispose(); mat.dispose();
+  };
+  tick();
+}
