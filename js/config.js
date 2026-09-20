@@ -523,9 +523,9 @@ const GUITARRISTA_TRACKS = [
 // them as interchangeable — a folder called 'canciones' will 404 when the code asks for
 // 'Canciones'. Set these to match exactly what is on disk.
 const GUITARRISTA_FOLDER_CANCIONES = 'Canciones';
-const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (excludes the sting below)
+const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (the sting below is separate)
 const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';
-const GUITARRISTA_FELICITACIONES_COUNT = 5;
+const GUITARRISTA_FELICITACIONES_COUNT = 4;   // four files on disk
 const GUITARRISTA_INSULTOS_COUNT = 5;
 
 // Guitarrista spritesheet: 2048x2048, 8 columns x 4 rows, each frame 256x512.

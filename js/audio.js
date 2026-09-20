@@ -33,7 +33,12 @@ const CALLOUT_RANGE = 15; // meters — no exact distance was specified; tune th
 const CALLOUT_COOLDOWN = 30; // seconds, per enemy
 
 const audioMissingCache = new Set();
+// The last file in a numbered set is normally the rare one, chosen only on a `rareProb` roll.
+// A rareProb of 0 means "no rare slot" rather than "never play the last file" — without this
+// the final clip of any set called that way was simply unreachable.
 function pickRareLastIndex(count, rareProb){
+  if(count <= 1) return 1;
+  if(!rareProb) return 1 + Math.floor(Math.random()*count);   // uniform over every file
   if(Math.random() < rareProb) return count;
   return 1 + Math.floor(Math.random()*(count-1));
 }
