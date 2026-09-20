@@ -529,9 +529,11 @@ const MINIMAP_ENEMY_COLOR = '#e8434a';
 const MINIMAP_ENEMY_EDGE_COLOR = '#a82f34';   // pinned to the rim: dimmer, so it reads as distant
 const MINIMAP_ENEMY_SIZE = 5;        // enemy square, in canvas pixels
 // Vision cone: matches the camera's horizontal field of view.
-const MINIMAP_CONE_RADIUS = 34;
-const MINIMAP_CONE_COLOR_NEAR = 'rgba(232,196,107,0.38)';
-const MINIMAP_CONE_COLOR_FAR  = 'rgba(232,196,107,0.02)';
+const MINIMAP_CONE_RADIUS = 46;
+// Drawn additively, so these brighten the map rather than tinting it — which is why they're
+// near-white rather than the map's own ochre.
+const MINIMAP_CONE_COLOR_NEAR = 'rgba(255,238,190,0.50)';
+const MINIMAP_CONE_COLOR_FAR  = 'rgba(180,140,70,0.00)';
 const MINIMAP_GUITAR_COLOR = '#ffc46b';
 const MINIMAP_V_FLIP = false; // flip if markers end up vertically mirrored vs. the real map
 let currentInteractable = null;

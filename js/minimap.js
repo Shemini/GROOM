@@ -208,11 +208,16 @@ function drawVisionCone(cx, cy, drawW, drawH){
   const grad = minimapCtx.createRadialGradient(cx, cy, 0, cx, cy, R);
   grad.addColorStop(0, MINIMAP_CONE_COLOR_NEAR);
   grad.addColorStop(1, MINIMAP_CONE_COLOR_FAR);
+  minimapCtx.save();
+  // Additive rather than alpha-blended. A translucent ochre wedge over an ochre map is
+  // effectively invisible — brightening what's inside it is what makes the cone read.
+  minimapCtx.globalCompositeOperation = 'lighter';
   minimapCtx.beginPath();
   minimapCtx.moveTo(cx, cy);
   minimapCtx.arc(cx, cy, R, heading-halfH, heading+halfH);
   minimapCtx.closePath();
   minimapCtx.fillStyle = grad;
   minimapCtx.fill();
+  minimapCtx.restore();   // additive blending must not leak into later draws
 }
 

@@ -186,7 +186,10 @@ function fpvPx(x, y){
 // the top of the arc, so the shot visibly leaves the hand rather than the sprite miming it
 // after the fact. Everything else fires immediately.
 function fpvOnFire(wIdx, fireFn){
-  const def = FPV_WEAPONS[wIdx];
+  // The evolved variant, not the base entry — reading FPV_WEAPONS directly meant an evolved
+  // weapon still reported its base motion here, so the dual-wield branch never ran and the
+  // same gun recoiled every shot.
+  const def = fpvDefFor(wIdx);
   if(!def){ if(fireFn) fireFn(); return; }
 
   if(def.motion === 'toss'){
@@ -408,10 +411,13 @@ function updateFPV(delta, elapsed){
     }
 
     // Dual wield: each gun sits at its own offset, and only the one that just fired kicks.
+    // `rot` is shared by the whole loop, so the idle gun gets its own local copy rather than
+    // zeroing the value the firing gun still needs.
+    let layerRot = rot;
     if(def && def.motion === 'dual'){
       lx += layerDef.offsetX || 0;
       const firing = (fpvState.punchHand === 0) ? (layerDef.hand === 'right') : (layerDef.hand === 'left');
-      if(!firing){ ly -= offY; rot = 0; }
+      if(!firing){ ly -= offY; layerRot = 0; }
     }
 
     // Fists: only the punching hand moves, and it alternates each swing.
@@ -436,17 +442,17 @@ function updateFPV(delta, elapsed){
     // Rotate about a chosen point on the sprite rather than its centre. three.js always spins
     // a mesh about its own origin, so the mesh is nudged by (P - R·P): the offset that leaves
     // the pivot sitting still while everything around it turns.
-    if(rot !== 0 && layerDef.pivot){
+    if(layerRot !== 0 && layerDef.pivot){
       const wu = l.mesh.scale.x, hu = l.mesh.scale.y;
       const px = (layerDef.pivot.x - 0.5) * wu;     // centre -> pivot, in overlay units
       const py = (0.5 - layerDef.pivot.y) * hu;
-      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const cos = Math.cos(layerRot), sin = Math.sin(layerRot);
       cx += px - (px*cos - py*sin);
       cy += py - (px*sin + py*cos);
     }
 
     l.mesh.position.set(cx, cy, 0);
-    l.mesh.rotation.z = rot;
+    l.mesh.rotation.z = layerRot;
 
     // Two-state sprites (A/B) swap their texture rather than needing a second plane.
     const wantName = (altNow && layerDef.alt) ? layerDef.alt : layerDef.name;
