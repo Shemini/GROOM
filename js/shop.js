@@ -50,6 +50,9 @@ function updateInteractables(delta, elapsed){
 function flashDenied(){ interactPromptEl.classList.add('denied'); setTimeout(()=>interactPromptEl.classList.remove('denied'),300); }
 
 function interactStation(station){
+  // A weapon without a numeric price must not be sellable: NaN poisons player.money, and
+  // every later "can afford" check then passes.
+  if(!Number.isFinite(ALL_WEAPONS[station.weaponIndex].cost)) return;
   const idx = station.weaponIndex, w = ALL_WEAPONS[idx], owned = ownsWeapon(idx);
   if(!owned){
     if(player.money<w.cost){ soundDenied(); flashDenied(); return; }

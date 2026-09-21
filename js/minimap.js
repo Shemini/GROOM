@@ -183,8 +183,10 @@ function drawPlayerMarker(cx, cy){
   minimapCtx.fill();
 }
 
-// A wedge matching the camera's real horizontal field of view, so what's lit on the map is
-// what's actually on screen.
+// A wedge matching the camera's real horizontal field of view, drawn as square blocks on a
+// fixed grid rather than a smooth arc — a clean vector wedge sat on top of the pixelated map
+// instead of belonging to it. Flat opacity throughout, in the player's own green, so it reads
+// as part of the marker rather than a separate glow.
 function drawVisionCone(cx, cy, drawW, drawH){
   if(!camera) return;
   const fwd = new THREE.Vector3();
@@ -196,8 +198,7 @@ function drawVisionCone(cx, cy, drawW, drawH){
   // Into canvas space, where the vertical axis may be flipped.
   const cxDir = d.du*drawW;
   const cyDir = (MINIMAP_V_FLIP ? -d.dv : d.dv)*drawH;
-  const len = Math.hypot(cxDir, cyDir);
-  if(len < 1e-6) return;
+  if(Math.hypot(cxDir, cyDir) < 1e-9) return;
   const heading = Math.atan2(cyDir, cxDir);
 
   // camera.fov is vertical; the cone should match what the player sees across the screen.
@@ -205,19 +206,23 @@ function drawVisionCone(cx, cy, drawW, drawH){
   const halfH = Math.atan(Math.tan(halfV)*camera.aspect);
 
   const R = MINIMAP_CONE_RADIUS;
-  const grad = minimapCtx.createRadialGradient(cx, cy, 0, cx, cy, R);
-  grad.addColorStop(0, MINIMAP_CONE_COLOR_NEAR);
-  grad.addColorStop(1, MINIMAP_CONE_COLOR_FAR);
-  minimapCtx.save();
-  // Additive rather than alpha-blended. A translucent ochre wedge over an ochre map is
-  // effectively invisible — brightening what's inside it is what makes the cone read.
-  minimapCtx.globalCompositeOperation = 'lighter';
-  minimapCtx.beginPath();
-  minimapCtx.moveTo(cx, cy);
-  minimapCtx.arc(cx, cy, R, heading-halfH, heading+halfH);
-  minimapCtx.closePath();
-  minimapCtx.fillStyle = grad;
-  minimapCtx.fill();
-  minimapCtx.restore();   // additive blending must not leak into later draws
+  const B = MINIMAP_CONE_BLOCK;
+  // The grid is anchored to the canvas, not to the player, so blocks stay put as the view
+  // turns instead of crawling underneath it.
+  const x0 = Math.floor((cx-R)/B)*B, x1 = Math.ceil((cx+R)/B)*B;
+  const y0 = Math.floor((cy-R)/B)*B, y1 = Math.ceil((cy+R)/B)*B;
+
+  minimapCtx.fillStyle = MINIMAP_CONE_COLOR;
+  for(let y=y0; y<y1; y+=B){
+    for(let x=x0; x<x1; x+=B){
+      const px = x + B/2, py = y + B/2;
+      const dx = px-cx, dy = py-cy;
+      if(dx*dx + dy*dy > R*R) continue;
+      // Wrapped through atan2 so the comparison still works either side of the -pi/pi seam.
+      const rel = Math.atan2(Math.sin(Math.atan2(dy,dx)-heading), Math.cos(Math.atan2(dy,dx)-heading));
+      if(Math.abs(rel) > halfH) continue;
+      minimapCtx.fillRect(x, y, B, B);
+    }
+  }
 }
 

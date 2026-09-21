@@ -13,12 +13,12 @@ function takeDamage(amount){
   updateHUD();
 }
 function addMoney(amount){
-  const doubleMult = clock.getElapsedTime()<player.doubleUntil ? 2:1;
+  const doubleMult = gameTime<player.doubleUntil ? 2:1;
   player.money += Math.round(amount*(1+statValue('moneyMult'))*doubleMult);
   updateHUD();
 }
 function addXP(amount){
-  const doubleMult = clock.getElapsedTime()<player.doubleUntil ? 2:1;
+  const doubleMult = gameTime<player.doubleUntil ? 2:1;
   player.xp += amount*(1+statValue('xpMult'))*doubleMult;
   while(player.xp>=player.xpToNext){
     player.xp -= player.xpToNext; player.level++;
@@ -257,10 +257,9 @@ function updateHUD(){
   if(levelNumEl) levelNumEl.textContent = 'LV '+player.level;
   if(xpBarInnerEl) xpBarInnerEl.style.width = Math.min(100,(player.xp/player.xpToNext)*100)+'%';
 
-  const remaining = player.doubleUntil - (clock?clock.getElapsedTime():0);
+  const remaining = player.doubleUntil - gameTime;
   if(doubleBadgeEl){
-    const now = clock?clock.getElapsedTime():0;
-    const kill = (player.instakillUntil||0) - now;
+    const kill = (player.instakillUntil||0) - gameTime;
     const parts = [];
     if(remaining>0) parts.push('2x $/XP — '+Math.ceil(remaining)+'s');
     if(kill>0) parts.push('VERMUT x'+VERMUT_DAMAGE_MULT+' — '+Math.ceil(kill)+'s');

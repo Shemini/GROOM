@@ -7,6 +7,7 @@ function animate(){
   const elapsed = clock.getElapsedTime();
 
   if(gameState==='playing'){
+    gameTime += delta;   // frozen whenever the game isn't in play
     updateMovement(delta);
     if(mouseDown) tryShoot(elapsed);
     finishReloadIfDue(elapsed);
@@ -30,7 +31,7 @@ function animate(){
     updateBlackHoles(delta, elapsed);
     updateParticles(delta, elapsed);
     updateDamageNumbers(delta);
-    updateDrops(delta, elapsed);
+    updateDrops(delta, gameTime);
     updateTrajectoryMarker();
     updateSpreadRing();
     updateHUD();

@@ -52,7 +52,7 @@ const DROP_DEFS = {
   double:    { startRow:0, light:0xffd54a, label:'Postre — 2x dinero y XP' },   // dessert, yellow
   ammo:      { startRow:2, light:0xff8c26, label:'Plato fuerte — munición' },   // main course, orange
   health:    { startRow:4, light:0x5ce85c, label:'Ensalada — salud' },          // salad, green
-  instakill: { startRow:6, light:0xe83030, label:'Vermut — muerte instantánea' },// vermouth, red
+  instakill: { startRow:6, light:0xe83030, label:'Vermut — x3 daño' },// vermouth, red
 };
 // Kept for anything still asking for a flat colour (the HUD badge, particles).
 const DROP_COLORS = { ammo:0xff8c26, health:0x5ce85c, double:0xffd54a, instakill:0xe83030 };
@@ -78,12 +78,13 @@ const BUBBLE_SPLASH_FRACTION = 0.55;     // damage to everyone but the guest act
 // Shorter than the original 6s: a long lull between waves makes combos nearly impossible to
 // carry, and the wait wasn't doing anything for pacing either.
 const WAVE_GAP = 2.5;
+const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 const COMBO_KILLS_PER_STAGE = 10;
 const COMBO_STAGES = [
   { label:'SERIO',     mood:'serious', timer:10.0 },
   { label:'CONTENTO',  mood:'happy',   timer:7.5  },
   { label:'EUFÓRICO',  mood:'excited', timer:5.0  },
-  { label:'CABREADO',  mood:'mad',     timer:2.5  },
+  { label:'LOCO',      mood:'mad',     timer:2.5  },   // 'mad' as in crazy, not angry
 ];
 const COMBO_DAMAGE_BONUS = 0.15;           // per stage, additive -> +45% at Mad
 const COMBO_REWARD_BONUS = 0.15;           // gold and XP, same scale
@@ -256,7 +257,7 @@ const ENEMY_TYPES = {
     widthStretch:1.0,
     hitboxWidthFraction:100/256,
     headHeightFraction:110/512, // proportionally bigger head
-    hpMult:0.33, speedMult:1.5, damageMult:0.25, rewardMult:0.45,
+    hpMult:0.33, speedMult:1.25, damageMult:0.25, rewardMult:0.45,
     attackDamageFrame:4,
     attackSpeedMult:1.0,
     swarmSize:[3,6],
@@ -281,7 +282,7 @@ const ENEMY_TYPES = {
     widthStretch:1.0,
     hitboxWidthFraction:100/256,
     headHeightFraction:110/512,
-    hpMult:0.33, speedMult:1.5, damageMult:0.25, rewardMult:0.45,
+    hpMult:0.33, speedMult:1.25, damageMult:0.25, rewardMult:0.45,
     attackDamageFrame:4,
     attackSpeedMult:1.0,
     swarmSize:[3,6],
@@ -420,7 +421,9 @@ const MELEE_INDICES = [0, 11];
 const FISTS_INDEX = 0;
 const STARTER_INDEX = 1;
 const SPECIAL_INDICES = [4,5,6,7,8,9,10,11];  // party-box pool (11 is the melee upgrade)
-const STATION_INDICES = [2,3,8];               // wall-buy stock: the cousin's rifle, the BB gun, the confetti cannon
+// The confetti cannon was here too, but it has no `cost`, so the station priced it as NaN and
+// buying it turned the player's money into NaN — which then compared as "enough" for anything.
+const STATION_INDICES = [2,3];                 // wall-buy stock: the cousin's rifle, the BB gun
 
 // Stat icons live in Stats/ alongside the weapon icons; `icon` is the filename without the
 // extension. Names are Spanish to match the art.
@@ -530,10 +533,10 @@ const MINIMAP_ENEMY_EDGE_COLOR = '#a82f34';   // pinned to the rim: dimmer, so i
 const MINIMAP_ENEMY_SIZE = 5;        // enemy square, in canvas pixels
 // Vision cone: matches the camera's horizontal field of view.
 const MINIMAP_CONE_RADIUS = 46;
-// Drawn additively, so these brighten the map rather than tinting it — which is why they're
-// near-white rather than the map's own ochre.
-const MINIMAP_CONE_COLOR_NEAR = 'rgba(255,238,190,0.50)';
-const MINIMAP_CONE_COLOR_FAR  = 'rgba(180,140,70,0.00)';
+const MINIMAP_CONE_BLOCK = 3;        // block size of the cone, matching the map's pixel feel
+// The player's own green at a flat alpha — same hue as the marker, so the two read as one
+// piece of UI rather than a marker plus a separate glow.
+const MINIMAP_CONE_COLOR = 'rgba(143,174,58,0.30)';
 const MINIMAP_GUITAR_COLOR = '#ffc46b';
 const MINIMAP_V_FLIP = false; // flip if markers end up vertically mirrored vs. the real map
 let currentInteractable = null;
@@ -542,6 +545,10 @@ let boxState = 'idle';
 let feetY = 0;
 let playerVelY = 0;
 let playerAirborne = 0;
+// Game time: advances only while actually playing. Pickup lifetimes and buffs are measured
+// against this rather than the wall clock, which kept running through pause, level-up and the
+// B menu — so a 20s buff could expire while you were reading upgrade cards.
+let gameTime = 0;
 let playerStamina = 10;      // set from PLAYER_STAMINA_MAX at init
 let playerExhausted = false;
 let playerStart = null;
@@ -560,11 +567,15 @@ const raycaster = new THREE.Raycaster();
 // Largest per-event mouse delta we'll act on, in raw movement units. Normal movement is well
 // under this; only coalesced bursts after a stall exceed it.
 const MOUSE_DELTA_CAP = 120;
+// Low-res columns to aim for when pixel size is automatic. ~440 reproduces 6px at 2540 wide
+// and gives 4px at 1920, keeping the look consistent between the two.
+const PIXEL_TARGET_COLUMNS = 440;
 
 const DEFAULT_SETTINGS = {
   mouseSensitivity:0.0022,
   faceAnimSpeed:1.0,   // global multiplier for tuning the portrait's animation speed live
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:6, lutStrength:1,
+  autoPixel:true,    // derive pixel size from screen width (see PIXEL_TARGET_COLUMNS)
   colorDepth:8,   // 4 / 8 / 16 / 24 — note the renderer itself is 24-bit, so 24 = no quantisation
   skyColor:'#3a5f8a', horizonColor:'#ccf0ff', horizonSharpness:2.0,
   sunColor:'#fff2df', sunIntensity:1.1, ambientColor:'#4a5a78', ambientIntensity:0.7,
@@ -737,7 +748,7 @@ const FACE_BOB_HZ = { serious:0.25, happy:0.40, excited:0.70, mad:0.95 };
 const FACE_BOB_PIXELS = 5;   // vertical travel of the portrait, in canvas pixels
 // Edge treatment for the portrait sheet. 'outline' turns the feathered band into a solid dark
 // edge; 'cut' simply discards it. Either removes the white halo that partial alpha produces.
-const FACE_EDGE_MODE = 'outline';
+const FACE_EDGE_MODE = 'cut';
 const FACE_ALPHA_CUTOFF = 0.6;      // at or above this, a pixel is fully opaque
 const FACE_OUTLINE_MIN = 0.15;      // below this, a pixel is discarded entirely
 const FACE_OUTLINE_COLOR = [42, 26, 14];   // dark brown

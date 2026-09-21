@@ -209,7 +209,7 @@
   /* ---- TITLE / LANDING ---- */
   #startOverlay{position:fixed;inset:0;z-index:30;overflow:hidden;
     background:#10131a url('./Cover.jpg') center center / cover no-repeat;
-    image-rendering:pixelated;}
+    image-rendering:pixelated; image-rendering:crisp-edges;}
   #titleVignette{position:absolute;inset:0;pointer-events:none;
     background:linear-gradient(180deg, rgba(6,8,14,.18) 0%, rgba(6,8,14,0) 26%,
       rgba(6,8,14,.35) 66%, rgba(6,8,14,.78) 100%);}
@@ -277,6 +277,12 @@
   #titleHelper #loadingFill{height:100%;width:0%;background:#ffcf5c;transition:width .2s;}
   #titleHelper #loadingLabel{margin:0;font-size:11px;letter-spacing:3px;color:#e5c68b;}
 
+  #btnTitlePixel{position:absolute;right:118px;bottom:20px;z-index:4;
+    font-family:'Silkscreen',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;
+    padding:9px 14px 7px;border:none;color:#c9ab7e;background:#1e160c;
+    box-shadow:inset 3px 3px 0 #161007, inset -3px -3px 0 #624d25, 0 0 0 2px #6b5330;}
+  #btnTitlePixel:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
+  #btnTitlePixel.muted{color:#7a3a1e;}
   #btnTitleMute{position:absolute;right:22px;bottom:20px;z-index:4;
     font-family:'Silkscreen',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;
     padding:9px 14px 7px;border:none;color:#c9ab7e;background:#1e160c;
@@ -538,6 +544,7 @@
   </div>
   <div class="rowLabel"><span>Pixel Size</span><span class="val" id="vPixelSize">6</span></div>
   <input type="range" id="pixelSize" min="1" max="16" step="1" value="6">
+  <div class="panelBtns" style="margin-bottom:8px;"><button id="btnPixelAuto">AUTO</button></div>
   <div class="rowLabel"><span>LUT Strength</span><span class="val" id="vLutStrength">1.00</span></div>
   <input type="range" id="lutStrength" min="0" max="1" step="0.01" value="1">
   <div class="rowLabel"><span>Color Depth</span></div>
@@ -614,6 +621,7 @@
   </div>
 
   <button id="btnTitleMute" title="Mute (M)">♪ ON</button>
+  <button id="btnTitlePixel" title="Pixel filter on the title art">▦ ON</button>
 </div>
 
 

@@ -134,16 +134,32 @@ function spawnZombie(){
   const def = pickEnemyType();
   if(!enemyTextures[def.id]) return;
   if(def.swarmSize){
+    // One anchor for the whole pack, then each member scattered a short way from it — a swarm
+    // should arrive as a group, not as a handful of strays from opposite ends of the map.
     const [lo,hi] = def.swarmSize;
     const n = lo + Math.floor(Math.random()*(hi-lo+1));
-    for(let i=0;i<n;i++) spawnOneEnemy(def);
+    const anchor = findSpawnPosition();
+    for(let i=0;i<n;i++) spawnOneEnemy(def, clusterPointNear(anchor, SWARM_SPREAD));
     return;
   }
   spawnOneEnemy(def);
 }
 
-function spawnOneEnemy(def){
-  const pos = findSpawnPosition();
+// A walkable spot within `spread` metres of the anchor, falling back to the anchor itself.
+function clusterPointNear(anchor, spread){
+  for(let tries=0; tries<10; tries++){
+    const a = Math.random()*Math.PI*2, r = Math.sqrt(Math.random())*spread;
+    const x = anchor.x + Math.cos(a)*r, z = anchor.z + Math.sin(a)*r;
+    if(isPositionBlocked(x, z)) continue;
+    const fy = getFloorY(x, z, anchor.y + 3);
+    if(fy === null || Math.abs(fy - anchor.y) > 1.5) continue;   // not across a ledge
+    return new THREE.Vector3(x, fy, z);
+  }
+  return anchor.clone();
+}
+
+function spawnOneEnemy(def, forcedPos){
+  const pos = forcedPos || findSpawnPosition();
 
   const heightMult = 1 + (Math.random()-0.5)*ZOMBIE_HEIGHT_VARIATION;
   const zHeight = AVG_ZOMBIE_HEIGHT*def.heightMult*heightMult;
@@ -610,7 +626,7 @@ function damageZombie(z, amount, opts){
   if(amount<=0) return false;
   // Vermut multiplies damage rather than killing outright: an instant kill ignored how much
   // a weapon actually hit for, which made area and rapid-tick weapons trivially strong.
-  const vermut = (player.instakillUntil && clock.getElapsedTime() < player.instakillUntil) ? VERMUT_DAMAGE_MULT : 1;
+  const vermut = (player.instakillUntil && gameTime < player.instakillUntil) ? VERMUT_DAMAGE_MULT : 1;
   // Applied here rather than at each weapon, so damage-over-time and chained effects benefit
   // from the combo too instead of only direct hits.
   z.hp -= amount * (z.damageTakenMult||1) * vermut * comboDamageDealtMult();
@@ -713,7 +729,7 @@ function spawnDropPickup(pos, type){
     mesh:group, billboard, tex, light, type, startRow:def.startRow,
     pos:{x:pos.x,z:pos.z}, baseY:pos.y+0.9, phase:Math.random()*10,
     animFrame:0, animTimer:Math.random()/DROP_ANIM_FPS,
-    expiresAt:clock.getElapsedTime()+DROP_LIFETIME,
+    expiresAt:gameTime+DROP_LIFETIME,
   });
 }
 
@@ -733,11 +749,11 @@ function applyDrop(type){
       player.health = player.maxHealth;
       showWaveBanner('ENSALADA','Salud restaurada'); break;
     case 'double':
-      player.doubleUntil = clock.getElapsedTime()+20;
+      player.doubleUntil = gameTime+20;
       showWaveBanner('POSTRE','2x dinero y XP — 20s'); break;
     case 'instakill':
       // No longer a board wipe: for a while, any damage at all is lethal.
-      player.instakillUntil = clock.getElapsedTime()+VERMUT_DURATION;
+      player.instakillUntil = gameTime+VERMUT_DURATION;
       showWaveBanner('VERMUT','x'+VERMUT_DAMAGE_MULT+' daño — '+VERMUT_DURATION+'s'); break;
   }
   updateHUD();

@@ -105,7 +105,9 @@ function toggleCursorLock(){
 function updateToolPanelVisibility(){
   const playing = (gameState === 'playing');
   const settings = el('settingsPanel');
-  if(settings) settings.style.display = playing ? 'none' : '';
+  // Only on the deliberate cursor-unlock screen (B). Pause, level-up and the title screen all
+  // have their own UI, and the tuning panel was cluttering every one of them.
+  if(settings) settings.style.display = (gameState === 'settings') ? '' : 'none';
   const dbg = el('debugPanel');
   // The debug panel also has its own backtick toggle; don't override that when it's hidden.
   if(dbg && !dbg.classList.contains('hidden')) dbg.style.display = playing ? 'none' : '';
@@ -215,6 +217,7 @@ function onResize(){
   renderer.setSize(window.innerWidth, window.innerHeight);
   rebuildRenderTarget();
   if(typeof fpvLayoutLayers === 'function') fpvLayoutLayers();
+  updatePixelAutoLabel();
 }
 
 // =================================================================
@@ -379,10 +382,23 @@ function buildPostProcess(){
   rebuildRenderTarget();
 }
 
+// Pixel size adapted to the screen. A fixed value looks right on one monitor and wrong on
+// another: at 6px a 2540-wide screen renders ~420 columns, but a 1920 screen at the same size
+// gets only ~320 and turns muddy. Targeting a column count instead keeps the chunkiness
+// consistent across resolutions.
+function autoPixelSize(){
+  const w = window.innerWidth || 1920;
+  return Math.max(1, Math.min(16, Math.round(w / PIXEL_TARGET_COLUMNS)));
+}
+function effectivePixelSize(){
+  return settings.autoPixel ? autoPixelSize() : settings.pixelSize;
+}
+
 function rebuildRenderTarget(){
   if(renderTarget) renderTarget.dispose();
-  const w = Math.max(2, Math.floor(window.innerWidth / settings.pixelSize));
-  const h = Math.max(2, Math.floor(window.innerHeight / settings.pixelSize));
+  const px = effectivePixelSize();
+  const w = Math.max(2, Math.floor(window.innerWidth / px));
+  const h = Math.max(2, Math.floor(window.innerHeight / px));
   const depthTexture = new THREE.DepthTexture(w,h);
   depthTexture.type = THREE.UnsignedShortType;
   renderTarget = new THREE.WebGLRenderTarget(w, h, {
@@ -430,7 +446,7 @@ function applySettingsToUI(){
   setRange('contrast', settings.contrast, 'vContrast');
   setRange('hue', settings.hue, 'vHue', v=>Math.round(v)+'\u00b0');
   setRange('saturation', settings.saturation, 'vSaturation');
-  setRange('pixelSize', settings.pixelSize, 'vPixelSize', v=>String(Math.round(v)));
+  setRange('pixelSize', effectivePixelSize(), 'vPixelSize', v=>String(Math.round(v)));
   setRange('lutStrength', settings.lutStrength, 'vLutStrength');
   setRange('horizonSharpness', settings.horizonSharpness, 'vHorizonSharpness', v=>v.toFixed(1));
   setRange('sunIntensity', settings.sunIntensity, 'vSunIntensity');
@@ -473,7 +489,7 @@ function wireSettingsUI(){
     input.addEventListener('input', ()=>{
       const v = parseFloat(input.value);
       settings[id] = v;
-      if(id==='pixelSize') rebuildRenderTarget();
+      if(id==='pixelSize'){ settings.autoPixel = false; rebuildRenderTarget(); updatePixelAutoLabel(); }
       else if(quadMaterial.uniforms[uniformKey||id]) quadMaterial.uniforms[uniformKey||id].value = v;
       if(label) label.textContent = fmt ? fmt(v) : v.toFixed(2);
     });
@@ -488,6 +504,12 @@ function wireSettingsUI(){
       settings[id] = parseFloat(el(id).value);
       quadMaterial.uniforms.tint.value.set(settings.tintR, settings.tintG, settings.tintB);
     });
+  });
+
+  el('btnPixelAuto').addEventListener('click', ()=>{
+    settings.autoPixel = true;
+    rebuildRenderTarget();
+    updatePixelAutoLabel();
   });
 
   const onColorDepth = ()=>{
@@ -582,6 +604,15 @@ function refreshPointsList(){
   const countEl = document.getElementById('pointCount');
   if(countEl) countEl.textContent = capturedNodes.length;
   if(box) box.value = capturedNodes.map(n=>`{ id:'${n.id}', x:${n.x}, z:${n.z} },`).join('\n');
+}
+
+function updatePixelAutoLabel(){
+  const b = el('btnPixelAuto');
+  if(b) b.textContent = settings.autoPixel ? ('AUTO ('+autoPixelSize()+')') : 'SET AUTO';
+  const lab = el('vPixelSize');
+  if(lab) lab.textContent = String(effectivePixelSize());
+  const s = el('pixelSize');
+  if(s) s.value = effectivePixelSize();
 }
 
 function updatePosReadout(){
