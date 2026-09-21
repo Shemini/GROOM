@@ -51,8 +51,23 @@ function setPauseView(view){
   if(b){ b.classList.toggle('active', view === 'controls'); b.textContent = view === 'controls' ? t('pause.statsBtn') : t('pause.controls'); }
 }
 
+// Browsers refuse to re-capture the mouse for roughly a second after Esc releases it. A click
+// on Resume inside that window is silently rejected, which read as the menu ignoring you and
+// then suddenly working. Resume is held visibly unavailable for that window instead.
+const POINTER_RELOCK_COOLDOWN = 1150;   // ms
+let resumeReadyTimer = null;
+function holdResumeForCooldown(){
+  const b = document.getElementById('btnResume');
+  if(!b) return;
+  b.disabled = true;
+  b.classList.add('cooling');
+  clearTimeout(resumeReadyTimer);
+  resumeReadyTimer = setTimeout(()=>{ b.disabled = false; b.classList.remove('cooling'); }, POINTER_RELOCK_COOLDOWN);
+}
+
 // Rebuilt every time the menu opens, so it always reflects the current build.
 function openPauseMenu(){
+  holdResumeForCooldown();
   setPauseView('stats');
   const s = document.getElementById('pauseSummary');
   if(s) s.textContent = t('pause.summary', {lv:player.level, w:wave.number, p:(player.points||0).toLocaleString()});

@@ -77,7 +77,7 @@ function loadMinimapImage(){
   img.onload = () => {
     const off = document.createElement('canvas');
     off.width = img.width; off.height = img.height;
-    const octx = off.getContext('2d');
+    const octx = off.getContext('2d', { willReadFrequently: true });   // read back for alpha correction
     octx.drawImage(img, 0, 0);
     try {
       const imgData = octx.getImageData(0, 0, off.width, off.height);

@@ -233,6 +233,11 @@ function bayer4(x, y){
   const b2 = (a,b)=>{ a=Math.floor(a); b=Math.floor(b); const v=a*0.5+b*b*0.75; return v-Math.floor(v); };
   return b2(0.5*x, 0.5*y)*0.25 + b2(x, y);
 }
+// The pattern repeats every 4 pixels, so it's computed once into a table. Calling bayer4 per
+// pixel made an 8-bit pass over the cover freeze the page for about a second — long enough
+// that a second click queued up and switched the effect straight back off.
+const BAYER4_TABLE = (()=>{ const t = new Float32Array(16);
+  for(let y=0;y<4;y++) for(let x=0;x<4;x++) t[y*4+x] = bayer4(x,y) - 0.5; return t; })();
 
 // pixelSize 1 leaves resolution alone; depth 0 skips quantising. Either can be on alone.
 function treatImage(img, pixelSize, depth, keepAlpha){
@@ -244,7 +249,10 @@ function treatImage(img, pixelSize, depth, keepAlpha){
   const h = Math.max(1, Math.round(img.height*scale));
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
+  // willReadFrequently keeps this canvas in CPU memory. By default it's GPU-backed, and
+  // getImageData then has to read the whole image back off the graphics card — measured at
+  // over half a second for the cover, which was most of the 8-bit freeze.
+  const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = true;          // average down first, then quantise
   ctx.drawImage(img, 0, 0, w, h);
   if(depth || keepAlpha){
@@ -253,16 +261,17 @@ function treatImage(img, pixelSize, depth, keepAlpha){
       const d = data.data;
       const L = depth ? colorLevelsFor(depth) : null;
       const steps = L ? [Math.max(1,L.x-1), Math.max(1,L.y-1), Math.max(1,L.z-1)] : null;
+      const s0 = steps && steps[0], s1 = steps && steps[1], s2 = steps && steps[2];
+      const q = (v, s)=>{ v = v < 0 ? 0 : (v > 1 ? 1 : v); return ((v*s + 0.5)|0) / s * 255 + 0.5 | 0; };
       for(let y=0;y<h;y++){
+        const row = (y & 3) * 4;
         for(let x=0;x<w;x++){
           const i = (y*w+x)*4;
           if(steps){
-            const dither = bayer4(x, y) - 0.5;
-            for(let ch=0; ch<3; ch++){
-              let v = d[i+ch]/255 + dither/steps[ch];
-              v = Math.min(1, Math.max(0, v));
-              d[i+ch] = Math.round(Math.round(v*steps[ch])/steps[ch]*255);
-            }
+            const dither = BAYER4_TABLE[row + (x & 3)];
+            d[i]   = q(d[i]  /255 + dither/s0, s0);
+            d[i+1] = q(d[i+1]/255 + dither/s1, s1);
+            d[i+2] = q(d[i+2]/255 + dither/s2, s2);
           }
           // A pixelated cutout needs hard alpha too, or soft edges bring the smoothness back.
           if(keepAlpha && pixelSize > 1) d[i+3] = d[i+3] >= 128 ? 255 : 0;
@@ -273,7 +282,12 @@ function treatImage(img, pixelSize, depth, keepAlpha){
       console.warn('Landing: treatment skipped (canvas pixel read blocked).', e);
     }
   }
-  return c.toDataURL('image/png');
+  // Encoded with toBlob rather than toDataURL: the PNG encode (~175ms for the cover) then
+  // happens off the main thread instead of freezing the page while it runs.
+  return new Promise(res=>{
+    if(c.toBlob) c.toBlob(bl=>res(bl ? URL.createObjectURL(bl) : c.toDataURL('image/png')), 'image/png');
+    else res(c.toDataURL('image/png'));
+  });
 }
 
 function loadImage(src){
@@ -284,11 +298,13 @@ function buildLandingPixelArt(){
   const logoEl = document.getElementById('titleLogo');
   landingOriginals = { cover:'./Cover.jpg', logo: logoEl ? logoEl.getAttribute('src') : './CoverTittle.png' };
   Promise.all([loadImage(landingOriginals.cover), loadImage(landingOriginals.logo)])
-    .then(([cover, logo])=>{ landingSources = { cover, logo }; applyLandingArt(); })
+    .then(([cover, logo])=>{ landingSources = { cover, logo }; applyLandingArt(); prewarmLandingVariants(); })
     .catch(e=>console.warn('Landing: could not load title art for treatment', e));
   applyLandingArt();
 }
 
+// Returns a promise of the treated { cover, logo }, or null for the untreated originals.
+// The promise itself is cached, so pressing a toggle twice never builds a variant twice.
 function landingVariant(){
   const key = (landingPixelOn?'p':'-') + (landingDepthOn?'d':'-');
   if(key === '--' || !landingSources) return null;          // originals
@@ -300,22 +316,46 @@ function landingVariant(){
   // Block size is matched on screen: the cover fills the viewport, the logo about a quarter of it.
   const coverPx = landingPixelOn ? Math.max(1, px * (cover.width / vw)) : 1;
   const logoPx  = landingPixelOn ? Math.max(1, px * (logo.width / (vw*0.2667))) : 1;
-  landingCache[key] = {
-    cover: treatImage(cover, coverPx, depth, false),
-    logo:  treatImage(logo,  logoPx,  depth, true),
-  };
-  return landingCache[key];
+  const pr = Promise.all([
+    treatImage(cover, coverPx, depth, false),
+    treatImage(logo,  logoPx,  depth, true),
+  ]).then(([c, l2])=>{ pr.ready = true; return { cover:c, logo:l2 }; });
+  landingCache[key] = pr;
+  return pr;
 }
 
+let landingApplyToken = 0;
 function applyLandingArt(){
   if(!landingOriginals) return;
-  const set = landingVariant() || landingOriginals;
+  updateLandingToggleLabels();
+  const pending = landingVariant();
+  const token = ++landingApplyToken;
+  if(!pending){ setLandingBusy(false); paintLandingArt(landingOriginals); return; }
+  // Normally already built by the background prewarm and painted at once. Only a toggle in
+  // the first moments after load has to wait — shown as busy so it never looks unresponsive.
+  if(!pending.ready) setLandingBusy(true);
+  pending.then(set=>{
+    // A newer toggle may have landed while this one was encoding; only the latest paints.
+    if(token === landingApplyToken){ setLandingBusy(false); paintLandingArt(set); }
+  });
+}
+
+function paintLandingArt(set){
   const overlay = document.getElementById('startOverlay');
   if(overlay) overlay.style.backgroundImage = 'url(' + set.cover + ')';
   const logo = document.getElementById('titleLogo');
   if(logo) logo.src = set.logo;
   const scan = document.getElementById('titleLogoScan');
   if(scan){ scan.style.webkitMaskImage = 'url(' + set.logo + ')'; scan.style.maskImage = 'url(' + set.logo + ')'; }
+}
+
+function setLandingBusy(on){
+  ['btnTitlePixel','btnTitleDepth'].forEach(id=>{
+    const b = document.getElementById(id); if(b) b.classList.toggle('busy', on);
+  });
+}
+
+function updateLandingToggleLabels(){
   const bp = document.getElementById('btnTitlePixel');
   if(bp){ bp.textContent = landingPixelOn ? t('ui.pixelOn') : t('ui.pixelOff'); bp.classList.toggle('muted', !landingPixelOn); }
   const bd = document.getElementById('btnTitleDepth');
@@ -324,6 +364,23 @@ function applyLandingArt(){
 
 function toggleLandingPixel(){ landingPixelOn = !landingPixelOn; applyLandingArt(); }
 function toggleLandingDepth(){ landingDepthOn = !landingDepthOn; applyLandingArt(); }
+
+// Builds the three treated variants one at a time, each on its own tick, after the art has
+// loaded. By the time a toggle is pressed the result is usually already cached.
+function prewarmLandingVariants(){
+  const combos = [[false,true],[true,false],[true,true]];
+  let i = 0;
+  const next = ()=>{
+    if(i >= combos.length || landingState === 'gone') return;
+    const [px, dp] = combos[i++];
+    const savedP = landingPixelOn, savedD = landingDepthOn;
+    landingPixelOn = px; landingDepthOn = dp;
+    try{ const pr = landingVariant(); if(pr && pr.catch) pr.catch(()=>{}); }catch(e){}
+    landingPixelOn = savedP; landingDepthOn = savedD;
+    setTimeout(next, 60);
+  };
+  setTimeout(next, 400);
+}
 
 // Re-applies every piece of title-screen text that isn't a plain data-i18n tag — the toggles
 // and the loading label depend on state, so they're rebuilt rather than looked up.

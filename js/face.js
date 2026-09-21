@@ -58,7 +58,8 @@ function buildFaceAnims(){
 function hardenFaceEdges(img){
   const off = document.createElement('canvas');
   off.width = img.width; off.height = img.height;
-  const ctx = off.getContext('2d');
+  // CPU-backed, since its pixels are read straight back (see landing.js for why it matters).
+  const ctx = off.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, 0, 0);
   try{
