@@ -44,13 +44,20 @@ const audioMissingCache = new Set();
 // Distance falloff for voice clips. These used to be given a pan but no attenuation, so an
 // enemy groan or one of the Guitarrista's remarks played at full volume from anywhere on the
 // map — only the music was ever positional.
-const VOICE_FALLOFF = 30;   // metres to silence
-function voiceLevel(pos, baseVolume, falloff){
+const VOICE_FALLOFF = 30;   // metres to silence (Guitarrista)
+// Enemies carry further and fall off more gently than the Guitarrista's chatter. The squared
+// curve that suited him made enemy voices far too quiet at combat distances — at 10m they were
+// down to 44%, which is exactly where most fights happen.
+const ENEMY_VOICE_FALLOFF = 45;
+const ENEMY_VOICE_BOOST = 1.6;
+function voiceLevel(pos, baseVolume, falloff, curve){
   if(!pos || !camera) return { volume:baseVolume, pan:0 };
   const d = Math.hypot(pos.x-camera.position.x, pos.z-camera.position.z);
   const reach = falloff || VOICE_FALLOFF;
   const atten = Math.max(0, 1 - d/reach);
-  return { volume: baseVolume*atten*atten, pan: computePan(pos) };   // squared: a softer, more natural rolloff
+  // 'linear' holds volume up through the middle distances; squared drops off faster.
+  const k = (curve === 'linear') ? atten : atten*atten;
+  return { volume: baseVolume*k, pan: computePan(pos) };
 }
 
 function pickRareLastIndex(count, rareProb){
@@ -75,7 +82,7 @@ function playEnemyClip(categoryKey, pos, volume, actor){
   const cat = AUDIO_CATEGORIES[categoryKey];
   if(!cat || !audioCtx) return;
   const who = actor || ENEMY_AUDIO_TYPE;
-  const lvl = voiceLevel(pos, (volume===undefined?0.6:volume));
+  const lvl = voiceLevel(pos, Math.min(1, (volume===undefined?0.6:volume)*ENEMY_VOICE_BOOST), ENEMY_VOICE_FALLOFF, 'linear');
   if(lvl.volume <= 0.001) return;
   const idx = pickRareLastIndex(cat.count, cat.rareProb);
   const url = `./Audio/${who}/${cat.folder}/${who}_${cat.folder}_${idx}.${AUDIO_EXT}`;

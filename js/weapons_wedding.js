@@ -26,6 +26,10 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   if(cost > 0){
     if(playerStamina >= cost){ playerStamina -= cost; }
     else { playerStamina = 0; playerExhausted = true; canShove = false; }
+    // Hold regeneration for the swing's cooldown. Recovery (2/s) comfortably outpaced the
+    // drain (0.3 per swing at two swings a second), so the bar never actually went down —
+    // stamina now only comes back while you're not swinging.
+    player.staminaRegenBlockedUntil = gameTime + getShotCooldown(wIdx);
   }
 
   // Gather everything inside the arc, nearest first.

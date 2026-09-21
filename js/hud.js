@@ -105,7 +105,7 @@ function buildArsenalSlots(){
       '<span class="key"></span>' +
       '<span class="ammo"></span>' +
       '<div class="name"></div>' +
-      '<div class="emptyTxt">EMPTY</div>';
+      '<div class="emptyTxt">'+t('hud.empty')+'</div>';
     hudRefs.arsenalGrid.appendChild(slot);
   }
 }
@@ -137,7 +137,7 @@ function updateArsenal(){
     const weapon = ALL_WEAPONS[wIdx];
     const mods = player.weaponMods[wIdx];
     const ammo = player.ammoByWeapon[wIdx];
-    const label = player.weaponEvolved[wIdx] ? EVOLUTIONS[wIdx].name : weapon.name;
+    const label = player.weaponEvolved[wIdx] ? evolutionName(wIdx) : weaponName(wIdx);
 
     hudSet('slotKey'+i, key, String(i+1));
     hudSet('slotAmmo'+i, ammoEl, weapon.noAmmo ? '—' : (ammo ? (mods.noReload ? String(ammo.mag) : ammo.mag+'/'+ammo.reserve) : ''));
@@ -153,8 +153,8 @@ function updateStoneHUD(){
   // --- ammo ---
   const wIdx = player.currentWeapon;
   const weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx], ammo = player.ammoByWeapon[wIdx];
-  const label = player.weaponEvolved[wIdx] ? EVOLUTIONS[wIdx].name
-              : (weapon.noLevel ? weapon.name : weapon.name+' LV'+(player.weaponLevel[wIdx]||1));
+  const label = player.weaponEvolved[wIdx] ? evolutionName(wIdx)
+              : (weapon.noLevel ? weaponName(wIdx) : weaponName(wIdx)+t('hud.lvSuffix',{n:player.weaponLevel[wIdx]||1}));
   hudSet('wname', hudRefs.ammoWeaponName, label);
   // Melee carries no ammo, so show a dash instead of a count — and never assume the record
   // exists, since a weapon without one used to throw here every frame and stall the loop.
@@ -212,7 +212,7 @@ function updateStoneHUD(){
   // --- combo ---
   if(typeof combo !== 'undefined'){
     const def = COMBO_STAGES[combo.stage] || COMBO_STAGES[0];
-    hudSet('comboLabel', hudRefs.comboLabel, def.label);
+    hudSet('comboLabel', hudRefs.comboLabel, comboLabel(combo.stage));
     hudSet('comboBonus', hudRefs.comboBonus, '+'+Math.round(combo.stage*COMBO_DAMAGE_BONUS*100)+'%');
     hudSet('comboCount', hudRefs.comboCount, combo.count+'/'+COMBO_KILLS_PER_STAGE);
     if(hudRefs.comboMeter){
@@ -222,7 +222,7 @@ function updateStoneHUD(){
     if(hudRefs.comboTimer){
       const t = hudRefs.comboTimer;
       const frozen = combo.frozen;
-      const label = frozen ? 'EN PAUSA' : (combo.timer>0 ? combo.timer.toFixed(1)+'s' : '—');
+      const label = frozen ? t('hud.paused') : (combo.timer>0 ? combo.timer.toFixed(1)+'s' : '—');
       hudSet('comboTimer', t, label);
       // The colour states matter more than the number while balancing: at a glance you can
       // see whether a stage is about to drop.

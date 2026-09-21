@@ -277,18 +277,95 @@
   #titleHelper #loadingFill{height:100%;width:0%;background:#ffcf5c;transition:width .2s;}
   #titleHelper #loadingLabel{margin:0;font-size:11px;letter-spacing:3px;color:#e5c68b;}
 
-  #btnTitlePixel{position:absolute;right:118px;bottom:20px;z-index:4;
-    font-family:'Silkscreen',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;
-    padding:9px 14px 7px;border:none;color:#c9ab7e;background:#1e160c;
+  /* Comparison toggles for the title art, sitting left of the mute button. */
+  .titleToggle{position:absolute;bottom:20px;z-index:4;
+    font-family:'Silkscreen',monospace;font-size:11px;letter-spacing:2px;cursor:pointer;
+    padding:9px 12px 7px;border:none;color:#c9ab7e;background:#1e160c;
     box-shadow:inset 3px 3px 0 #161007, inset -3px -3px 0 #624d25, 0 0 0 2px #6b5330;}
-  #btnTitlePixel:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
-  #btnTitlePixel.muted{color:#7a3a1e;}
+  .titleToggle:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
+  .titleToggle.muted{color:#7a6a4a;}
+  #btnTitlePixel{right:112px;}
+  #btnTitleDepth{right:236px;}
   #btnTitleMute{position:absolute;right:22px;bottom:20px;z-index:4;
     font-family:'Silkscreen',monospace;font-size:12px;letter-spacing:3px;cursor:pointer;
     padding:9px 14px 7px;border:none;color:#c9ab7e;background:#1e160c;
     box-shadow:inset 3px 3px 0 #161007, inset -3px -3px 0 #624d25, 0 0 0 2px #6b5330;}
   #btnTitleMute:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
   #btnTitleMute.muted{color:#7a3a1e;}
+
+  /* ---- PAUSE MENU ---- */
+  #pauseOverlay{position:fixed;inset:0;z-index:28;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 45%, rgba(24,18,10,.35) 0%, rgba(4,4,5,.92) 78%);}
+  #pausePanel{position:relative;box-sizing:border-box;width:1180px;max-height:88vh;padding:34px 34px 30px;
+    transform-origin:center;display:flex;flex-direction:column;
+    background-color:var(--stone-bar);
+    background-image:
+      repeating-linear-gradient(0deg,rgba(70,50,24,.45) 0 5px,rgba(0,0,0,0) 5px 98px),
+      repeating-linear-gradient(90deg,rgba(70,50,24,.45) 0 5px,rgba(0,0,0,0) 5px 300px),
+      repeating-linear-gradient(90deg,rgba(255,244,214,.16) 0 5px,rgba(0,0,0,0) 5px 300px),
+      repeating-linear-gradient(63deg,rgba(120,88,44,.17) 0 4px,rgba(0,0,0,0) 4px 15px),
+      repeating-linear-gradient(-51deg,rgba(255,244,214,.1) 0 4px,rgba(0,0,0,0) 4px 13px),
+      linear-gradient(180deg,rgba(255,240,205,.24) 0 8px,rgba(0,0,0,0) 8px);
+    background-position:0 0,0 0,150px 49px,0 0,0 0,0 0;
+    box-shadow:inset 0 -6px 0 rgba(48,36,18,.85), 0 0 0 4px var(--cell-line), 0 24px 0 rgba(4,4,5,.45);}
+  #pausePanel .filigree{position:absolute;left:0;right:0;height:14px;
+    background-image:
+      repeating-linear-gradient(45deg,rgba(207,168,105,.85) 0 3px,rgba(0,0,0,0) 3px 10px),
+      repeating-linear-gradient(-45deg,rgba(90,68,34,.7) 0 3px,rgba(0,0,0,0) 3px 10px);}
+  #pausePanel .filigree.top{top:0;} #pausePanel .filigree.bottom{bottom:0;}
+  #pausePanel .stud{position:absolute;width:12px;height:12px;background:var(--gold);}
+  #pausePanel .stud.tl{left:12px;top:26px;} #pausePanel .stud.tr{right:12px;top:26px;}
+  #pausePanel .stud.bl{left:12px;bottom:26px;} #pausePanel .stud.br{right:12px;bottom:26px;}
+  #pauseHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  #pauseSummary{font-family:'Press Start 2P',monospace;font-size:14px;color:var(--plaque);
+    text-shadow:0 2px 0 rgba(255,244,214,.35);}
+
+  #pauseBody{display:flex;gap:22px;min-height:0;flex:1;}
+  #pauseNav{width:230px;flex:none;display:flex;flex-direction:column;gap:10px;}
+  .pauseBtn{width:100%;padding:13px 16px 11px;border:none;cursor:pointer;text-align:center;
+    font-family:'Silkscreen',monospace;font-size:14px;letter-spacing:5px;color:#c9ab7e;background:#1e160c;
+    box-shadow:inset 3px 3px 0 #161007, inset -3px -3px 0 #624d25, 0 0 0 2px #6b5330;}
+  .pauseBtn.primary{color:#ffcf5c;background:#2a2013;box-shadow:inset 0 0 0 3px #ffcf5c;}
+  .pauseBtn:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
+  .pauseBtn.active{color:#0f0b05;background:#e5c68b;}
+
+  #pauseContent{flex:1;min-width:0;overflow-y:auto;padding:14px 16px;
+    background:var(--cell);
+    background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.022) 0 2px,rgba(0,0,0,0) 2px 6px);
+    box-shadow:inset 3px 3px 0 var(--cell-dark), inset -3px -3px 0 var(--cell-light), 0 0 0 2px var(--cell-line);}
+  #pauseStatsView{display:grid;grid-template-columns:1fr 1.25fr;gap:22px;}
+  .pauseSectionTitle{font-size:12px;letter-spacing:5px;color:var(--vitor);background:var(--stone-chip);
+    display:inline-block;padding:3px 9px 2px;margin-bottom:10px;
+    box-shadow:inset 0 2px 0 rgba(255,244,214,.45), inset 0 -2px 0 rgba(90,66,32,.35);}
+
+  .pStat{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;
+    padding:5px 0;border-bottom:1px solid rgba(107,83,48,.35);}
+  .pStat img{width:26px;height:26px;image-rendering:pixelated;object-fit:contain;}
+  .pStat .pName{font-size:11px;letter-spacing:1px;color:var(--txt-2);}
+  .pStat .pPips{display:flex;gap:3px;margin-top:3px;}
+  .pStat .pPips i{width:12px;height:5px;background:#33291a;box-shadow:inset 0 0 0 1px #0d0904;}
+  .pStat .pPips i.on{background:var(--gold);}
+  .pStat .pVal{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--gold);}
+  .pStat.zero .pVal{color:var(--txt-off);}
+  .pStat.zero .pName{color:var(--txt-muted);}
+
+  .pWeapon{display:grid;grid-template-columns:56px 1fr;gap:12px;padding:10px 0;
+    border-bottom:1px solid rgba(107,83,48,.35);}
+  .pWeapon img{width:56px;height:56px;image-rendering:pixelated;object-fit:contain;}
+  .pWeapon .pwHead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px;}
+  .pWeapon .pwName{font-size:12px;letter-spacing:1px;color:var(--gold-lt);}
+  .pWeapon .pwLevel{font-size:10px;letter-spacing:2px;color:var(--vitor);background:var(--stone-chip);padding:2px 6px 1px;}
+  .pWeapon .pwLevel.evo{color:#0f0b05;background:var(--gold);}
+  .pWeapon .pwStats{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px;}
+  .pWeapon .pwStat{display:flex;justify-content:space-between;font-size:10px;color:var(--txt-muted);}
+  .pWeapon .pwStat b{font-weight:normal;color:var(--txt-2);}
+  .pEmpty{font-size:11px;color:var(--txt-off);letter-spacing:2px;padding:8px 0;}
+
+  .pCtrl{display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center;padding:6px 0;
+    border-bottom:1px solid rgba(107,83,48,.35);font-size:11px;color:var(--txt-2);}
+  .pCtrl .keys{display:flex;gap:5px;flex-wrap:wrap;}
+  .pCtrl kbd{font-family:'Silkscreen',monospace;font-size:10px;color:#0f0b05;background:var(--stone-chip);
+    padding:2px 7px 1px;box-shadow:inset 0 -2px 0 rgba(90,66,32,.45);}
 
   .overlay{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
     background:rgba(4,4,5,0.9);flex-direction:column;text-align:center;}
@@ -446,21 +523,21 @@
     <div id="hudFiligree"></div>
 
     <div id="nowPlaying" class="hidden">
-      <span class="chip">NOW PLAYING</span>
+      <span class="chip" data-i18n="hud.nowPlaying">NOW PLAYING</span>
       <span id="trackTitle"></span>
     </div>
 
     <div id="hudLeft">
       <div id="cellAmmo" class="cell">
         <div id="ammoHeader">
-          <span class="chip">AMMO</span>
+          <span class="chip" data-i18n="hud.ammo">AMMO</span>
           <span id="ammoWeaponName">PISTOL</span>
         </div>
         <div id="ammoRead">
           <span id="ammoMag">12</span>
           <span id="ammoReserve">/ 72</span>
         </div>
-        <div id="ammoReloadRow"><span id="ammoReloading">RELOADING…</span></div>
+        <div id="ammoReloadRow"><span id="ammoReloading" data-i18n="hud.reloading">RELOADING…</span></div>
       </div>
 
       <div id="cellArsenal" class="cell">
@@ -473,7 +550,7 @@
     <div id="hudRight">
       <div id="cellHealth" class="cell">
         <div id="healthCol">
-          <span class="chip">HEALTH</span>
+          <span class="chip" data-i18n="hud.health">HEALTH</span>
           <div id="healthRead">
             <span id="healthValue">100</span>
             <span id="healthMax">/ 100</span>
@@ -481,14 +558,14 @@
           <div id="healthPips"></div>
         </div>
         <div id="stamCol">
-          <span class="chip sm">STAM</span>
+          <span class="chip sm" data-i18n="hud.stam">STAM</span>
           <div id="stamTrack"></div>
         </div>
       </div>
 
       <div id="cellTally" class="cell">
-        <div class="tallyRow"><span id="tallyKills">0</span><span class="chip sm">DOWN</span></div>
-        <div class="tallyRow"><span id="tallyScore">0</span><span class="chip sm">PTS</span></div>
+        <div class="tallyRow"><span id="tallyKills">0</span><span class="chip sm" data-i18n="hud.down">DOWN</span></div>
+        <div class="tallyRow"><span id="tallyScore">0</span><span class="chip sm" data-i18n="hud.pts">PTS</span></div>
         <div id="comboBox">
           <div id="comboHead"><span id="comboLabel">SERIO</span><span id="comboBonus">+0%</span></div>
           <div id="comboMeterOuter"><div id="comboMeterInner"></div></div>
@@ -608,12 +685,12 @@
     </div>
   </div>
 
-  <div id="titlePrompt">PRESS ENTER</div>
+  <div id="titlePrompt" data-i18n="ui.pressEnter">PRESS ENTER</div>
 
   <div id="titleMenu">
-    <button id="startBtn" class="titleBtn primary" disabled>PLAY</button>
-    <button id="btnSettingsMenu" class="titleBtn" disabled>SETTINGS</button>
-    <button id="btnLanguageMenu" class="titleBtn" disabled>LANGUAGE</button>
+    <button id="startBtn" class="titleBtn primary" disabled data-i18n="ui.play">PLAY</button>
+    <button id="btnSettingsMenu" class="titleBtn" disabled data-i18n="ui.settings">SETTINGS</button>
+    <button id="btnLanguageMenu" class="titleBtn" data-i18n="ui.language">LANGUAGE</button>
     <div id="titleHelper">
       <div id="loadingBar"><div id="loadingFill"></div></div>
       <div id="loadingLabel">0%</div>
@@ -621,19 +698,54 @@
   </div>
 
   <button id="btnTitleMute" title="Mute (M)">♪ ON</button>
-  <button id="btnTitlePixel" title="Pixel filter on the title art">▦ ON</button>
+  <button id="btnTitleDepth" class="titleToggle muted" title="8-bit colour on the title art">8-BIT OFF</button>
+  <button id="btnTitlePixel" class="titleToggle muted" title="Pixel filter on the title art">PIXEL OFF</button>
 </div>
 
 
-<div id="pauseOverlay" class="overlay hidden">
-  <h1 style="color:var(--bone)">PAUSED</h1>
-  <p>Click to resume.</p>
+<div id="pauseOverlay" class="hidden">
+  <div id="pausePanel">
+    <div class="filigree top"></div>
+    <div class="filigree bottom"></div>
+    <div class="stud tl"></div><div class="stud tr"></div>
+    <div class="stud bl"></div><div class="stud br"></div>
+
+    <div id="pauseHeader">
+      <span class="chip lvlChip" data-i18n="pause.title">PAUSED</span>
+      <span id="pauseSummary">LV 1 · WAVE 1</span>
+    </div>
+
+    <div id="pauseBody">
+      <div id="pauseNav">
+        <button id="btnResume" class="pauseBtn primary" data-i18n="pause.resume">RESUME</button>
+        <button id="btnPauseSettings" class="pauseBtn" data-i18n="pause.settings">SETTINGS</button>
+        <button id="btnPauseControls" class="pauseBtn">CONTROLS</button>
+      </div>
+
+      <div id="pauseContent">
+        <div id="pauseStatsView">
+          <div class="pauseSection">
+            <div class="pauseSectionTitle" data-i18n="pause.stats">STATS</div>
+            <div id="pauseStatList"></div>
+          </div>
+          <div class="pauseSection">
+            <div class="pauseSectionTitle" data-i18n="pause.weapons">WEAPONS</div>
+            <div id="pauseWeaponList"></div>
+          </div>
+        </div>
+        <div id="pauseControlsView" class="hidden">
+          <div class="pauseSectionTitle" data-i18n="pause.controls">CONTROLS</div>
+          <div id="pauseControlList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="gameOverOverlay" class="overlay hidden">
-  <h1>YOU DIED</h1>
+  <h1 data-i18n="go.title">YOU DIED</h1>
   <p id="gameOverStats"></p>
-  <button class="btn" id="restartBtn">RESTART</button>
+  <button class="btn" id="restartBtn" data-i18n="go.restart">RESTART</button>
 </div>
 
 <div id="levelUp" class="hidden">
@@ -645,15 +757,15 @@
 
     <div id="lvlHeader">
       <div class="lvlHeadLeft">
-        <span class="chip lvlChip">LEVEL UP</span>
+        <span class="chip lvlChip" data-i18n="lvl.title">LEVEL UP</span>
         <span id="lvlNumber">LV 1</span>
       </div>
       <span id="lvlFunds" class="chip lvlChip">FONDOS $0</span>
     </div>
 
     <div id="lvlInstruction">
-      <span>ELIGE UNA MEJORA — CHOOSE ONE UPGRADE</span>
-      <span id="lvlKeysHint">1 · 2 · 3&nbsp;&nbsp;&nbsp;R REROLL</span>
+      <span data-i18n="lvl.instruction">ELIGE UNA MEJORA</span>
+      <span id="lvlKeysHint" data-i18n="lvl.keys">1 · 2 · 3   R REROLL</span>
     </div>
 
     <div id="levelUpCards"></div>
@@ -667,7 +779,7 @@
 
 <div id="swapMenu" class="hidden">
   <div id="swapPanel">
-    <h2>INVENTORY FULL</h2>
+    <h2 data-i18n="sw.title">INVENTORY FULL</h2>
     <div class="lvlSub" id="swapSub">Choose a weapon to replace</div>
     <div id="swapCards"></div>
   </div>
@@ -683,6 +795,7 @@
 
 
 <script src="js/config.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/render.js"></script>
 <script src="js/world.js"></script>
 <script src="js/minimap.js"></script>
@@ -695,6 +808,7 @@
 <script src="js/face.js"></script>
 <script src="js/combo.js"></script>
 <script src="js/landing.js"></script>
+<script src="js/pause.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/fpv.js"></script>
 <script src="js/progression.js"></script>

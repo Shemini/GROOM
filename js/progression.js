@@ -67,10 +67,10 @@ function renderLevelUpCards(picks){
         ? '<img src="'+STATS_DIR+encodeURIComponent(stat.icon)+'.png" alt="">'
         : '<div class="swatch"></div>';
       card.innerHTML =
-        '<div class="cardHead"><span class="kindChip">STAT</span>'+hotkey+'</div>'+
+        '<div class="cardHead"><span class="kindChip">'+t('lvl.kindStat')+'</span>'+hotkey+'</div>'+
         '<div class="art">'+art+'</div>'+
-        '<div class="name">'+stat.name+'</div>'+
-        '<div class="desc">'+stat.desc+'</div>'+
+        '<div class="name">'+statName(stat)+'</div>'+
+        '<div class="desc">'+statDesc(stat)+'</div>'+
         '<div class="dots">'+dots+'</div>';
 
     } else if(item.ctype==='weapon'){
@@ -81,7 +81,7 @@ function renderLevelUpCards(picks){
       for(let d=0;d<total;d++) dots+='<div class="dot '+(d<info.curDots?'filled':'')+'"></div>';
       const src = hudIconFor(item.weaponIdx);
       card.innerHTML =
-        '<div class="cardHead"><span class="kindChip">ARMA</span>'+hotkey+'</div>'+
+        '<div class="cardHead"><span class="kindChip">'+t('lvl.kindWeapon')+'</span>'+hotkey+'</div>'+
         '<div class="art">'+(src?'<img src="'+src+'" alt="">':'<div class="swatch"></div>')+'</div>'+
         '<div class="name">'+info.name+'</div>'+
         '<div class="desc">'+info.desc+'</div>'+
@@ -94,10 +94,10 @@ function renderLevelUpCards(picks){
       const src = hudIconFor(item.weaponIdx);
       let dots=''; for(let d=0;d<5;d++) dots+='<div class="dot filled"></div>';
       card.innerHTML =
-        '<div class="cardHead"><span class="kindChip">EVOLUCIÓN</span>'+hotkey+'</div>'+
+        '<div class="cardHead"><span class="kindChip">'+t('lvl.kindEvolve')+'</span>'+hotkey+'</div>'+
         '<div class="art">'+(src?'<img src="'+src+'" alt="">':'<div class="swatch"></div>')+'</div>'+
-        '<div class="name">EVOLUCIÓN: '+w.name+'</div>'+
-        '<div class="desc">→ '+EVOLUTIONS[item.weaponIdx].name+'</div>'+
+        '<div class="name">'+t('lvl.evolveTo',{w:weaponName(item.weaponIdx)})+'</div>'+
+        '<div class="desc">→ '+evolutionName(item.weaponIdx)+'</div>'+
         '<div class="dots">'+dots+'</div>';
     }
     levelUpCardsEl.appendChild(card);
@@ -110,9 +110,9 @@ function renderLevelUpCards(picks){
 // Header and instruction bar, refreshed whenever the cards are.
 function updateLevelUpChrome(){
   const lvl = document.getElementById('lvlNumber');
-  if(lvl) lvl.textContent = 'LV ' + player.level;
+  if(lvl) lvl.textContent = t('hud.level',{n:player.level});
   const funds = document.getElementById('lvlFunds');
-  if(funds) funds.textContent = 'FONDOS $' + player.money;
+  if(funds) funds.textContent = t('lvl.funds',{n:player.money});
 }
 
 // The panel is authored at 1240px and never scales ABOVE 1 — on a wide screen it simply stays
@@ -127,12 +127,12 @@ function scaleLevelUpPanel(){
   panel.style.transform = 'scale(' + (Math.round(scale*1000)/1000) + ')';
 }
 function updateRerollButton(){
-  rerollBtnEl.textContent = 'REROLL ($'+player.rerollCost+')';
+  rerollBtnEl.textContent = t('lvl.reroll',{n:player.rerollCost});
   const broke = player.money < player.rerollCost;
   rerollBtnEl.disabled = broke;
   const note = document.getElementById('lvlRerollNote');
   if(note){
-    note.textContent = broke ? 'NOT ENOUGH FUNDS' : 'COST RISES $50 EACH TIME';
+    note.textContent = broke ? t('lvl.broke') : t('lvl.rerollNote');
     note.classList.toggle('broke', broke);
   }
 }
@@ -194,7 +194,7 @@ function startWave(){
   wave.spawnInterval = Math.max(0.25, 0.8-wave.number*0.04);   // quicker, so a combo has a chance to build
   scheduleDrops();
   comboSetFrozen(false);
-  showWaveBanner('WAVE '+wave.number, 'Zombies incoming');
+  showWaveBanner(t('bn.wave',{n:wave.number}), t('bn.waveSub'));
   soundWaveStart();
 }
 function showWaveBanner(main, sub){
@@ -219,7 +219,7 @@ function updateWave(delta, elapsed){
   } else if(zombies.length===0){
     const bonus = 100+wave.number*25;
     addMoney(bonus);
-    showWaveBanner('WAVE '+wave.number+' CLEAR', '+$'+bonus+' — next wave incoming');
+    showWaveBanner(t('bn.clear',{n:wave.number}), t('bn.clearSub',{b:bonus}));
     soundWaveClear();
     guitarristaOnWaveClear();
     wave.betweenWaves=true; wave.betweenTimer=WAVE_GAP;
@@ -252,17 +252,17 @@ function updateHUD(){
   // js/hud.js; everything below is the overlay furniture that sits outside the bar.
   if(typeof updateStoneHUD === 'function') updateStoneHUD();
 
-  if(waveNumEl) waveNumEl.textContent = 'WAVE '+wave.number;
-  if(moneyNumEl) moneyNumEl.textContent = '$ '+player.money;
-  if(levelNumEl) levelNumEl.textContent = 'LV '+player.level;
+  if(waveNumEl) waveNumEl.textContent = t('hud.wave',{n:wave.number});
+  if(moneyNumEl) moneyNumEl.textContent = t('hud.money',{n:player.money});
+  if(levelNumEl) levelNumEl.textContent = t('hud.level',{n:player.level});
   if(xpBarInnerEl) xpBarInnerEl.style.width = Math.min(100,(player.xp/player.xpToNext)*100)+'%';
 
   const remaining = player.doubleUntil - gameTime;
   if(doubleBadgeEl){
     const kill = (player.instakillUntil||0) - gameTime;
     const parts = [];
-    if(remaining>0) parts.push('2x $/XP — '+Math.ceil(remaining)+'s');
-    if(kill>0) parts.push('VERMUT x'+VERMUT_DAMAGE_MULT+' — '+Math.ceil(kill)+'s');
+    if(remaining>0) parts.push(t('hud.double',{s:Math.ceil(remaining)}));
+    if(kill>0) parts.push(t('hud.vermut',{m:VERMUT_DAMAGE_MULT, s:Math.ceil(kill)}));
     if(parts.length){ doubleBadgeEl.textContent = parts.join('   |   '); doubleBadgeEl.classList.remove('hidden'); }
     else doubleBadgeEl.classList.add('hidden');
   }
@@ -272,7 +272,7 @@ function updateHUD(){
 function triggerGameOver(){
   gameState='gameover';
   document.exitPointerLock();
-  el('gameOverStats').textContent = 'Reached wave '+wave.number+' · level '+player.level+' · '+player.kills+' kills · $'+player.money+' earned';
+  el('gameOverStats').textContent = t('go.stats',{w:wave.number, l:player.level, k:player.kills, p:(player.points||0).toLocaleString()});
   gameOverOverlay.classList.remove('hidden');
 }
 

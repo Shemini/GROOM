@@ -362,7 +362,7 @@ function updateMovement(delta){
   if(sprinting){
     playerStamina -= PLAYER_STAMINA_DRAIN*delta;
     if(playerStamina<=0){ playerStamina = 0; playerExhausted = true; }
-  } else {
+  } else if(gameTime >= (player.staminaRegenBlockedUntil||0)){
     playerStamina = Math.min(PLAYER_STAMINA_MAX, playerStamina + PLAYER_STAMINA_RECOVER*delta);
     if(playerExhausted && playerStamina >= PLAYER_STAMINA_RESUME) playerExhausted = false;
   }

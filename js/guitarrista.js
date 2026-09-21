@@ -195,7 +195,7 @@ function dismissGuitarrista(){
   guitarrista.hitTimes = [];
   playNumberedClip(GUITARRISTA_ACTOR, 'Insultos', GUITARRISTA_INSULTOS_COUNT,
                    guitarrista.group.position, 0.75, 0, GUITARRISTA_VOICE_FALLOFF);
-  showWaveBanner('GUITARRISTA', 'Se marcha ofendido');
+  showWaveBanner(t('bn.guitar'), t('bn.guitarLeaves'));
 }
 
 function hireGuitarrista(){
@@ -336,8 +336,8 @@ function updateGuitarrista(delta, elapsed){
 // --- interaction ----------------------------------------------------------
 function guitarristaInteractLabel(){
   if(!guitarrista) return null;
-  if(guitarrista.state==='following') return 'GUITARRISTA — ya te acompaña';
-  return '[E] CONTRATAR GUITARRISTA — $' + GUITARRISTA_HIRE_COST;
+  if(guitarrista.state==='following') return t('pr.guitarWith');
+  return t('pr.guitarHire',{c:GUITARRISTA_HIRE_COST});
 }
 
 // Raycast targets for the primary ray. Empty while he's away so shots pass straight through.

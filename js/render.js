@@ -44,7 +44,7 @@ function init(){
   buildTrajectoryMarker();
 
   window.addEventListener('resize', onResize);
-  window.addEventListener('resize', ()=>{ if(typeof scaleLevelUpPanel==='function') scaleLevelUpPanel(); });
+  window.addEventListener('resize', ()=>{ if(typeof scaleLevelUpPanel==='function') scaleLevelUpPanel(); if(typeof scalePausePanel==='function') scalePausePanel(); });
   document.addEventListener('keydown', e => { keys[e.code]=true; handleKeyDown(e); });
   document.addEventListener('keyup', e => { keys[e.code]=false; });
   document.addEventListener('mousemove', onMouseMove);
@@ -54,7 +54,7 @@ function init(){
   renderer.domElement.addEventListener('wheel', onWheel, { passive:false });
 
   startBtn.addEventListener('click', ()=>{ if(startBtn.disabled) return; stopTitleAudio(); requestLock(); });
-  pauseOverlay.addEventListener('click', requestLock);
+  initPauseMenu();   // Resume is an explicit button now, so stray clicks don't unpause
   el('btnToggleLock').addEventListener('click', toggleCursorLock);
   el('restartBtn').addEventListener('click', () => window.location.reload());
 
@@ -77,7 +77,9 @@ function init(){
     wave.spawned = wave.toSpawn;
   });
 
+  applyStaticTranslations();   // before anything is shown, so the first frame is already localised
   initLanding();
+  refreshLandingText();
   wireSettingsUI();
   applySettingsToUI();
   updateToolPanelVisibility();
@@ -128,6 +130,7 @@ function onPointerLockChange(){
   } else if(gameState==='playing'){
     gameState = 'paused';
     pauseOverlay.classList.remove('hidden');
+    openPauseMenu();
   }
   updateLockButtonLabel();
   updateToolPanelVisibility();

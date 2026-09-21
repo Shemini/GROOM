@@ -51,7 +51,7 @@ function comboDecay(){
 function comboOnStageChanged(rising){
   if(typeof setFaceMood === 'function') setFaceMood(comboStageDef().mood);
   const def = comboStageDef();
-  if(rising) showWaveBanner(def.label, '+'+Math.round(combo.stage*COMBO_DAMAGE_BONUS*100)+'% daño y botín');
+  if(rising) showWaveBanner(comboLabel(combo.stage), t('bn.combo',{n:Math.round(combo.stage*COMBO_DAMAGE_BONUS*100)}));
 }
 
 function updateCombo(delta){

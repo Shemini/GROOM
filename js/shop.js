@@ -34,16 +34,16 @@ function updateInteractables(delta, elapsed){
 
   if(best.type==='station'){
     const idx = best.station.weaponIndex, w = ALL_WEAPONS[idx], owned = ownsWeapon(idx);
-    if(!owned) interactPromptEl.textContent = '[E] BUY '+w.name+' — $'+w.cost;
-    else if(idx!==player.currentWeapon) interactPromptEl.textContent = '[E] EQUIP '+w.name;
+    if(!owned) interactPromptEl.textContent = t('pr.buy',{w:weaponName(idx), c:w.cost});
+    else if(idx!==player.currentWeapon) interactPromptEl.textContent = t('pr.equip',{w:weaponName(idx)});
     else {
       const ammo = player.ammoByWeapon[idx];
       const full = ammo.mag>=effectiveMag(idx) && ammo.reserve>=effectiveReserve(idx);
-      interactPromptEl.textContent = full ? w.name+' — AMMO FULL' : '[E] BUY AMMO — $'+w.ammoCost;
+      interactPromptEl.textContent = full ? t('pr.ammoFull',{w:weaponName(idx)}) : t('pr.buyAmmo',{c:w.ammoCost});
     }
   } else {
-    if(boxState==='spinning') interactPromptEl.textContent='OPENING...';
-    else interactPromptEl.textContent = player.money>=BOX_COST ? '[E] OPEN MYSTERY BOX — $'+BOX_COST : 'MYSTERY BOX — $'+BOX_COST;
+    if(boxState==='spinning') interactPromptEl.textContent=t('pr.boxOpening');
+    else interactPromptEl.textContent = player.money>=BOX_COST ? t('pr.boxOpen',{c:BOX_COST}) : t('pr.boxPrice',{c:BOX_COST});
   }
   interactPromptEl.style.visibility='visible';
 }
@@ -85,22 +85,22 @@ function interactBox(){
 }
 function resolveBoxRoll(){
   const available = SPECIAL_INDICES.filter(idx=>!ownsWeapon(idx));
-  if(available.length===0){ showWaveBanner('MYSTERY BOX','Already own them all!'); boxState='idle'; updateHUD(); return; }
+  if(available.length===0){ showWaveBanner(t('bn.box'),t('bn.boxAll')); boxState='idle'; updateHUD(); return; }
   const idx = available[Math.floor(Math.random()*available.length)];
   const w = ALL_WEAPONS[idx];
   if(isMeleeWeapon(idx)){
     const old = player.slots[0];
     player.slots[0] = idx; initWeaponAcquired(idx); switchWeapon(idx);
     if(old!==null && old!==idx){ delete player.weaponMods[old]; delete player.weaponLevel[old]; delete player.weaponEvolved[old]; }
-    showWaveBanner('CAJA DE FIESTA', w.name+'!');
+    showWaveBanner(t('bn.box'), t('bn.boxGot',{w:weaponName(idx)}));
     soundBoxWin(); boxState='idle'; updateHUD(); return;
   }
   const slot = findEmptySlot();
   if(slot!==-1){
     player.slots[slot]=idx; initWeaponAcquired(idx); switchWeapon(idx);
-    showWaveBanner('MYSTERY BOX', w.name+'!');
+    showWaveBanner(t('bn.box'), t('bn.boxGot',{w:weaponName(idx)}));
   } else {
-    showWaveBanner('MYSTERY BOX', w.name+' — choose a weapon to replace');
+    showWaveBanner(t('bn.box'), t('bn.boxSwap',{w:weaponName(idx)}));
     openSwapMenu(idx);
   }
   soundBoxWin(); boxState='idle'; updateHUD();
@@ -111,7 +111,7 @@ function resolveBoxRoll(){
 // =================================================================
 function openSwapMenu(newIdx){
   pendingSwapTarget=newIdx; gameState='swap'; document.exitPointerLock();
-  el('swapSub').textContent = 'Choose a weapon to replace with '+ALL_WEAPONS[newIdx].name;
+  el('swapSub').textContent = t('sw.sub',{w:weaponName(newIdx)});
   renderSwapCards(); swapMenuEl.classList.remove('hidden');
 }
 function renderSwapCards(){
@@ -121,7 +121,7 @@ function renderSwapCards(){
     const w = ALL_WEAPONS[wIdx];
     const card = document.createElement('div');
     card.className='lvlCard'; card.dataset.slot=slotIdx;
-    card.innerHTML = '<div class="name">'+(player.weaponEvolved[wIdx]?EVOLUTIONS[wIdx].name:w.name)+'</div>'+
+    card.innerHTML = '<div class="name">'+(player.weaponEvolved[wIdx]?evolutionName(wIdx):weaponName(wIdx))+'</div>'+
       '<div class="desc">DMG '+Math.round(effectiveDamage(wIdx))+' · MAG '+w.mag+'</div>';
     swapCardsEl.appendChild(card);
   });

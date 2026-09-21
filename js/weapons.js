@@ -122,7 +122,7 @@ function applyEvolution(wIdx){
   }
   if(mods.noReload) player.ammoByWeapon[wIdx] = { mag: effectiveMag(wIdx), reserve: 0 };
   else player.ammoByWeapon[wIdx] = { mag: effectiveMag(wIdx), reserve: effectiveReserve(wIdx) };
-  showWaveBanner('WEAPON EVOLVED', w.name + ' -> ' + EVOLUTIONS[wIdx].name);
+  showWaveBanner(t('bn.evolved'), t('bn.evolvedSub',{a:weaponName(wIdx), b:evolutionName(wIdx)}));
   soundLevelUp();
   updateHUD();
 }
@@ -132,11 +132,11 @@ function describeWeaponCard(wIdx){
     const evoLevel = (player.weaponEvoLevel[wIdx]||0)+1;
     const rotation = EVOLUTIONS[wIdx].rotation;
     const key = rotation[(evoLevel-1)%rotation.length];
-    return { name: EVOLUTIONS[wIdx].name, desc: 'Next: ' + (EVO_KEY_LABELS[key]||key), maxDots:0, curDots:0 };
+    return { name: evolutionName(wIdx), desc: t('lvl.next',{s:evolutionStepLabel(key)}), maxDots:0, curDots:0 };
   }
   const lvl = player.weaponLevel[wIdx]||1;
   const step = BASE_LEVEL_TABLES[wIdx][lvl-1];
-  return { name: w.name, desc: 'Lv'+(lvl+1)+': '+step.label, maxDots:5, curDots:lvl };
+  return { name: weaponName(wIdx), desc: t('lvl.step',{n:lvl+1, s:levelStepLabel(wIdx, step)}), maxDots:5, curDots:lvl };
 }
 
 // =================================================================

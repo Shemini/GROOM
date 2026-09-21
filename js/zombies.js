@@ -744,17 +744,17 @@ function applyDrop(type){
         if(mods.noReload) player.ammoByWeapon[wIdx].mag = effectiveMag(wIdx);
         else player.ammoByWeapon[wIdx] = { mag:effectiveMag(wIdx), reserve:effectiveReserve(wIdx) };
       });
-      showWaveBanner('PLATO FUERTE','Munición recargada'); break;
+      showWaveBanner(t('bn.ammo'),t('bn.ammoSub')); break;
     case 'health':
       player.health = player.maxHealth;
-      showWaveBanner('ENSALADA','Salud restaurada'); break;
+      showWaveBanner(t('bn.health'),t('bn.healthSub')); break;
     case 'double':
       player.doubleUntil = gameTime+20;
-      showWaveBanner('POSTRE','2x dinero y XP — 20s'); break;
+      showWaveBanner(t('bn.double'),t('bn.doubleSub')); break;
     case 'instakill':
       // No longer a board wipe: for a while, any damage at all is lethal.
       player.instakillUntil = gameTime+VERMUT_DURATION;
-      showWaveBanner('VERMUT','x'+VERMUT_DAMAGE_MULT+' daño — '+VERMUT_DURATION+'s'); break;
+      showWaveBanner(t('bn.vermut'),t('bn.vermutSub',{m:VERMUT_DAMAGE_MULT, s:VERMUT_DURATION})); break;
   }
   updateHUD();
 }
