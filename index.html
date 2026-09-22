@@ -460,6 +460,10 @@
     box-shadow:inset 0 0 0 2px #0d0904;}
   .lvlCard .dot.filled{background:var(--gold);}
   /* Evolve cards announce themselves at rest rather than only on hover. */
+  /* A weapon you do not own yet: framed in blue so it stands apart from levelling an
+     existing one, since taking it is a permanent commitment. */
+  .lvlCard.newWeaponCard{box-shadow:inset 0 0 0 4px var(--stam), 0 0 0 2px var(--cell-line);}
+  .lvlCard.newWeaponCard .name{color:#bfe9ff;}
   .lvlCard.evolveCard{box-shadow:inset 0 0 0 4px var(--gold), inset 0 0 0 8px var(--cell-dark),
     0 0 0 2px var(--cell-line);}
   .lvlCard.evolveCard .dot{background:var(--danger);}

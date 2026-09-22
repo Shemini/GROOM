@@ -34,7 +34,8 @@ function updateInteractables(delta, elapsed){
 
   if(best.type==='station'){
     const idx = best.station.weaponIndex, w = ALL_WEAPONS[idx], owned = ownsWeapon(idx);
-    if(!owned) interactPromptEl.textContent = t('pr.buy',{w:weaponName(idx), c:w.cost});
+    if(!owned && DRAFT_STATION_AMMO_ONLY) interactPromptEl.textContent = t('pr.notCarried',{w:weaponName(idx)});
+    else if(!owned) interactPromptEl.textContent = t('pr.buy',{w:weaponName(idx), c:w.cost});
     else if(idx!==player.currentWeapon) interactPromptEl.textContent = t('pr.equip',{w:weaponName(idx)});
     else {
       const ammo = player.ammoByWeapon[idx];
@@ -53,6 +54,9 @@ function interactStation(station){
   // A weapon without a numeric price must not be sellable: NaN poisons player.money, and
   // every later "can afford" check then passes.
   if(!Number.isFinite(ALL_WEAPONS[station.weaponIndex].cost)) return;
+  // In draft mode weapons come from the level-up screen, so a station only resupplies ammo
+  // for what you already carry — which keeps gold doing something.
+  if(DRAFT_STATION_AMMO_ONLY && !ownsWeapon(station.weaponIndex)) return;
   const idx = station.weaponIndex, w = ALL_WEAPONS[idx], owned = ownsWeapon(idx);
   if(!owned){
     if(player.money<w.cost){ soundDenied(); flashDenied(); return; }

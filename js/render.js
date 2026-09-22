@@ -63,6 +63,7 @@ function init(){
     const ctype = card.dataset.ctype;
     if(ctype==='stat') chooseLevelUpCard({ctype:'stat', key:card.dataset.key});
     else if(ctype==='weapon') chooseLevelUpCard({ctype:'weapon', widx:parseInt(card.dataset.widx,10)});
+    else if(ctype==='newWeapon') chooseLevelUpCard({ctype:'newWeapon', widx:parseInt(card.dataset.widx,10)});
     else chooseLevelUpCard({ctype:'evolve', widx:parseInt(card.dataset.widx,10)});
   });
   rerollBtnEl.addEventListener('click', doReroll);

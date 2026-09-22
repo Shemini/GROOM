@@ -33,6 +33,7 @@ const I18N = {
     'lvl.reroll':'CAMBIAR (${n})', 'lvl.rerollNote':'EL PRECIO SUBE $50 CADA VEZ',
     'lvl.broke':'FONDOS INSUFICIENTES',
     'lvl.kindStat':'ATRIBUTO', 'lvl.kindWeapon':'ARMA', 'lvl.kindEvolve':'EVOLUCIÓN',
+    'lvl.kindNew':'ARMA NUEVA', 'lvl.newWeaponDesc':'Se queda contigo toda la partida',
     'lvl.evolveTo':'EVOLUCIÓN: {w}', 'lvl.next':'Siguiente: {s}', 'lvl.step':'Nv{n}: {s}',
 
     // --- pause ---
@@ -66,6 +67,7 @@ const I18N = {
     'bn.evolved':'ARMA EVOLUCIONADA', 'bn.evolvedSub':'{a} → {b}',
     'bn.combo':'+{n}% daño y botín',
     'bn.guitar':'GUITARRISTA', 'bn.guitarLeaves':'Se marcha ofendido',
+    'bn.drafted':'Arma conseguida — para toda la partida',
     'bn.ammo':'PLATO FUERTE', 'bn.ammoSub':'Munición recargada',
     'bn.health':'ENSALADA', 'bn.healthSub':'Salud restaurada',
     'bn.double':'POSTRE', 'bn.doubleSub':'2x dinero y XP — 20s',
@@ -77,6 +79,7 @@ const I18N = {
     'pr.boxOpening':'ABRIENDO...', 'pr.boxOpen':'[E] ABRIR CAJA DE FIESTA — ${c}',
     'pr.boxPrice':'CAJA DE FIESTA — ${c}',
     'pr.guitarWith':'GUITARRISTA — ya te acompaña', 'pr.guitarHire':'[E] CONTRATAR GUITARRISTA — ${c}',
+    'pr.guitarFree':'[E] CONTRATAR GUITARRISTA — GRATIS', 'pr.notCarried':'{w} — no la llevas',
 
     // --- swap / game over ---
     'sw.title':'INVENTARIO LLENO', 'sw.sub':'Elige un arma para cambiarla por {w}',
@@ -91,7 +94,7 @@ const I18N = {
     'w.3':'METRALLETA DE BALINES', 'w.4':'VARITA DE BURBUJAS', 'w.5':'JAMÓN IBÉRICO',
     'w.6':'PETARDOS', 'w.7':'TEQUIFRESA', 'w.8':'CAÑÓN DE CONFETTI',
     'w.9':'CAÑÓN DE CO2', 'w.10':'PUNTERO LÁSER', 'w.11':'ESPADA DE TARTA',
-    'e.1':'PISTOLAS GEMELAS', 'e.2':'RIFLE PERFORANTE', 'e.3':'METRALLETA AUTOMÁTICA',
+    'e.0':'ESPADA DE TARTA', 'e.1':'PISTOLAS GEMELAS', 'e.2':'RIFLE PERFORANTE', 'e.3':'METRALLETA AUTOMÁTICA',
     'e.4':'PACIENTE CERO', 'e.5':'JAMÓN EXPLOSIVO', 'e.6':'TRACA', 'e.7':'GARRAFÓN',
     'e.8':'FIESTA TOTAL', 'e.9':'LANZALLAMAS', 'e.10':'LÁSER QUIRÚRGICO', 'e.11':'ESPADA DEL BANQUETE',
 
@@ -146,6 +149,7 @@ const I18N = {
     'lvl.reroll':'REROLL (${n})', 'lvl.rerollNote':'COST RISES $50 EACH TIME',
     'lvl.broke':'NOT ENOUGH FUNDS',
     'lvl.kindStat':'STAT', 'lvl.kindWeapon':'WEAPON', 'lvl.kindEvolve':'EVOLVE',
+    'lvl.kindNew':'NEW WEAPON', 'lvl.newWeaponDesc':'Yours for the rest of the run',
     'lvl.evolveTo':'EVOLVE: {w}', 'lvl.next':'Next: {s}', 'lvl.step':'Lv{n}: {s}',
 
     'pause.title':'PAUSED', 'pause.resume':'RESUME', 'pause.settings':'SETTINGS',
@@ -175,6 +179,7 @@ const I18N = {
     'bn.evolved':'WEAPON EVOLVED', 'bn.evolvedSub':'{a} → {b}',
     'bn.combo':'+{n}% damage & loot',
     'bn.guitar':'GUITARIST', 'bn.guitarLeaves':'Storms off, offended',
+    'bn.drafted':'Weapon acquired — yours for the run',
     'bn.ammo':'MAIN COURSE', 'bn.ammoSub':'Ammo refilled',
     'bn.health':'SALAD', 'bn.healthSub':'Health restored',
     'bn.double':'DESSERT', 'bn.doubleSub':'2x money & XP — 20s',
@@ -185,6 +190,7 @@ const I18N = {
     'pr.boxOpening':'OPENING...', 'pr.boxOpen':'[E] OPEN PARTY BOX — ${c}',
     'pr.boxPrice':'PARTY BOX — ${c}',
     'pr.guitarWith':'GUITARIST — already with you', 'pr.guitarHire':'[E] HIRE GUITARIST — ${c}',
+    'pr.guitarFree':'[E] HIRE GUITARIST — FREE', 'pr.notCarried':'{w} — not carried',
 
     'sw.title':'INVENTORY FULL', 'sw.sub':'Choose a weapon to replace with {w}',
     'go.title':'YOU DIED', 'go.restart':'RESTART',
@@ -196,7 +202,7 @@ const I18N = {
     'w.3':'BB SUBMACHINE GUN', 'w.4':'BUBBLE WAND', 'w.5':'IBÉRICO HAM',
     'w.6':'FIRECRACKERS', 'w.7':'TEQUIFRESA', 'w.8':'CONFETTI CANNON',
     'w.9':'CO2 CANNON', 'w.10':'LASER POINTER', 'w.11':'CAKE SWORD',
-    'e.1':'TWIN PISTOLS', 'e.2':'PIERCING RIFLE', 'e.3':'AUTOMATIC BB GUN',
+    'e.0':'CAKE SWORD', 'e.1':'TWIN PISTOLS', 'e.2':'PIERCING RIFLE', 'e.3':'AUTOMATIC BB GUN',
     'e.4':'PATIENT ZERO', 'e.5':'EXPLOSIVE HAM', 'e.6':'FIRECRACKER CHAIN', 'e.7':'BOOTLEG BOOZE',
     'e.8':'TOTAL FIESTA', 'e.9':'FLAMETHROWER', 'e.10':'SURGICAL LASER', 'e.11':'BANQUET BLADE',
 

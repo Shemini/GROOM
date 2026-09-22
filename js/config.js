@@ -78,6 +78,23 @@ const BUBBLE_SPLASH_FRACTION = 0.55;     // damage to everyone but the guest act
 // Shorter than the original 6s: a long lull between waves makes combos nearly impossible to
 // carry, and the wait wasn't doing anything for pacing either.
 const WAVE_GAP = 2.5;
+// =================================================================
+// DRAFT MODE  —  set to false to restore the original shop/box progression.
+//
+// Weapons are chosen from the level-up screen instead of bought, and a choice is permanent
+// for the run. That removes the worst trade in the old system (swapping a levelled weapon for
+// a fresh Lv1 one) while keeping the randomness, since a wanted weapon still has to be
+// offered. Everything it changes is applied in the patch block further down, so flipping this
+// single flag reverts the lot.
+// =================================================================
+const DRAFT_MODE = true;
+const DRAFT_XP_MULT = 0.7;        // level up ~30% more often
+// Cards reserved for not-yet-owned weapons while a slot is still open, out of the three on
+// offer. Higher means a wanted weapon turns up sooner, at the cost of fewer stat choices.
+const DRAFT_GUARANTEED_OFFERS = 2;
+const DRAFT_WEAPON_POOL = [1,2,3,4,5,6,7,8,9,10];   // draftable weapons (11 is gone: see below)
+let DRAFT_STATION_AMMO_ONLY = false, DRAFT_DISABLE_BOX = false;
+
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 const COMBO_KILLS_PER_STAGE = 10;
 const COMBO_STAGES = [
@@ -679,7 +696,7 @@ const GUITARRISTA_ANIM_DURATION = 1.5;       // seconds for one full loop
 // The art was squeezed to fit the cell, so widen it back out. A 256x512 frame is 1:2; at 1.1
 // this renders it as roughly 1:1.8. (Note 1:2.2 would be *narrower* than the source, not wider.)
 const GUITARRISTA_WIDTH_STRETCH = 1.1;
-const GUITARRISTA_HIRE_COST = 50;
+let GUITARRISTA_HIRE_COST = 50;
 const GUITARRISTA_FOLLOW_RADIUS = 10;        // metres — hangs back once this close
 // Metres at which the music fades to nothing. Wider once he's hired, since he's meant to be
 // your travelling companion rather than a landmark you stumble across.
@@ -752,3 +769,38 @@ const FACE_EDGE_MODE = 'cut';
 const FACE_ALPHA_CUTOFF = 0.6;      // at or above this, a pixel is fully opaque
 const FACE_OUTLINE_MIN = 0.15;      // below this, a pixel is discarded entirely
 const FACE_OUTLINE_COLOR = [42, 26, 14];   // dark brown
+
+// =================================================================
+// DRAFT MODE PATCH
+// Applied over the tables above rather than written into them, so turning DRAFT_MODE off
+// restores the original game exactly.
+// =================================================================
+if(DRAFT_MODE){
+  // --- the fists become a real build path, evolving into the cake sword ---
+  delete ALL_WEAPONS[FISTS_INDEX].noLevel;
+  // What the fists become once evolved. No wind slash: the sword itself is already the payoff.
+  ALL_WEAPONS[FISTS_INDEX].evolvedMelee = { meleeRange:3.2, meleeArc:85, singleTarget:false, staminaCost:0.3 };
+  BASE_LEVEL_TABLES[FISTS_INDEX] = [
+    {stat:'damage',  amount:0.18, label:'+18% damage'},
+    {stat:'fireRate',amount:0.10, label:'+10% swing speed'},
+    {stat:'damage',  amount:0.18, label:'+18% damage'},
+    {stat:'radius',  amount:0.12, label:'+12% reach'},
+  ];
+  EVOLUTIONS[FISTS_INDEX] = { name:'ESPADA DE TARTA', rotation:['damage','fireRate','radius'] };
+
+  // --- start with nothing but your hands; everything else is drafted ---
+  player.slots = [FISTS_INDEX, null, null, null];
+  player.weaponLevel = { [FISTS_INDEX]:1 };
+  player.weaponEvolved = { [FISTS_INDEX]:false };
+  player.weaponMods = { [FISTS_INDEX]: createDefaultMods() };
+  player.ammoByWeapon = { [FISTS_INDEX]: {mag:1, reserve:0} };
+  player.currentWeapon = FISTS_INDEX;
+
+  // --- the guitarist plays for free; gold has little else to do now ---
+  GUITARRISTA_HIRE_COST = 0;
+
+  // The stations stay as ammo resupply (a real gold sink); the party box no longer hands out
+  // weapons, so it isn't placed.
+  DRAFT_STATION_AMMO_ONLY = true;
+  DRAFT_DISABLE_BOX = true;
+}

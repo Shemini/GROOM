@@ -886,6 +886,7 @@ function placeStationsAndBox(){
     stationMarkers.push({ core, group, weaponIndex, pos:{x:p.x,z:p.z}, spinPhase:Math.random()*10 });
   });
 
+  if(DRAFT_DISABLE_BOX) return;   // weapons come from the level-up screen in draft mode
   const bp = randomFloorPointNear(playerStart, SHOP_MIN_DIST, SHOP_MAX_DIST, placed, 5)
            || { x: playerStart.x+5, y: playerStart.y||0, z: playerStart.z+5 };
   boxPos = { x:bp.x, z:bp.z };

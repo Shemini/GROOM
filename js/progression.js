@@ -45,9 +45,47 @@ function buildUpgradePool(){
     else if((player.weaponLevel[wIdx]||1)<5) pool.push({ctype:'weapon', weaponIdx:wIdx});
     else if(EVOLUTIONS[wIdx]) pool.push({ctype:'evolve', weaponIdx:wIdx});
   });
+
+  // Weapons not yet owned are offered here instead of being bought. Taking one is permanent
+  // for the run, so there's never a choice between a levelled weapon and a fresh Lv1 one.
+  // They're weighted up while slots are empty, or the first pick can take a long time to
+  // appear among ten-odd stat cards.
+  if(DRAFT_MODE && findEmptySlot() !== -1){
+    DRAFT_WEAPON_POOL.forEach(wIdx=>{
+      if(!ownsWeapon(wIdx)) pool.push({ctype:'newWeapon', weaponIdx:wIdx});
+    });
+  }
   return pool;
 }
-function pickThreeStats(){ const pool=buildUpgradePool(); shuffle(pool); return pool.slice(0,3); }
+function pickThreeStats(){
+  const pool = buildUpgradePool();
+  shuffle(pool);
+  const picks = [], seen = new Set();
+  const key = it => it.ctype + ':' + (it.stat ? it.stat.key : it.weaponIdx);
+  const take = it => { const k = key(it); if(seen.has(k)) return false; seen.add(k); picks.push(it); return true; };
+
+  // While a slot is open, reserve cards for weapons not yet owned. Leaving it to chance meant
+  // a player holding out for one particular weapon waited ~20 levels, by which point their
+  // slots were long since full of whatever had turned up first — the exact trap this system
+  // exists to avoid. Guaranteed offers mean every level-up presents a real weapon choice, so
+  // waiting for the one you want costs a few levels rather than the run.
+  if(DRAFT_MODE && findEmptySlot() !== -1){
+    const news = pool.filter(x => x.ctype === 'newWeapon');
+    for(const n of news){
+      if(picks.length >= DRAFT_GUARANTEED_OFFERS) break;
+      take(n);
+    }
+  }
+  // Fill the rest, without letting weapon cards crowd out the stats.
+  for(const item of pool){
+    if(picks.length >= 3) break;
+    if(item.ctype === 'newWeapon') continue;
+    take(item);
+  }
+  // Only if there genuinely isn't anything else left.
+  for(const item of pool){ if(picks.length >= 3) break; take(item); }
+  return picks;
+}
 
 function renderLevelUpCards(picks){
   levelUpCardsEl.innerHTML='';
@@ -86,6 +124,17 @@ function renderLevelUpCards(picks){
         '<div class="name">'+info.name+'</div>'+
         '<div class="desc">'+info.desc+'</div>'+
         '<div class="dots">'+dots+'</div>';
+
+    } else if(item.ctype==='newWeapon'){
+      card.className='lvlCard newWeaponCard';
+      card.dataset.ctype='newWeapon'; card.dataset.widx=item.weaponIdx;
+      const src = hudIconFor(item.weaponIdx);
+      card.innerHTML =
+        '<div class="cardHead"><span class="kindChip">'+t('lvl.kindNew')+'</span>'+hotkey+'</div>'+
+        '<div class="art">'+(src?'<img src="'+src+'" alt="">':'<div class="swatch"></div>')+'</div>'+
+        '<div class="name">'+weaponName(item.weaponIdx)+'</div>'+
+        '<div class="desc">'+t('lvl.newWeaponDesc')+'</div>'+
+        '<div class="dots"></div>';
 
     } else {
       const w = ALL_WEAPONS[item.weaponIdx];
@@ -171,6 +220,7 @@ function applyStatLevel(key){
 function chooseLevelUpCard(sel){
   if(sel.ctype==='stat') applyStatLevel(sel.key);
   else if(sel.ctype==='weapon') applyWeaponLevel(sel.widx);
+  else if(sel.ctype==='newWeapon') draftWeapon(sel.widx);
   else applyEvolution(sel.widx);
   if(player.pendingLevelUps>0){
     player.pendingLevelUps--; soundLevelUp();
@@ -277,3 +327,33 @@ function triggerGameOver(){
 }
 
 // =================================================================
+
+// Takes a drafted weapon into the first free slot. Permanent for the run: there's no swap
+// path, which is the whole point — a weapon you invest in can never be traded away for a
+// fresh Lv1 one.
+function draftWeapon(wIdx){
+  if(ownsWeapon(wIdx)) return;
+  const slot = findEmptySlot();
+  if(slot === -1) return;
+  player.slots[slot] = wIdx;
+  initWeaponAcquired(wIdx);
+  switchWeapon(wIdx);
+  showWaveBanner(weaponName(wIdx), t('bn.drafted'));
+  soundPurchase();
+  updateHUD();
+}
+
+// Test helper: applies a pick without touching the level-up screen.
+function chooseLevelUpCardSim(item){
+  if(item.ctype==='stat') applyStatLevel(item.stat.key);
+  else if(item.ctype==='weapon') applyWeaponLevel(item.weaponIdx);
+  else if(item.ctype==='newWeapon') draftWeapon(item.weaponIdx);
+  else applyEvolution(item.weaponIdx);
+}
+
+// Test helper: draft without banners or audio.
+function draftWeaponQuiet(wIdx){
+  if(ownsWeapon(wIdx)) return;
+  const slot = findEmptySlot(); if(slot===-1) return;
+  player.slots[slot]=wIdx; initWeaponAcquired(wIdx);
+}

@@ -337,7 +337,7 @@ function updateGuitarrista(delta, elapsed){
 function guitarristaInteractLabel(){
   if(!guitarrista) return null;
   if(guitarrista.state==='following') return t('pr.guitarWith');
-  return t('pr.guitarHire',{c:GUITARRISTA_HIRE_COST});
+  return GUITARRISTA_HIRE_COST > 0 ? t('pr.guitarHire',{c:GUITARRISTA_HIRE_COST}) : t('pr.guitarFree');
 }
 
 // Raycast targets for the primary ray. Empty while he's away so shots pass straight through.

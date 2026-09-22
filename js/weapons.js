@@ -14,7 +14,7 @@ function formatStatValue(stat){
   if(stat.key==='reloadSpeed') return '-' + Math.round(total*100) + '%';
   return '+' + Math.round(total*100) + '%';
 }
-function xpForLevel(level){ return Math.round(70 + level*35 + level*level*2); }
+function xpForLevel(level){ return Math.round((70 + level*35 + level*level*2) * (DRAFT_MODE ? DRAFT_XP_MULT : 1)); }
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
 
 function ownsWeapon(idx){ return player.slots.includes(idx); }
@@ -106,6 +106,9 @@ function applyEvolution(wIdx){
   const mods = player.weaponMods[wIdx];
   const w = ALL_WEAPONS[wIdx];
   switch(wIdx){
+    // Fists -> cake sword. Roughly doubles the hit and lengthens the reach; the wider arc,
+    // multi-target sweep and stamina cost come from ALL_WEAPONS[0].evolvedMelee.
+    case 0:  mods.dmgMult*=2.1; mods.radiusMult*=1.23; break;                    // espada de tarta
     // Two guns instead of one: the rate jump is the point of the evolution, so it's larger
     // than a normal level-up step. Magazine grows to match, or it would be reloading constantly.
     case 1:  mods.fireRateMult*=1.9; mods.dmgMult*=1.1; mods.ammoMult*=1.6; break;  // pistolas gemelas

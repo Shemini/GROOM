@@ -22,8 +22,11 @@ const HUD_ICON_FILES = {
   8:'ConfettiIcon', 9:'MegatronIcon', 10:'LaserIcon', 11:'EspadaIcon',
 };
 // ñ and accents have to be percent-encoded or the request 404s on a strict server.
+// Some weapons change their look on evolution; the fists become the cake sword.
+const HUD_ICON_FILES_EVOLVED = { 0:'EspadaIcon' };
 function hudIconFor(wIdx){
-  const file = HUD_ICON_FILES[wIdx];
+  const file = (player.weaponEvolved && player.weaponEvolved[wIdx] && HUD_ICON_FILES_EVOLVED[wIdx])
+             || HUD_ICON_FILES[wIdx];
   return file ? (WEAPON_DIR + encodeURIComponent(file) + '.png') : '';
 }
 

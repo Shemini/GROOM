@@ -11,8 +11,11 @@
 // reach instead of demanding precise aim at knife distance.
 function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   const w = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
-  const reach = (w.meleeRange||2.6) * mods.radiusMult;
-  const halfArc = THREE.MathUtils.degToRad((w.meleeArc||70)/2);
+  // Evolving the fists turns them into the sword: longer reach, a real arc, and a stamina
+  // cost. Held as an override rather than a separate weapon, so nothing has to be swapped in.
+  const evo = (player.weaponEvolved[wIdx] && w.evolvedMelee) ? w.evolvedMelee : null;
+  const reach = ((evo && evo.meleeRange) || w.meleeRange || 2.6) * mods.radiusMult;
+  const halfArc = THREE.MathUtils.degToRad(((evo && evo.meleeArc) || w.meleeArc || 70)/2);
   const forward = new THREE.Vector3();
   camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
 
@@ -21,7 +24,7 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
 
   // Spend stamina for the shove. With none left the blade still bites, but nothing is pushed
   // back — which is the moment the weapon stops holding a crowd off you.
-  const cost = w.staminaCost || 0;
+  const cost = (evo && evo.staminaCost !== undefined) ? evo.staminaCost : (w.staminaCost || 0);
   let canShove = true;
   if(cost > 0){
     if(playerStamina >= cost){ playerStamina -= cost; }
@@ -49,7 +52,8 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   // The fists connect with one guest; the sword sweeps through the whole arc. Keeping the
   // crowd-clearing sweep exclusive to the sword is most of what makes buying it feel like an
   // upgrade rather than a damage bump.
-  const targets = w.singleTarget ? inArc.slice(0,1) : inArc;
+  const singleTarget = evo ? !!evo.singleTarget : !!w.singleTarget;
+  const targets = singleTarget ? inArc.slice(0,1) : inArc;
   for(const t of targets){
     damageZombie(t.z, dmg, {crit:isCrit, stagger:canShove, knockFrom:canShove?camera.position:null});
     hitAny = true;
@@ -60,7 +64,7 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   if(hitAny) soundHit(false, isCrit);
 
   // The evolved sword throws a slash, but only at full health — the Zelda rule.
-  if(player.weaponEvolved[wIdx] && player.health >= player.maxHealth - 0.01){
+  if(player.weaponEvolved[wIdx] && w.windDmg && player.health >= player.maxHealth - 0.01){
     fireWindSlash(wIdx, dmg*(mods.windDamage||w.windDmg||0.45));
   }
 }

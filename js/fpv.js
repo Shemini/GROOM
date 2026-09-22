@@ -32,7 +32,10 @@ const HUD_BAR_DESIGN_HEIGHT = 206;     // matches #hudBar in index.html
 // Weapons with no entry simply draw nothing, so missing art never breaks anything.
 const FPV_WEAPONS = {
   0:  { motion:'punch',  layers:[{name:'PuñosLeft', hand:'left'}, {name:'PuñosRight', hand:'right'}],
-        punch:130, punchRot:0.10, punchSide:70, settle:0.26 },
+        punch:130, punchRot:0.10, punchSide:70, settle:0.26,
+        // Evolving swaps the bare hands for the cake sword and its swing.
+        evolved:{ motion:'swing', swingArc:330, swingRot:1.15, swingLift:70,
+                  layers:[{name:'Espada', pivot:{x:0.75, y:0.85}}] } },
   1:  { motion:'kick',   layers:[{name:'Pistola'}],   kick:16, kickRot:0.09,
         // Evolved: the same sprite twice, one mirrored, firing alternately like the fists.
         evolved:{ motion:'dual', kick:14, kickRot:0.08, settle:0.16,
