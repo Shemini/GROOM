@@ -220,17 +220,20 @@ function updateStoneHUD(){
       if(hudLast.comboPct !== pct){ hudLast.comboPct = pct; hudRefs.comboMeter.style.width = pct+'%'; }
     }
     if(hudRefs.comboTimer){
-      const t = hudRefs.comboTimer;
+      // Deliberately not called `t`: that's the translation function, and a local of the same
+      // name shadowed it here. The call below then invoked this DOM element instead, throwing
+      // every frame — but only between waves, the one time the frozen label is shown.
+      const timerEl = hudRefs.comboTimer;
       const frozen = combo.frozen;
       const label = frozen ? t('hud.paused') : (combo.timer>0 ? combo.timer.toFixed(1)+'s' : '—');
-      hudSet('comboTimer', t, label);
+      hudSet('comboTimer', timerEl, label);
       // The colour states matter more than the number while balancing: at a glance you can
       // see whether a stage is about to drop.
       const urgent = !frozen && combo.timer>0 && combo.timer < def.timer*0.35;
       if(hudLast.comboFrozen !== frozen || hudLast.comboUrgent !== urgent){
         hudLast.comboFrozen = frozen; hudLast.comboUrgent = urgent;
-        t.classList.toggle('frozen', frozen);
-        t.classList.toggle('urgent', urgent);
+        timerEl.classList.toggle('frozen', frozen);
+        timerEl.classList.toggle('urgent', urgent);
       }
     }
   }
