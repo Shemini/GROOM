@@ -178,7 +178,7 @@ function spawnOneEnemy(def, forcedPos){
   blob.position.set(0, 0.02, 0);
 
   const intensity = statValue('enemyIntensity');
-  const hpBase = (55+wave.number*14)*(1+intensity*0.06)*def.hpMult;
+  const hpBase = (ENEMY_HP_BASE+wave.number*ENEMY_HP_PER_WAVE)*(1+intensity*0.06)*def.hpMult;
   const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT*def.speedMult;
   const firstAnim = def.anims.walkToward;
   const z = {

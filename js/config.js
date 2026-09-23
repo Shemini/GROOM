@@ -95,6 +95,10 @@ const DRAFT_GUARANTEED_OFFERS = 2;
 const DRAFT_WEAPON_POOL = [1,2,3,4,5,6,7,8,9,10];   // draftable weapons (11 is gone: see below)
 let DRAFT_STATION_AMMO_ONLY = false, DRAFT_DISABLE_BOX = false;
 
+// Enemy health: base and per-wave growth, both lowered to soften the difficulty curve.
+const ENEMY_HP_BASE = 44;        // was 55 (-20%)
+const ENEMY_HP_PER_WAVE = 11.9;  // was 14 (-15%)
+
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 const COMBO_KILLS_PER_STAGE = 10;
 const COMBO_STAGES = [
@@ -108,6 +112,12 @@ const COMBO_REWARD_BONUS = 0.15;           // gold and XP, same scale
 const COMBO_DAMAGE_TAKEN_PENALTY = 0.10;   // per stage -> +30% incoming at Mad
 // Weapon stations and the party box are placed in this ring around the spawn point, so
 // everything is quick to reach when testing.
+// A tray split between a crowd used to vanish almost instantly, and one with a single eater
+// sat there far too long. The shared budget is still computed the same way; the result is just
+// clamped to something playable.
+const BAIT_MIN_SECONDS = 5;
+const BAIT_MAX_SECONDS = 15;
+
 const SHOP_MIN_DIST = 6;
 const SHOP_MAX_DIST = 22;
 
@@ -398,14 +408,19 @@ const ALL_WEAPONS = [
   { name:'PISTOLA DE PLOMOS', type:'hitscan', dmg:26, fireRate:0.35, mag:12, reserveMax:72, cost:0, ammoCost:0,
     spread:0.010, pellets:1 },
   // 2 — the hunter cousin's stock: slow, precise, heavy.
-  { name:'ESCOPETILLA DE PLOMOS', type:'hitscan', dmg:78, fireRate:0.95, mag:5, reserveMax:40, cost:1400, ammoCost:250,
+  { name:'ESCOPETILLA DE PLOMOS', type:'hitscan', dmg:88, fireRate:1.24, mag:5, reserveMax:40, cost:1400, ammoCost:250,
     spread:0.004, pellets:1 },
   // 3 — fast, weak, ricochets between guests.
-  { name:'METRALLETA DE BALINES', type:'chain', dmg:13, fireRate:0.14, mag:30, reserveMax:180, cost:900, ammoCost:180,
+  { name:'METRALLETA DE BALINES', type:'chain', dmg:8, fireRate:0.14, mag:30, reserveMax:180, cost:900, ammoCost:180,
+    // chainCount is the TOTAL number of guests a pellet touches, not the number of bounces:
+    // 3 here means the primary hit plus 2 ricochets.
     chainCount:3, chainRadius:6.5 },
   // 4 — held to blow a stream; see the soap/breath handling in tryShoot().
-  { name:'VARITA DE BURBUJAS', type:'bubble', dmg:9, fireRate:0.12, mag:60, reserveMax:240,
-    bubbleSpeed:11, bubbleLife:6, bubbleRadius:0.55, soapLimit:1.6, soapRecover:1.2 },
+  // Homing gives it a role as a low-skill, low-aim option; the base damage is up but its
+  // per-level growth is down, since COVID already makes the evolved version very strong.
+  { name:'VARITA DE BURBUJAS', type:'bubble', dmg:7, fireRate:0.12, mag:60, reserveMax:240,
+    bubbleSpeed:11, bubbleLife:6, bubbleRadius:0.55, soapLimit:1.6, soapRecover:1.2,
+    homingRange:3.0, homingStrength:3.4 },
   // 5 — bait. Shared distraction budget, drains faster the bigger the crowd.
   { name:'JAMÓN IBÉRICO', type:'bait', dmg:0, fireRate:1.4, mag:1, reserveMax:5,
     launchSpeed:13, baitRadius:16, baitSeconds:40, cholesterolMult:1.35 },
@@ -414,17 +429,17 @@ const ALL_WEAPONS = [
     launchSpeed:16, blastRadius:4.5, fuseDelay:0.35 },
   // 7 — puddle DoT.
   { name:'TEQUIFRESA', type:'puddle', dmg:0, fireRate:1.0, mag:2, reserveMax:16,
-    launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:22 },
+    launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:31 },
   // 8 — single heavy spread with hard knockback.
   // Crowd control first, damage second: everything inside the cone is shoved to its far edge.
-  { name:'CAÑÓN DE CONFETTI', type:'cone', dmg:52, fireRate:1.15, mag:2, reserveMax:20,
-    coneRange:5, coneAngle:42, knockback:1.1 },
+  { name:'CAÑÓN DE CONFETTI', type:'cone', dmg:57, fireRate:1.15, mag:2, reserveMax:20,
+    coneRange:5, coneAngle:42, knockback:1.1, knockbackBonus:2.0 },   // +2m beyond the cone's edge
   // 9 — continuous cone of particles: light DoT plus a slow.
   { name:'CAÑÓN DE CO2', type:'stream', dmg:0, fireRate:0.05, mag:120, reserveMax:480,
-    streamSpeed:16, streamLife:1.1, streamRadius:0.5, streamGrow:2.6, streamDps:11, streamSlow:0.55 },
+    streamSpeed:16, streamLife:1.1, streamRadius:0.5, streamGrow:2.6, streamDps:30, streamSlow:0.55 },
   // 10 — constant beam, ticks fast, doubles on the eyes.
   { name:'PUNTERO LÁSER', type:'beam', dmg:0, fireRate:0.05, mag:100, reserveMax:400,
-    beamTick:0.05, beamDps:52, beamHeadMult:2.0, beamRange:60 },
+    beamTick:0.05, beamDps:57, beamHeadMult:2.0, beamRange:60 },
   // 11 — melee upgrade from the party box; replaces the fists in slot 0.
   // Swinging costs stamina: with an arc, knockback and no ammo it otherwise kept every guest
   // permanently out of reach for free. Run dry and it still cuts, but nothing gets pushed —
@@ -469,7 +484,7 @@ const BASE_LEVEL_TABLES = {
        {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.18,label:'+18% damage'} ],
   3: [ {stat:'fireRate',amount:0.10,label:'+10% fire rate'}, {stat:'bounce',amount:1,label:'+1 ricochet'},
        {stat:'ammo',amount:0.30,label:'+30% ammo capacity'}, {stat:'damage',amount:0.15,label:'+15% damage'} ],
-  4: [ {stat:'damage',amount:0.18,label:'+18% bubble damage'}, {stat:'duration',amount:0.20,label:'+20% bubble life'},
+  4: [ {stat:'damage',amount:0.10,label:'+10% bubble damage'}, {stat:'duration',amount:0.20,label:'+20% bubble life'},
        {stat:'ammo',amount:0.25,label:'+25% soap'}, {stat:'radius',amount:0.15,label:'+15% bubble size'} ],
   5: [ {stat:'duration',amount:0.20,label:'+20% jamón (more seconds)'}, {stat:'radius',amount:0.15,label:'+15% lure radius'},
        {stat:'ammo',amount:0.25,label:'+1 tray capacity'}, {stat:'duration',amount:0.20,label:'+20% jamón' } ],

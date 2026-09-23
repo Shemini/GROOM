@@ -58,7 +58,9 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
     damageZombie(t.z, dmg, {crit:isCrit, stagger:canShove, knockFrom:canShove?camera.position:null});
     hitAny = true;
   }
-  spawnMeleeArc(forward, reach);
+  // The arc marker is a sweep indicator: it only makes sense once the swing actually hits
+  // more than one guest, so the single-target fists don't draw one.
+  if(!singleTarget) spawnMeleeArc(forward, reach);
   // The swing has already resolved, so the hit and miss variants can be chosen correctly.
   weaponMeleeSound(wIdx, hitAny);
   if(hitAny) soundHit(false, isCrit);
@@ -147,6 +149,7 @@ function fireBubble(wIdx, dmgMult, isCrit, critMultVal){
     dmg: effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1),
     life: (w.bubbleLife||6)*mods.durationMult,
     age: 0, wobble: Math.random()*10, popped:false, infect: !!player.weaponEvolved[wIdx],
+    homingRange: w.homingRange||0, homingStrength: w.homingStrength||0,
     infectChance: 0.45 + (mods.infectChance||0),
   });
 }
@@ -159,6 +162,24 @@ function updateBubbles(delta, elapsed){
     const drag = Math.pow(0.12, delta);
     b.vel.multiplyScalar(drag);
     b.wobble += delta;
+    // Gentle homing once a guest is close: enough to make this a forgiving option for a
+    // player who isn't aiming carefully, not enough to track across a room.
+    if(b.homingRange > 0){
+      let best = null, bestD = b.homingRange;
+      for(const z of zombies){
+        if(z.dying) continue;
+        const d = Math.hypot(z.group.position.x-b.mesh.position.x, z.group.position.z-b.mesh.position.z);
+        if(d < bestD){ bestD = d; best = z; }
+      }
+      if(best){
+        const tx = best.group.position.x - b.mesh.position.x;
+        const ty = (best.feetY + (best.height||1.8)*0.5) - b.mesh.position.y;
+        const tz = best.group.position.z - b.mesh.position.z;
+        const len = Math.hypot(tx, ty, tz) || 1;
+        const pull = b.homingStrength * delta;
+        b.vel.x += (tx/len)*pull; b.vel.y += (ty/len)*pull; b.vel.z += (tz/len)*pull;
+      }
+    }
     b.mesh.position.addScaledVector(b.vel, delta);
     b.mesh.position.y += Math.sin(b.wobble*2.1)*0.22*delta + 0.12*delta;
     b.mesh.position.x += Math.sin(b.wobble*1.3)*0.3*delta;
@@ -312,7 +333,10 @@ function updateBaits(delta, elapsed){
     if(arrived){
       const remaining = Math.max(0, b.deadline - elapsed);
       const eaters = Math.max(1, b.eaters.size);
-      b.deadline = elapsed + remaining/eaters;
+      // Divided as before, then clamped: a big crowd no longer makes the plate vanish in
+      // half a second, and a lone guest doesn't sit eating for the best part of a minute.
+      const share = remaining/eaters;
+      b.deadline = elapsed + Math.min(BAIT_MAX_SECONDS, Math.max(BAIT_MIN_SECONDS, share));
     }
 
     b.plate.rotation.z += delta*0.6;   // lying flat, so spin is about its own normal
@@ -421,7 +445,8 @@ function fireBeam(wIdx, dmgMult, isCrit, critMultVal){
     hitZ = hits[0].object.userData.zombieRef || null;
     if(hitZ) headshot = isHeadshotHit(hits[0]);
   }
-  drawBeam(camera.position, end);
+  // No beam drawn in the world: the weapon sprite already shows one, and a second beam in
+  // 3D flashed across the view whenever the player strafed.
 
   // Ticks on its own clock so the damage rate doesn't depend on frame rate.
   if(elapsed - beamLastTick < (w.beamTick||0.05)) return;
@@ -499,7 +524,7 @@ function fireCone(wIdx, dmgMult, isCrit, critMultVal){
     // Damage falls off across the cone, but the shove doesn't: the point is to clear the space.
     damageZombie(z, dmg*(1 - 0.35*(d/range)), {crit:isCrit, stagger:true, knockFrom:camera.position});
     // Pushed to the cone's far edge rather than by a fixed amount, so the area really empties.
-    const push = Math.max(0, range - d) * (mods.knockbackMult||1);
+    const push = (Math.max(0, range - d) + (w.knockbackBonus||0)) * (mods.knockbackMult||1);
     pushZombie(z, camera.position, push);
     hits++;
   }

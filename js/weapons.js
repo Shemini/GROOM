@@ -279,9 +279,9 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
     guitarristaOnShot();
     return;
   }
-  if(hits.length===0){ spawnBolt(camera.position, camera.position.clone().addScaledVector(forward,40), 0x8fe8ff); return; }
+  if(hits.length===0){ spawnBolt(camera.position, camera.position.clone().addScaledVector(forward,40), 0xff9a3d); return; }
   const first = hits[0];
-  spawnBolt(camera.position, first.point, 0x8fe8ff);
+  spawnBolt(camera.position, first.point, 0xff9a3d);
   const ref = first.object.userData.zombieRef;
   if(!ref) return;
   const headshot = isHeadshotHit(first);
@@ -300,7 +300,7 @@ function fireChain(wIdx, dmgMult, isCrit, critMultVal){
     for(const z of zombies){ if(hitSet.has(z)) continue; const d=currentPos.distanceTo(z.group.position); if(d<nearestDist){nearestDist=d;nearest=z;} }
     if(!nearest) break;
     const targetPos = nearest.group.position.clone().add(new THREE.Vector3(0,(nearest.height||AVG_ZOMBIE_HEIGHT)*0.55,0));
-    spawnBolt(currentPos.clone().add(new THREE.Vector3(0,currentHeight*0.55,0)), targetPos, 0x8fe8ff);
+    spawnBolt(currentPos.clone().add(new THREE.Vector3(0,currentHeight*0.55,0)), targetPos, 0xff9a3d);
     const dmg2 = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
     damageZombie(nearest, dmg2, {crit:isCrit});
     impactIndex++;
