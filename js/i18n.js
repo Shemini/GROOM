@@ -100,12 +100,12 @@ const I18N = {
 
     // --- stats ---
     's.damage':'DAÑO', 's.fireRate':'CADENCIA', 's.moveSpeed':'VELOCIDAD', 's.maxHealth':'VITALIDAD',
-    's.reloadSpeed':'RECARGA', 's.ammoCapacity':'MUNICIÓN', 's.moneyMult':'CODICIA',
+    's.reloadSpeed':'RECARGA', 's.ammoCapacity':'MUNICIÓN', 's.armor':'ARMADURA',
     's.xpMult':'INTELIGENCIA', 's.critChance':'PRECISIÓN', 's.enemyIntensity':'SED DE SANGRE',
     'sd.damage':'Daño de las armas', 'sd.fireRate':'Velocidad de disparo',
     'sd.moveSpeed':'Velocidad de movimiento', 'sd.maxHealth':'Salud máxima (cura al elegirla)',
     'sd.reloadSpeed':'Tiempo de recarga', 'sd.ammoCapacity':'Cargador y reserva (solo el tope)',
-    'sd.moneyMult':'Dinero por muerte', 'sd.xpMult':'XP por muerte',
+    'sd.armor':'Reduce el daño recibido', 'sd.xpMult':'XP por muerte',
     'sd.critChance':'Probabilidad de crítico', 'sd.enemyIntensity':'Más y más duros — mayor recompensa',
 
     // --- level-up step labels, built from the stat and amount ---
@@ -207,12 +207,12 @@ const I18N = {
     'e.8':'TOTAL FIESTA', 'e.9':'FLAMETHROWER', 'e.10':'SURGICAL LASER', 'e.11':'BANQUET BLADE',
 
     's.damage':'DAMAGE', 's.fireRate':'FIRE RATE', 's.moveSpeed':'SPEED', 's.maxHealth':'VITALITY',
-    's.reloadSpeed':'RELOAD', 's.ammoCapacity':'AMMO', 's.moneyMult':'GREED',
+    's.reloadSpeed':'RELOAD', 's.ammoCapacity':'AMMO', 's.armor':'ARMOUR',
     's.xpMult':'INTELLECT', 's.critChance':'PRECISION', 's.enemyIntensity':'BLOODLUST',
     'sd.damage':'Weapon damage', 'sd.fireRate':'Firing speed',
     'sd.moveSpeed':'Movement speed', 'sd.maxHealth':'Max health (heals when taken)',
     'sd.reloadSpeed':'Reload time', 'sd.ammoCapacity':'Magazine and reserve (cap only)',
-    'sd.moneyMult':'Money per kill', 'sd.xpMult':'XP per kill',
+    'sd.armor':'Reduces damage taken', 'sd.xpMult':'XP per kill',
     'sd.critChance':'Critical hit chance', 'sd.enemyIntensity':'More and tougher — bigger rewards',
 
     'lv.damage':'+{n}% damage', 'lv.fireRate':'+{n}% fire rate', 'lv.ammo':'+{n}% ammo',

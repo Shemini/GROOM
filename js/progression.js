@@ -4,7 +4,9 @@
 function takeDamage(amount){
   if(gameState!=='playing') return;
   // Higher combo, harder hits: the reward for pushing is paid for with real risk.
-  player.health -= amount * comboDamageTakenMult();
+  // Armour is flat damage reduction, capped so it can never make the player untouchable.
+  const armour = Math.min(0.8, statValue('armor'));
+  player.health -= amount * comboDamageTakenMult() * (1 - armour);
   soundHurt();
   faceOnHit();
   damageFlashEl.style.opacity=0.55;
@@ -14,7 +16,7 @@ function takeDamage(amount){
 }
 function addMoney(amount){
   const doubleMult = gameTime<player.doubleUntil ? 2:1;
-  player.money += Math.round(amount*(1+statValue('moneyMult'))*doubleMult);
+  player.money += Math.round(amount*doubleMult);
   updateHUD();
 }
 function addXP(amount){

@@ -18,7 +18,9 @@ const WEAPON_SOUNDS = {
   1:  { fire:'PistolaShooting', reload:['PistolaReloadingA','PistolaReloadingB'] },
   2:  { fire:'RifleShooting',   reload:['RifleReloadingA','RifleReloadingB','RifleReloadingC'] },
   3:  { fireLoop:'MetralletaShooting', reload:['PistolaReloadingA','PistolaReloadingB'] },
-  4:  { fire:'BurbujasShooting' },
+  // A continuous stream of blowing, so it loops while the trigger is held rather than
+  // retriggering on every bubble.
+  4:  { fireLoop:'BurbujasShooting', loopFadeIn:0.04, loopFadeOut:0.18 },
   5:  { thrown:true, impact:'JamonImpact', explode:'JamonExplosion' },
   6:  { thrown:true, explode:'Petardo', evolvedExtra:'Traca', fuseUntil:'explosion' },
   7:  { thrown:true, impact:['TequifresaImpactA','TequifresaImpactB'] },

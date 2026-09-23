@@ -115,6 +115,14 @@ const COMBO_DAMAGE_TAKEN_PENALTY = 0.10;   // per stage -> +30% incoming at Mad
 // A tray split between a crowd used to vanish almost instantly, and one with a single eater
 // sat there far too long. The shared budget is still computed the same way; the result is just
 // clamped to something playable.
+// Blowing bubbles: hold as long as you like, but the rate falls away as you run out of air.
+// Full rate for the first stretch, easing to a trickle, and recovering when you stop — so the
+// weapon rewards short controlled puffs over holding the trigger down.
+const BUBBLE_BREATH_FULL = 2.0;     // seconds at full rate
+const BUBBLE_BREATH_EMPTY = 6.0;    // seconds of continuous blowing to reach the floor
+const BUBBLE_BREATH_MIN_RATE = 0.2; // rate multiplier when completely out of air
+const BUBBLE_BREATH_RECOVER = 1.6;  // air returns this many times faster than it drains
+
 const BAIT_MIN_SECONDS = 5;
 const BAIT_MAX_SECONDS = 15;
 
@@ -418,8 +426,8 @@ const ALL_WEAPONS = [
   // 4 — held to blow a stream; see the soap/breath handling in tryShoot().
   // Homing gives it a role as a low-skill, low-aim option; the base damage is up but its
   // per-level growth is down, since COVID already makes the evolved version very strong.
-  { name:'VARITA DE BURBUJAS', type:'bubble', dmg:7, fireRate:0.12, mag:60, reserveMax:240,
-    bubbleSpeed:11, bubbleLife:6, bubbleRadius:0.55, soapLimit:1.6, soapRecover:1.2,
+  { name:'VARITA DE BURBUJAS', type:'bubble', dmg:10, fireRate:0.12, mag:60, reserveMax:240,
+    bubbleSpeed:11, bubbleLife:6, bubbleRadius:0.55,
     homingRange:3.0, homingStrength:3.4 },
   // 5 — bait. Shared distraction budget, drains faster the bigger the crowd.
   { name:'JAMÓN IBÉRICO', type:'bait', dmg:0, fireRate:1.4, mag:1, reserveMax:5,
@@ -429,14 +437,14 @@ const ALL_WEAPONS = [
     launchSpeed:16, blastRadius:4.5, fuseDelay:0.35 },
   // 7 — puddle DoT.
   { name:'TEQUIFRESA', type:'puddle', dmg:0, fireRate:1.0, mag:2, reserveMax:16,
-    launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:31 },
+    launchSpeed:14, puddleRadius:3.4, puddleDuration:5, dps:31, puddleSlow:0.85 },   // 15% slower while standing in it
   // 8 — single heavy spread with hard knockback.
   // Crowd control first, damage second: everything inside the cone is shoved to its far edge.
   { name:'CAÑÓN DE CONFETTI', type:'cone', dmg:57, fireRate:1.15, mag:2, reserveMax:20,
     coneRange:5, coneAngle:42, knockback:1.1, knockbackBonus:2.0 },   // +2m beyond the cone's edge
   // 9 — continuous cone of particles: light DoT plus a slow.
   { name:'CAÑÓN DE CO2', type:'stream', dmg:0, fireRate:0.05, mag:120, reserveMax:480,
-    streamSpeed:16, streamLife:1.1, streamRadius:0.5, streamGrow:2.6, streamDps:30, streamSlow:0.55 },
+    streamSpeed:16, streamLife:1.1, streamRadius:0.5, streamGrow:2.6, streamDps:27, streamSlow:0.55 },
   // 10 — constant beam, ticks fast, doubles on the eyes.
   { name:'PUNTERO LÁSER', type:'beam', dmg:0, fireRate:0.05, mag:100, reserveMax:400,
     beamTick:0.05, beamDps:57, beamHeadMult:2.0, beamRange:60 },
@@ -467,7 +475,8 @@ const STATS = [
   { key:'maxHealth',     name:'VITALIDAD',              icon:'VitalidadIcon',           desc:'Salud máxima (cura al elegirla)',       perLevel:20,   maxLevel:5 },
   { key:'reloadSpeed',   name:'RECARGA',                icon:'VelocidadRecargaIcon',    desc:'Tiempo de recarga',                     perLevel:0.06, maxLevel:5 },
   { key:'ammoCapacity',  name:'MUNICIÓN',               icon:'CapacidadMunicionIcon',   desc:'Cargador y reserva (solo el tope)',     perLevel:0.15, maxLevel:5 },
-  { key:'moneyMult',     name:'CODICIA',                icon:'CodiciaIcon',             desc:'Dinero por muerte',                     perLevel:0.12, maxLevel:5 },
+  // Flat damage reduction. Still using the Codicia art until it has its own.
+  { key:'armor',         name:'ARMADURA',               icon:'CodiciaIcon',             desc:'Reduce el daño recibido',               perLevel:0.06, maxLevel:5 },
   { key:'xpMult',        name:'INTELIGENCIA',           icon:'InteligenciaIcon',        desc:'XP por muerte',                         perLevel:0.12, maxLevel:5 },
   { key:'critChance',    name:'PRECISIÓN',              icon:'PrecisionIcon',           desc:'Probabilidad de crítico',               perLevel:0.05, maxLevel:5 },
   { key:'enemyIntensity',name:'SED DE SANGRE',          icon:'SedSangreIcon',           desc:'Más y más duros — mayor recompensa',    perLevel:1,    maxLevel:5 },

@@ -146,19 +146,32 @@ function describeWeaponCard(wIdx){
 // SHOOTING
 // =================================================================
 function getShotCooldown(wIdx){
-  const base = effectiveFireRate(wIdx)/(1+statValue('fireRate'));
+  let base = effectiveFireRate(wIdx)/(1+statValue('fireRate'));
+  // Running out of air stretches the gap between bubbles rather than stopping the weapon.
+  if(ALL_WEAPONS[wIdx].type === 'bubble') base /= Math.max(0.01, breathRateMult());
   if(wIdx===1 && player.weaponEvolved[1]){
     const st = player.burstState[1] || (player.burstState[1]={phase:0});
     return st.phase===0 ? 0.18 : Math.max(0.4, base*2);
   }
   return base;
 }
-// Called every frame from the main loop so the soap film recovers while the trigger is up.
+// Breath, driven every frame from the main loop. Held down, it drains and the firing rate
+// falls with it; released, it comes back faster than it went. This replaced a soap gauge that
+// snapped and forced a reload — holding the trigger now costs rate rather than being cut off.
 function updateSoap(delta, elapsed){
-  if(!mouseDown && player.soapStrain > 0){
-    const w = ALL_WEAPONS[player.currentWeapon];
-    player.soapStrain = Math.max(0, player.soapStrain - (w.soapRecover||1.2)*delta);
-  }
+  const w = ALL_WEAPONS[player.currentWeapon];
+  const blowing = mouseDown && w && w.type === 'bubble' && !player.reloading && gameState === 'playing';
+  if(blowing) player.breathHeld = (player.breathHeld || 0) + delta;
+  else if(player.breathHeld > 0) player.breathHeld = Math.max(0, player.breathHeld - delta*BUBBLE_BREATH_RECOVER);
+}
+
+// 1 while there's air, easing to BUBBLE_BREATH_MIN_RATE once it's gone. Also drives how hard
+// the wand shakes and how the blowing sound is pitched, so the state is legible without a bar.
+function breathRateMult(){
+  const held = player.breathHeld || 0;
+  if(held <= BUBBLE_BREATH_FULL) return 1;
+  const k = Math.min(1, (held - BUBBLE_BREATH_FULL) / Math.max(0.01, BUBBLE_BREATH_EMPTY - BUBBLE_BREATH_FULL));
+  return 1 - (1 - BUBBLE_BREATH_MIN_RATE)*k;
 }
 
 function tryShoot(elapsed){
@@ -180,21 +193,6 @@ function tryShoot(elapsed){
     return;
   }
   player.dryFired = false;
-  // Bubble wand: holding the trigger is "blowing". Sustained pressure tears the film and
-  // forces a quick re-dip; feathering the trigger lets the soap recover, so a controlled
-  // rhythm gets far more out of one charge than holding it down.
-  if(weapon.type === 'bubble'){
-    player.soapStrain = (player.soapStrain||0) + (elapsed - (player.lastBubbleTime||0) < 0.25
-      ? (elapsed - (player.lastBubbleTime||elapsed)) + 0.1 : 0);
-    player.lastBubbleTime = elapsed;
-    if(player.soapStrain > (weapon.soapLimit||1.6)){
-      player.soapStrain = 0;
-      player.soapBroke = true;
-      startReload();
-      return;
-    }
-  }
-
   player.lastShotTime = elapsed; ammo.mag--;
   guitarristaHitThisShot = false; // one Guitarrista hit per trigger pull, not per pellet
   if(wIdx===1 && player.weaponEvolved[1]){ const st=player.burstState[1]; st.phase = st.phase===0?1:0; }
@@ -606,7 +604,7 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
       weaponImpactSound(wIdx, pos);
-      spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration, 'booze');
+      spawnPuddle(pos, radius, dps, duration, evolved, stainDps, stainDuration, 'booze', weapon.puddleSlow||1);
       // Garrafón: rough spirits make guests sick, and what comes back up burns too.
       if(evolved){
         const until = clock.getElapsedTime()+duration*1.4;
@@ -735,7 +733,7 @@ function spawnHellfireCone(origin, dir, radius){
 // `kind` tags the puddle so the damage gate can stack different liquids but not two of the
 // same: strongest per kind, summed across kinds. Without a tag every pool counted separately.
 const PUDDLE_COLORS = { booze:0xff4fa3, puke:0xc8d84a, default:0x7fff6a };
-function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration, kind){
+function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration, kind, slow){
   const k = kind || 'default';
   const geo = new THREE.CircleGeometry(radius,20);
   const color = PUDDLE_COLORS[k] !== undefined ? PUDDLE_COLORS[k] : (stains?0xb8ff5a:0x7fff6a);
@@ -746,7 +744,7 @@ function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration
   scene.add(mesh);
   soundSplat();
   puddles.push({ mesh, pos:{x:pos.x,z:pos.z}, radius, dps, expiresAt:clock.getElapsedTime()+duration,
-    stains:!!stains, stainDps:stainDps||0, stainDuration:stainDuration||1, kind:k });
+    stains:!!stains, stainDps:stainDps||0, stainDuration:stainDuration||1, kind:k, slow:slow||1 });
 }
 function updatePuddles(delta, elapsed){
   for(let i=puddles.length-1;i>=0;i--){
@@ -918,8 +916,7 @@ function startReload(){
   const ammo = player.ammoByWeapon[wIdx];
   if(!ammo || player.reloading || ammo.reserve<=0 || ammo.mag>=effectiveMag(wIdx)) return;
   player.reloading = true;
-  let baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
-  if(player.soapBroke){ baseTime *= 0.45; player.soapBroke = false; }  // a snapped film re-dips quickly
+  const baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
   // The first-person view needs the start time as well as the end, or it can't work out how
   // far through the reload it is — without this the drop animation barely moved, because the
   // progress fraction was measured against the whole session rather than this reload.

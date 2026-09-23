@@ -43,7 +43,8 @@ const FPV_WEAPONS = {
                           {name:'Pistola', hand:'left',  offsetX:-120, mirror:true}] } },
   2:  { motion:'kick',   layers:[{name:'Rifle'}],     kick:34, kickRot:0.16, settle:0.55 },
   3:  { motion:'kick',   layers:[{name:'Metralleta'}],kick:9,  kickRot:0.05, settle:0.12 },
-  4:  { motion:'hold',   layers:[{name:'BurbujasLeft', hand:'left'}, {name:'BurbujasRight', hand:'right', holdOffset:{x:120, y:70}}] },
+  4:  { motion:'hold',   breathShake:9,
+        layers:[{name:'BurbujasLeft', hand:'left'}, {name:'BurbujasRight', hand:'right', holdOffset:{x:120, y:70}}] },
   5:  { motion:'toss',   layers:[{name:'JamonA', alt:'JamonB'}] },
   6:  { motion:'toss',   layers:[{name:'PetardoA', alt:'PetardoB'}] },
   7:  { motion:'toss',   layers:[{name:'TequifresaA', alt:'TequifresaB'}] },
@@ -356,6 +357,18 @@ function updateFPV(delta, elapsed){
     offY += (def.swingLift||70) * sweep - 24*k;
     rot  -= dir * (def.swingRot||1.1) * lead;
     if(k >= 1) fpvState.phase = 'idle';
+  }
+
+  // The bubble wand trembles as the player runs out of breath — the cue that the rate is
+  // dropping, so it can be felt before the breathing sound is added.
+  if(def && def.motion === 'hold' && mouseDown && !player.reloading && typeof breathRateMult === 'function'){
+    const strain = 1 - breathRateMult();          // 0 with full air, ~0.8 when empty
+    if(strain > 0.02){
+      const amp = strain * (def.breathShake || 7);
+      offX += (Math.random()-0.5)*amp;
+      offY += (Math.random()-0.5)*amp;
+      rot  += (Math.random()-0.5)*strain*0.05;
+    }
   }
 
   // The CO2 cannon has no discrete shot to recoil from, so it just rattles while venting.

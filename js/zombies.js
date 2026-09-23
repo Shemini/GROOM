@@ -598,6 +598,10 @@ function updateStatusEffects(delta, elapsed){
     for(const k in byKind){
       bestDps += byKind[k].dps;
       if(!bestPuddle || byKind[k].dps > bestPuddle.dps) bestPuddle = byKind[k];
+      // Some liquids are slippery: standing in them costs speed as well as health, which
+      // also means more time spent taking the damage.
+      const s = byKind[k].slow || 1;
+      if(s < 1){ z.slowUntil = elapsed + 0.3; z.slowMult = Math.min(z.slowMult || 1, s); }
     }
     if(bestDps>0) source='puddle';
     if(z.dot && z.dot.dps>bestDps){ bestDps=z.dot.dps; source='dot'; }
