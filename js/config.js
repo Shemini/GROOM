@@ -88,7 +88,7 @@ const WAVE_GAP = 2.5;
 // single flag reverts the lot.
 // =================================================================
 const DRAFT_MODE = true;
-const DRAFT_XP_MULT = 0.7;        // level up ~30% more often
+const DRAFT_XP_MULT = 0.56;       // level up ~44% more often (was 0.7, then a further 20%)
 // Cards reserved for not-yet-owned weapons while a slot is still open, out of the three on
 // offer. Higher means a wanted weapon turns up sooner, at the cost of fewer stat choices.
 const DRAFT_GUARANTEED_OFFERS = 2;
@@ -96,6 +96,19 @@ const DRAFT_WEAPON_POOL = [1,2,3,4,5,6,7,8,9,10];   // draftable weapons (11 is 
 let DRAFT_STATION_AMMO_ONLY = false, DRAFT_DISABLE_BOX = false;
 
 // Enemy health: base and per-wave growth, both lowered to soften the difficulty curve.
+// Enemy speed growth per wave, and its ceiling. Halved: the old curve had them closing in
+// faster than the player could reposition well before the waves got interesting.
+const ENEMY_SPEED_PER_WAVE = 0.03;   // was 0.06
+const ENEMY_SPEED_CAP = 0.75;        // was 1.5
+
+// Status tints, laid over whatever colour the enemy type already uses. With more than one
+// effect running the sprite cycles between them rather than blending, which would muddy into
+// an unreadable brown.
+const STATUS_TINT_INFECTED = 0x7dff8a;   // covid — green
+const STATUS_TINT_BURNING  = 0xff6a3d;   // flames — red
+const STATUS_TINT_DRUNK    = 0xffe066;   // garrafón — yellow
+const STATUS_FLICKER_PERIOD = 0.28;      // seconds each effect holds when several are active
+
 const ENEMY_HP_BASE = 44;        // was 55 (-20%)
 const ENEMY_HP_PER_WAVE = 11.9;  // was 14 (-15%)
 

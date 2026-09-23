@@ -179,7 +179,7 @@ function spawnOneEnemy(def, forcedPos){
 
   const intensity = statValue('enemyIntensity');
   const hpBase = (ENEMY_HP_BASE+wave.number*ENEMY_HP_PER_WAVE)*(1+intensity*0.06)*def.hpMult;
-  const speed = (1.5+Math.min(wave.number*0.06,1.5)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT*def.speedMult;
+  const speed = (1.5+Math.min(wave.number*ENEMY_SPEED_PER_WAVE,ENEMY_SPEED_CAP)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT*def.speedMult;
   const firstAnim = def.anims.walkToward;
   const z = {
     def,
@@ -216,7 +216,7 @@ function updateZombies(delta, elapsed){
     const z = zombies[i];
     if(z.flashActive){
       z.flashTimer -= delta;
-      if(z.flashTimer<=0){ z.billboard.material.color.setHex(0xffffff); z.flashActive=false; }
+      if(z.flashTimer<=0){ z.flashActive=false; applyStatusTint(z, elapsed); }
     }
     if(z.dying) continue;
     if(z.staggerTimer>0){ z.staggerTimer -= delta; continue; }
@@ -460,9 +460,11 @@ function setEnemyFrame(z, anim, frame){
 }
 
 function updateZombieAnimations(delta){
+  const elapsed = clock.getElapsedTime();
   for(let i=zombies.length-1;i>=0;i--){
     const z = zombies[i];
     const def = z.def;
+    applyStatusTint(z, elapsed);
     const targetKey = z.dying ? ANIM_DEATH
                     : (z.attacking ? ANIM_ATTACK
                     : (z.movingToward ? ANIM_WALK_TOWARD : ANIM_WALK_AWAY));
@@ -839,4 +841,26 @@ function throwRice(z, cfg){
     scene.remove(ring); geo.dispose(); mat.dispose();
   };
   tick();
+}
+
+// Colours the sprite by whatever is currently afflicting it, falling back to the enemy type's
+// own tint. Several effects at once alternate on a fixed period: mixing green, red and yellow
+// would just produce mud, whereas cycling keeps each one identifiable.
+function applyStatusTint(z, elapsed){
+  if(z.flashActive) return;                 // a hit flash outranks any status colour
+  const active = [];
+  if(z.infected) active.push(STATUS_TINT_INFECTED);
+  if(elapsed < z.burnUntil) active.push(STATUS_TINT_BURNING);
+  if(elapsed < z.drunkUntil) active.push(STATUS_TINT_DRUNK);
+
+  let want;
+  if(active.length === 0) want = (z.def.tint !== undefined) ? z.def.tint : 0xffffff;
+  else if(active.length === 1) want = active[0];
+  else active.length && (want = active[Math.floor(elapsed/STATUS_FLICKER_PERIOD) % active.length]);
+
+  // Only touch the material when the colour actually changes.
+  if(z.tintShown !== want){
+    z.tintShown = want;
+    z.billboard.material.color.setHex(want);
+  }
 }
