@@ -113,6 +113,10 @@ const ENEMY_HP_BASE = 44;        // was 55 (-20%)
 const ENEMY_HP_PER_WAVE = 11.9;  // was 14 (-15%)
 
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
+// Seconds the level-up screen ignores input for, so a shot or keypress from the fight
+// doesn't choose a card that can never be undone.
+const LEVELUP_ARM_DELAY = 0.5;
+
 const COMBO_KILLS_PER_STAGE = 10;
 const COMBO_STAGES = [
   { label:'SERIO',     mood:'serious', timer:10.0 },
@@ -841,3 +845,12 @@ if(DRAFT_MODE){
   DRAFT_STATION_AMMO_ONLY = true;
   DRAFT_DISABLE_BOX = true;
 }
+
+// =================================================================
+// STARTING SNAPSHOT
+// Taken once at load, after every patch above has been applied, so restarting a run can put
+// the player and the wave back exactly as they began — no reload, and no risk of a field
+// being missed because it was added later and nobody remembered to reset it.
+// =================================================================
+const INITIAL_PLAYER = JSON.parse(JSON.stringify(player));
+const INITIAL_WAVE = JSON.parse(JSON.stringify(wave));

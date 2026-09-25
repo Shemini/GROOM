@@ -56,10 +56,12 @@ function init(){
   startBtn.addEventListener('click', ()=>{ if(startBtn.disabled) return; stopTitleAudio(); requestLock(); });
   initPauseMenu();   // Resume is an explicit button now, so stray clicks don't unpause
   el('btnToggleLock').addEventListener('click', toggleCursorLock);
-  el('restartBtn').addEventListener('click', () => window.location.reload());
+  // Restart in place: reloading re-downloaded the whole level and replayed the title.
+  el('restartBtn').addEventListener('click', restartRun);
 
   levelUpCardsEl.addEventListener('click', e=>{
     const card = e.target.closest('.lvlCard'); if(!card) return;
+    if(!levelUpArmed()) return;   // a shot fired as the screen appeared must not pick a card
     const ctype = card.dataset.ctype;
     if(ctype==='stat') chooseLevelUpCard({ctype:'stat', key:card.dataset.key});
     else if(ctype==='weapon') chooseLevelUpCard({ctype:'weapon', widx:parseInt(card.dataset.widx,10)});
@@ -173,6 +175,8 @@ function onMouseMove(e){
 }
 
 function handleKeyDown(e){
+  // A second Esc leaves the pause screen, without waiting on the browser's relock cooldown.
+  if(e.code==='Escape' && gameState==='paused'){ resumeFromPause(); return; }
   if(e.code==='KeyR' && gameState==='playing') startReload();
   if(e.code==='KeyM' && gameState!=='loading' && gameState!=='menu') toggleMute();
   if(e.code==='KeyB') toggleCursorLock();
@@ -184,6 +188,7 @@ function handleKeyDown(e){
   }
   // The level-up screen is pointer-driven but keyboard-operable: 1/2/3 pick a card, R rerolls.
   if(gameState==='levelup'){
+    if(!levelUpArmed()) return;   // ignore the keys still held from the fight
     if(['Digit1','Digit2','Digit3'].includes(e.code)){
       const i = parseInt(e.code.slice(-1),10)-1;
       const card = levelUpCardsEl.children[i];

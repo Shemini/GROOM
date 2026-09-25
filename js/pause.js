@@ -56,13 +56,34 @@ function setPauseView(view){
 // then suddenly working. Resume is held visibly unavailable for that window instead.
 const POINTER_RELOCK_COOLDOWN = 1150;   // ms
 let resumeReadyTimer = null;
+let pendingResume = false;
 function holdResumeForCooldown(){
   const b = document.getElementById('btnResume');
   if(!b) return;
+  pendingResume = false;
   b.disabled = true;
   b.classList.add('cooling');
+  b.classList.remove('queued');
   clearTimeout(resumeReadyTimer);
-  resumeReadyTimer = setTimeout(()=>{ b.disabled = false; b.classList.remove('cooling'); }, POINTER_RELOCK_COOLDOWN);
+  resumeReadyTimer = setTimeout(()=>{
+    b.disabled = false;
+    b.classList.remove('cooling');
+    // Esc pressed during the cooldown counts as "resume as soon as you can".
+    if(pendingResume){ pendingResume = false; requestLock(); }
+  }, POINTER_RELOCK_COOLDOWN);
+}
+
+// Esc from the pause screen. The browser won't hand the mouse back during its own cooldown,
+// so an early press is remembered and fired the instant the window passes — pressing Esc
+// twice therefore gets you straight back in, without waiting for the button to light up.
+function resumeFromPause(){
+  const b = document.getElementById('btnResume');
+  if(b && b.disabled){
+    pendingResume = true;
+    b.classList.add('queued');
+    return;
+  }
+  requestLock();
 }
 
 // Rebuilt every time the menu opens, so it always reflects the current build.

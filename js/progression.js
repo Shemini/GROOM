@@ -156,7 +156,22 @@ function renderLevelUpCards(picks){
   updateLevelUpChrome();
   updateRerollButton();
   scaleLevelUpPanel();
+  armLevelUpCards();
 }
+
+// The level-up screen appears mid-fight, usually while the player is holding the trigger or
+// reaching for a weapon key — so for a moment it ignores input. An accidental pick here is
+// permanent, which makes it much worse than a moment's delay.
+let levelUpArmedAt = 0;
+function armLevelUpCards(){
+  levelUpArmedAt = performance.now() + LEVELUP_ARM_DELAY*1000;
+  const box = levelUpCardsEl;
+  if(!box) return;
+  box.classList.add('arming');
+  clearTimeout(armLevelUpCards._t);
+  armLevelUpCards._t = setTimeout(()=>box.classList.remove('arming'), LEVELUP_ARM_DELAY*1000);
+}
+function levelUpArmed(){ return performance.now() >= levelUpArmedAt; }
 
 // Header and instruction bar, refreshed whenever the cards are.
 function updateLevelUpChrome(){
@@ -358,4 +373,93 @@ function draftWeaponQuiet(wIdx){
   if(ownsWeapon(wIdx)) return;
   const slot = findEmptySlot(); if(slot===-1) return;
   player.slots[slot]=wIdx; initWeaponAcquired(wIdx);
+}
+
+// =================================================================
+// RESTART
+// Puts the run back to its opening state without touching the page. Reloading meant fetching
+// the environment again — well over a hundred megabytes — and sitting through the title
+// sequence, for something the game already has everything it needs to do in place.
+// =================================================================
+// Frees the GPU resources an object owns. Geometry is deliberately left alone: enemies and
+// pickups share one billboard geometry, and disposing it would break everything spawned
+// afterwards. Materials and their textures ARE per-instance — every enemy clones its sheet,
+// and three.js uploads each clone separately — so those are the ones worth releasing.
+// A page reload used to do this for free; an in-place restart has to do it itself.
+function releaseObject(obj){
+  if(!obj) return;
+  obj.traverse(n=>{
+    if(!n.material) return;
+    const mats = Array.isArray(n.material) ? n.material : [n.material];
+    mats.forEach(m=>{
+      if(m.map && m.map.dispose && !isSharedTexture(m.map)) m.map.dispose();
+      if(m.dispose) m.dispose();
+    });
+  });
+}
+// The source sheets are shared by every instance and must survive a restart.
+function isSharedTexture(tex){
+  if(typeof enemyTextures !== 'undefined'){
+    for(const id in enemyTextures){ if(enemyTextures[id] === tex) return true; }
+  }
+  if(typeof zombieSpriteTexture !== 'undefined' && tex === zombieSpriteTexture) return true;
+  if(typeof guitarristaSpriteTexture !== 'undefined' && tex === guitarristaSpriteTexture) return true;
+  if(typeof dropTexture !== 'undefined' && tex === dropTexture) return true;
+  return false;
+}
+
+function restartRun(){
+  // --- everything the player accumulated ---
+  Object.keys(player).forEach(k=>{ delete player[k]; });
+  Object.assign(player, JSON.parse(JSON.stringify(INITIAL_PLAYER)));
+  player.xpToNext = xpForLevel(player.level);
+
+  // --- wave progress ---
+  Object.assign(wave, JSON.parse(JSON.stringify(INITIAL_WAVE)));
+
+  // --- anything spawned into the scene ---
+  zombies.forEach(z=>{ scene.remove(z.group); releaseObject(z.group); });   zombies.length = 0;
+  drops.forEach(d=>{ scene.remove(d.mesh); releaseObject(d.mesh); });       drops.length = 0;
+  projectiles.forEach(p2=>scene.remove(p2.mesh));      projectiles.length = 0;
+  puddles.forEach(pd=>scene.remove(pd.mesh));          puddles.length = 0;
+  vortexFields.forEach(v=>scene.remove(v.mesh));       vortexFields.length = 0;
+  blackHoles.forEach(h=>scene.remove(h.mesh));         blackHoles.length = 0;
+  damageNumbers.forEach(d=>scene.remove(d.sprite||d.mesh)); damageNumbers.length = 0;
+  if(typeof bubbles !== 'undefined'){ bubbles.forEach(b=>scene.remove(b.mesh)); bubbles.length = 0; }
+  if(typeof baits !== 'undefined'){ baits.forEach(b=>{ scene.remove(b.plate); scene.remove(b.ring); }); baits.length = 0; }
+  if(typeof streamParticles !== 'undefined'){ streamParticles.forEach(s=>scene.remove(s.mesh)); streamParticles.length = 0; }
+  if(typeof windSlashes !== 'undefined'){ windSlashes.forEach(s=>scene.remove(s.mesh)); windSlashes.length = 0; }
+  if(typeof particlePool !== 'undefined'){ particlePool.forEach(p2=>{ p2.active = false; p2.mesh.visible = false; }); }
+
+  // --- timers and meters that live outside the player object ---
+  gameTime = 0;
+  playerStamina = PLAYER_STAMINA_MAX;
+  playerExhausted = false;
+  playerVelY = 0;
+  playerAirborne = 0;
+  if(typeof comboReset === 'function') comboReset();
+  if(typeof weaponCancelReload === 'function') weaponCancelReload();
+  boxState = 'idle';
+
+  // --- the guitarist goes back to his corner and starts over ---
+  if(typeof guitarrista !== 'undefined' && guitarrista){
+    guitarrista.state = 'home_playing';
+    guitarrista.group.position.set(guitarrista.home.x, guitarrista.feetY, guitarrista.home.z);
+    guitarrista.hitTimes = [];
+    guitarrista.resumeAt = -999;
+    if(typeof stopMusic === 'function') stopMusic();
+  }
+
+  // --- put the player back at the start and clear the screen furniture ---
+  placePlayerAtStart();
+  gameOverOverlay.classList.add('hidden');
+  levelUpEl.classList.add('hidden');
+  el('swapMenu').classList.add('hidden');
+  if(damageFlashEl) damageFlashEl.style.opacity = 0;
+  if(lowHealthPulseEl) lowHealthPulseEl.style.opacity = 0;
+  if(waveBannerEl) waveBannerEl.style.opacity = 0;
+
+  updateHUD();
+  gameState = 'menu';   // the pointer-lock handler starts the first wave, as it does at launch
+  requestLock();
 }

@@ -336,6 +336,16 @@
   .pauseBtn.cooling::after{content:"";position:absolute;left:0;top:0;bottom:0;width:100%;
     background:rgba(255,207,92,.28);transform-origin:left;animation:resumeFill 1.15s linear forwards;}
   @keyframes resumeFill{ from{transform:scaleX(0);} to{transform:scaleX(1);} }
+  /* Esc pressed while the browser still holds the mouse: the resume is queued and will fire
+     the moment it is allowed, so the button says so rather than looking ignored. */
+  .pauseBtn.queued{color:var(--gold-lt);}
+  .pauseBtn.queued::before{content:"…";position:absolute;right:14px;top:50%;transform:translateY(-50%);}
+
+  /* Level-up cards ignore input briefly as they appear; they fade in over the same window so
+     the delay is visible rather than feeling like a dropped click. */
+  #levelUpCards.arming{pointer-events:none;}
+  #levelUpCards.arming .lvlCard{animation:cardArm .5s ease-out;}
+  @keyframes cardArm{ from{opacity:.35;} to{opacity:1;} }
 
   #pauseContent{flex:1;min-width:0;overflow-y:auto;padding:14px 16px;
     background:var(--cell);
