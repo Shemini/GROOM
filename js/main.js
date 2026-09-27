@@ -6,6 +6,10 @@ function animate(){
   const delta = Math.min(clock.getDelta(), 0.1);
   const elapsed = clock.getElapsedTime();
 
+  // Outside the state check: the title screen is on show while the level is still loading,
+  // which is exactly when someone is most likely to be playing with the filters.
+  if(typeof updateCoverTreatment === 'function') updateCoverTreatment();
+
   if(gameState==='playing'){
     gameTime += delta;   // frozen whenever the game isn't in play
     updateMovement(delta);

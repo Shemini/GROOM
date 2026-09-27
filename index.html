@@ -210,6 +210,14 @@
   #startOverlay{position:fixed;inset:0;z-index:30;overflow:hidden;
     background:#10131a url('./Cover.jpg') center center / cover no-repeat;
     image-rendering:pixelated; image-rendering:crisp-edges;}
+  /* The animated cover sits behind everything. When a filter is on, the video is kept playing
+     but hidden, and the canvas above it shows the treated frames instead. */
+  #coverVideo, #coverCanvas{position:absolute;inset:0;width:100%;height:100%;
+    object-fit:cover;z-index:0;pointer-events:none;}
+  #coverCanvas{display:none;image-rendering:pixelated;image-rendering:crisp-edges;}
+  #startOverlay.treated #coverVideo{opacity:0;}
+  #startOverlay.treated #coverCanvas{display:block;}
+  #startOverlay.novideo #coverVideo, #startOverlay.novideo #coverCanvas{display:none;}
   #titleVignette{position:absolute;inset:0;pointer-events:none;
     background:linear-gradient(180deg, rgba(6,8,14,.18) 0%, rgba(6,8,14,0) 26%,
       rgba(6,8,14,.35) 66%, rgba(6,8,14,.78) 100%);}
@@ -697,6 +705,12 @@
 </div>
 
 <div id="startOverlay">
+  <!-- Muted + playsinline: browsers only allow autoplay without sound. Cover.jpg stays as the
+       poster and as the fallback if the video is missing or refuses to start. -->
+  <video id="coverVideo" autoplay loop muted playsinline preload="auto" poster="./Cover.jpg">
+    <source src="./CoverAnimation.mp4" type="video/mp4">
+  </video>
+  <canvas id="coverCanvas"></canvas>
   <div id="titleScanlines"></div>
   <div id="titleVignette"></div>
 

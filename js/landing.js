@@ -55,6 +55,7 @@ function initLanding(){
   const lang = document.getElementById('btnLanguageMenu');
   if(lang) lang.addEventListener('click', e=>{ e.stopPropagation(); cycleLanguage(); });
   buildLandingPixelArt();
+  initCoverVideo();
 
   const play = document.getElementById('startBtn');
   if(play) play.addEventListener('click', e=>{ e.stopPropagation(); });   // handled in render.js
@@ -312,14 +313,13 @@ function landingVariant(){
   const px = landingPixelOn ? ((typeof autoPixelSize === 'function') ? autoPixelSize() : 6) : 1;
   const depth = landingDepthOn ? 8 : 0;
   const { cover, logo } = landingSources;
-  const vw = window.innerWidth || cover.width;
-  // Block size is matched on screen: the cover fills the viewport, the logo about a quarter of it.
-  const coverPx = landingPixelOn ? Math.max(1, px * (cover.width / vw)) : 1;
+  const vw = window.innerWidth || 1920;
   const logoPx  = landingPixelOn ? Math.max(1, px * (logo.width / (vw*0.2667))) : 1;
-  const pr = Promise.all([
-    treatImage(cover, coverPx, depth, false),
-    treatImage(logo,  logoPx,  depth, true),
-  ]).then(([c, l2])=>{ pr.ready = true; return { cover:c, logo:l2 }; });
+  // The still cover is only baked when there's no video to treat instead.
+  const coverPx = landingPixelOn ? Math.max(1, px * (cover.width / vw)) : 1;
+  const jobs = [treatImage(logo, logoPx, depth, true)];
+  if(!coverReady) jobs.push(treatImage(cover, coverPx, depth, false));
+  const pr = Promise.all(jobs).then(([l2, c])=>{ pr.ready = true; return { logo:l2, cover:c }; });
   landingCache[key] = pr;
   return pr;
 }
@@ -341,8 +341,13 @@ function applyLandingArt(){
 }
 
 function paintLandingArt(set){
-  const overlay = document.getElementById('startOverlay');
-  if(overlay) overlay.style.backgroundImage = 'url(' + set.cover + ')';
+  // The logo comes from the pre-baked variants; the cover normally comes from the video,
+  // treated frame by frame. If the video is unavailable the still cover is baked instead, so
+  // the filters keep working rather than quietly doing nothing.
+  if(!coverReady && set.cover){
+    const overlay = document.getElementById('startOverlay');
+    if(overlay) overlay.style.backgroundImage = 'url(' + set.cover + ')';
+  }
   const logo = document.getElementById('titleLogo');
   if(logo) logo.src = set.logo;
   const scan = document.getElementById('titleLogoScan');
@@ -391,4 +396,112 @@ function refreshLandingText(){
   if(typeof applyLandingArt === 'function') applyLandingArt();
   const label = document.getElementById('loadingLabel');
   if(label && landingReady) label.textContent = t('ui.ready');
+}
+
+// =================================================================
+// ANIMATED COVER
+// A looping video behind the title. The pixel and 8-bit toggles can't pre-bake a moving
+// image, so when either is on the video is hidden and its frames are redrawn through the same
+// quantiser, at the source's own frame rate rather than the display's.
+// =================================================================
+let coverVideo = null, coverCanvas = null, coverCtx = null, coverCtxReadback = null;
+let coverReady = false, coverLastDraw = 0;
+let coverCostAvg = 0, coverCostSamples = 0, coverTreatTooSlow = false;
+const COVER_TREAT_FPS = 12;          // matches the animation; no point processing faster
+const COVER_MAX_WIDTH_DEPTH_ONLY = 1280;   // cap when only the colour depth is on
+// If treating a frame costs more than this on average, the machine can't afford the effect
+// and the raw video is shown instead. Copying a video frame into a canvas is cheap with
+// hardware decoding and very expensive without it, and that isn't knowable up front.
+const COVER_TREAT_BUDGET_MS = 30;
+
+// The context is rebuilt when the mode changes: reading pixels back needs a CPU-backed
+// canvas, but pixelation alone doesn't, and asking for readback makes the copy much slower.
+function ensureCoverContext(needsReadback){
+  if(coverCtx && coverCtxReadback === needsReadback) return;
+  coverCtxReadback = needsReadback;
+  coverCtx = coverCanvas.getContext('2d', needsReadback ? { willReadFrequently:true } : {});
+}
+
+function initCoverVideo(){
+  coverVideo = document.getElementById('coverVideo');
+  coverCanvas = document.getElementById('coverCanvas');
+  if(!coverVideo || !coverCanvas) return;
+  ensureCoverContext(false);
+
+  coverVideo.addEventListener('loadeddata', ()=>{ coverReady = true; });
+  // Missing or unplayable file: fall back to the still cover rather than a black screen.
+  coverVideo.addEventListener('error', ()=>{
+    console.warn('CoverAnimation.mp4 could not be loaded — falling back to Cover.jpg.');
+    coverReady = false;
+    document.getElementById('startOverlay').classList.add('novideo');
+  });
+  // Autoplay is allowed while muted, but a refusal is still possible; retry on first input.
+  const tryPlay = ()=>{ const p = coverVideo.play(); if(p && p.catch) p.catch(()=>{}); };
+  tryPlay();
+  document.addEventListener('pointerdown', tryPlay, { once:true });
+  document.addEventListener('keydown', tryPlay, { once:true });
+}
+
+// Called every frame; does work only when a filter is on and a new source frame is due.
+function updateCoverTreatment(){
+  if(!coverCanvas || !coverVideo) return;
+  const overlay = document.getElementById('startOverlay');
+  // Only claim the canvas layer when there is actually a video frame to put in it; without
+  // one the still fallback below handles the filters instead.
+  const treat = (landingPixelOn || landingDepthOn) && coverReady && !coverTreatTooSlow;
+  if(overlay) overlay.classList.toggle('treated', treat);
+  if(!treat || landingState === 'gone') return;
+
+  const now = performance.now();
+  if(now - coverLastDraw < 1000/COVER_TREAT_FPS) return;
+  coverLastDraw = now;
+  const t0 = now;
+
+  const vw = coverVideo.videoWidth, vh = coverVideo.videoHeight;
+  if(!vw || !vh) return;
+
+  // Pixelation decides the working size; with only the colour depth on, the frame is capped
+  // rather than processed at full resolution, which would cost far more than it shows.
+  const px = landingPixelOn ? ((typeof autoPixelSize === 'function') ? autoPixelSize() : 6) : 1;
+  const targetW = landingPixelOn
+    ? Math.max(1, Math.round((window.innerWidth||vw)/px))
+    : Math.min(vw, COVER_MAX_WIDTH_DEPTH_ONLY);
+  const w = Math.max(1, targetW), h = Math.max(1, Math.round(w*vh/vw));
+  if(coverCanvas.width !== w || coverCanvas.height !== h){ coverCanvas.width = w; coverCanvas.height = h; }
+
+  ensureCoverContext(landingDepthOn);
+  coverCtx.imageSmoothingEnabled = true;
+  coverCtx.drawImage(coverVideo, 0, 0, w, h);
+
+  if(landingDepthOn){
+    try{
+      const data = coverCtx.getImageData(0, 0, w, h);
+      const d = data.data;
+      const L = colorLevelsFor(settings.colorDepth || 8);
+      const s0 = Math.max(1,L.x-1), s1 = Math.max(1,L.y-1), s2 = Math.max(1,L.z-1);
+      const q = (v, s)=>{ v = v < 0 ? 0 : (v > 1 ? 1 : v); return ((v*s + 0.5)|0) / s * 255 + 0.5 | 0; };
+      for(let y=0;y<h;y++){
+        const row = (y & 3) * 4;
+        for(let x=0;x<w;x++){
+          const i = (y*w+x)*4;
+          const dither = BAYER4_TABLE[row + (x & 3)];
+          d[i]   = q(d[i]  /255 + dither/s0, s0);
+          d[i+1] = q(d[i+1]/255 + dither/s1, s1);
+          d[i+2] = q(d[i+2]/255 + dither/s2, s2);
+        }
+      }
+      coverCtx.putImageData(data, 0, 0);
+    }catch(e){ /* pixel read blocked; the pixelated frame still shows */ }
+  }
+
+  // Watch what this is actually costing, and bail out if the machine can't keep up.
+  const cost = performance.now() - t0;
+  coverCostAvg = coverCostSamples ? (coverCostAvg*0.8 + cost*0.2) : cost;
+  coverCostSamples++;
+  if(coverCostSamples > 8 && coverCostAvg > COVER_TREAT_BUDGET_MS){
+    coverTreatTooSlow = true;
+    document.getElementById('startOverlay').classList.remove('treated');
+    console.warn('Cover filters disabled: treating a frame costs ~' + Math.round(coverCostAvg) +
+                 'ms here, which would stutter the title. The animation plays untreated.');
+  }
 }
