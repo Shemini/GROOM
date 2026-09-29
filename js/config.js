@@ -112,6 +112,12 @@ const STATUS_FLICKER_PERIOD = 0.28;      // seconds each effect holds when sever
 const ENEMY_HP_BASE = 44;        // was 55 (-20%)
 const ENEMY_HP_PER_WAVE = 11.9;  // was 14 (-15%)
 
+// Per-spawn dress variation, applied only where the mask is white. Saturation never drops
+// below half, and brightness only wanders a little, so the result stays a plausible dress
+// rather than a grey smear or a blown-out highlight.
+const DRESS_SATURATION_MIN = 0.5;
+const DRESS_BRIGHT_MIN = 0.85, DRESS_BRIGHT_MAX = 1.15;
+
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 // Seconds the level-up screen ignores input for, so a shot or keypress from the fight
 // doesn't choose a card that can never be undone.
@@ -247,23 +253,24 @@ const ENEMY_TYPES = {
   // --- Borrowing TrajeA's sheet until each has its own; `tint` keeps them distinguishable. ---
   MujerA: {
     id:'MujerA',
-    texture:'./TrajeA.png',
-    cols:8, rows:4,
+    texture:'./MujerA.png',
+    // Black-and-white companion sheet: white marks the dress, which is recoloured per spawn
+    // so a crowd of guests isn't wearing the same frock.
+    mask:'./MujerA_Alpha.jpg',
+    cols:16, rows:4,
     anims:{
-      walkToward:{ startRow:0, frames:8,  duration:1.0 },
-      walkAway:  { startRow:1, frames:8,  duration:1.0 },
-      attack:    { startRow:2, frames:8,  duration:1.2 },
-      death:     { startRow:3, frames:8,  duration:1.0 },
+      walkToward:{ startRow:0, frames:16, duration:16/12 },   // 12 fps
+      walkAway:  { startRow:1, frames:16, duration:16/12 },
+      attack:    { startRow:2, frames:16, duration:16/16 },   // 16 fps
+      death:     { startRow:3, frames:16, duration:16/12 },
     },
-    tint:0xff9ec4,              // placeholder dress colour
-    heightMult:0.96,
+    heightMult:0.9,             // 90% of TrajeA, same proportions
     widthStretch:1.0,
     hitboxWidthFraction:100/256,
     headHeightFraction:80/512,
     hpMult:0.7, speedMult:1.0, damageMult:0.5, rewardMult:1.1,
     attackRange:4.5,
-    // Thrown at the two-thirds mark of a 8-frame swing.
-    attackDamageFrame:6,
+    attackDamageFrame:11,       // the throw lands about two thirds through the swing
     attackSpeedMult:0.0,        // plants her feet to throw
     rangedAttack:{ aoeRadius:1.9, fallTime:0.45, particles:34 },
     minWave:2,
@@ -273,21 +280,22 @@ const ENEMY_TYPES = {
   },
   MujerB: {
     id:'MujerB',
-    texture:'./TrajeA.png',
-    cols:8, rows:4,
+    // Borrowing MujerA's art until she has her own; the dress recolour keeps them distinct.
+    texture:'./MujerA.png',
+    mask:'./MujerA_Alpha.jpg',
+    cols:16, rows:4,
     anims:{
-      walkToward:{ startRow:0, frames:8,  duration:1.1 },
-      walkAway:  { startRow:1, frames:8,  duration:1.1 },
-      attack:    { startRow:2, frames:8,  duration:1.0 },
-      death:     { startRow:3, frames:8,  duration:1.0 },
+      walkToward:{ startRow:0, frames:16, duration:16/11 },   // a touch slower, she's heavier
+      walkAway:  { startRow:1, frames:16, duration:16/11 },
+      attack:    { startRow:2, frames:16, duration:16/16 },
+      death:     { startRow:3, frames:16, duration:16/12 },
     },
-    tint:0xb58cd8,              // placeholder dress colour
     heightMult:0.98,
-    widthStretch:1.12,          // a little broader
+    widthStretch:1.12,
     hitboxWidthFraction:115/256,
     headHeightFraction:80/512,
     hpMult:0.9, speedMult:0.9, damageMult:1.25, rewardMult:1.2,
-    attackDamageFrame:5,
+    attackDamageFrame:8,
     attackSpeedMult:1.0,
     minWave:3,
     spawnWeight:0.45,
@@ -575,6 +583,7 @@ let flashLight;
 let zombieSpriteTexture = null;
 let dropTexture = null;          // TrajeA's sheet; kept for the Guitarrista fallback
 const enemyTextures = {};               // enemy type id -> THREE.Texture
+const enemyMaskTextures = {};           // enemy type id -> dress mask, where one exists
 let guitarristaSpriteTexture = null;
 let navGridFine = null, navGridCoarse = null, levelMaxY = 10;
 let sunLight = null, ambientLight = null, levelBox = null;

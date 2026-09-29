@@ -30,6 +30,7 @@ function createZombieVisual(def, heightWorld, widthWorld){
   // until each has its own art. Leaving it white is a no-op.
   const mat = new THREE.MeshLambertMaterial({ map: tex, transparent:true, alphaTest:0.5,
     color: def.tint !== undefined ? def.tint : 0xffffff, side:THREE.DoubleSide });
+  applyDressVariation(mat, def);
   const billboard = new THREE.Mesh(getBillboardGeometry(), mat);
   billboard.scale.set(widthWorld, heightWorld, 1);
   billboard.position.y = heightWorld/2; // group.position tracks feet; billboard is centered above it
@@ -863,4 +864,56 @@ function applyStatusTint(z, elapsed){
     z.tintShown = want;
     z.billboard.material.color.setHex(want);
   }
+}
+
+// Recolours the dress on a per-spawn basis, using the type's black-and-white mask: white is
+// dress, everything else is left alone.
+//
+// Done by injecting into the standard lambert shader rather than writing a replacement, so
+// the sprite keeps its lighting and shadows — a custom material would have meant
+// reimplementing both. The mask is sampled with the same vUv as the sheet, which three.js has
+// already offset to the current animation frame, so no second set of coordinates is needed.
+function applyDressVariation(mat, def){
+  const mask = enemyMaskTextures[def.id];
+  if(!mask) return;
+
+  const hue = Math.random()*Math.PI*2;
+  const sat = DRESS_SATURATION_MIN + Math.random()*(1-DRESS_SATURATION_MIN);
+  const bright = DRESS_BRIGHT_MIN + Math.random()*(DRESS_BRIGHT_MAX-DRESS_BRIGHT_MIN);
+
+  // Recorded so the values can be inspected (and asserted on) without digging into the
+  // compiled shader.
+  mat.userData.dress = { hue, sat, bright };
+  mat.onBeforeCompile = (shader)=>{
+    shader.uniforms.dressMask = { value: mask };
+    shader.uniforms.dressHue = { value: hue };
+    shader.uniforms.dressSat = { value: sat };
+    shader.uniforms.dressBright = { value: bright };
+    shader.fragmentShader =
+      'uniform sampler2D dressMask;\n' +
+      'uniform float dressHue;\n' +
+      'uniform float dressSat;\n' +
+      'uniform float dressBright;\n' +
+      // Rotation about the grey axis: a hue shift without converting to HSV and back.
+      'vec3 rotateHue(vec3 c, float a){\n' +
+      '  const vec3 k = vec3(0.57735);\n' +
+      '  float ca = cos(a);\n' +
+      '  return c*ca + cross(k, c)*sin(a) + k*dot(k, c)*(1.0-ca);\n' +
+      '}\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      {
+        float dressAmount = texture2D( dressMask, vUv ).r;
+        if ( dressAmount > 0.5 ) {
+          vec3 dressCol = rotateHue( diffuseColor.rgb, dressHue );
+          float dressLum = dot( dressCol, vec3( 0.2126, 0.7152, 0.0722 ) );
+          dressCol = mix( vec3( dressLum ), dressCol, dressSat );
+          diffuseColor.rgb = clamp( dressCol * dressBright, 0.0, 1.0 );
+        }
+      }`);
+  };
+  // Every dress shares one compiled program and differs only by uniforms, so they can all use
+  // the same cache entry rather than compiling a shader per enemy.
+  mat.customProgramCacheKey = ()=>'dressVariation';
 }

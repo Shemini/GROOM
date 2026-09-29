@@ -43,7 +43,9 @@ function loadAssets(){
   // no changes here. A type whose texture is missing is simply skipped at spawn time rather
   // than blocking the level.
   const typeIds = Object.keys(ENEMY_TYPES);
-  let texturesPending = typeIds.length;
+  // Masks count toward the same tally, so the level doesn't start before a dress can be
+  // recoloured — an enemy spawned without its mask would keep the raw sheet colour forever.
+  let texturesPending = typeIds.length + typeIds.filter(id=>ENEMY_TYPES[id].mask).length;
   const onTextureSettled = ()=>{ if(--texturesPending === 0){ spriteDone = true; tryFinishLoading(); } };
   typeIds.forEach(id=>{
     const def = ENEMY_TYPES[id];
@@ -60,6 +62,20 @@ function loadAssets(){
       if(id === DEFAULT_ENEMY_TYPE) loadingLabel.textContent = 'Failed to load ' + def.texture + ' — see console.';
       onTextureSettled();
     });
+
+    if(def.mask){
+      new THREE.TextureLoader().load(def.mask, m=>{
+        m.wrapS = m.wrapT = THREE.ClampToEdgeWrapping;
+        m.generateMipmaps = false;
+        m.minFilter = THREE.LinearFilter;
+        m.magFilter = THREE.LinearFilter;
+        enemyMaskTextures[id] = m;
+        onTextureSettled();
+      }, undefined, ()=>{
+        console.warn('Dress mask missing for ' + id + ' (' + def.mask + ') — dresses will not vary.');
+        onTextureSettled();
+      });
+    }
   });
 
   new THREE.TextureLoader().load('./Guitarrista.png', tex=>{
