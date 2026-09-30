@@ -192,7 +192,7 @@ function spawnOneEnemy(def, forcedPos){
     feetY: pos.y, velY: 0, airborne: 0, height:zHeight, width:zWidth, collisionRadius, facingAngle:0,
     animKey: ANIM_WALK_TOWARD, animFrame: 0,
     animTimer: Math.random()*(firstAnim.duration/firstAnim.frames),
-    attacking: false, attackDamageDone: false, movingToward: true, dying: false, deathAnimDone: false,
+    attacking: false, attackHitsDone: 0, movingToward: true, dying: false, deathAnimDone: false,
     explosionDone: false,
     calloutLastTime: -999, wasInCalloutRange: false,
     infected:false, immune:false, coughTimer:0, luredBy:null, damageTakenMult:1,
@@ -381,7 +381,7 @@ function updateZombies(delta, elapsed){
     // different from a fast one rather than just a numbers change.
     if(!z.attacking && inMeleeRange){
       z.attacking = true;
-      z.attackDamageDone = false;
+      z.attackHitsDone = 0;
       z.animKey = null; // force the animation driver to restart the attack cycle from frame 0
     }
 
@@ -443,6 +443,14 @@ function updateBillboards(){
   }
 }
 
+// Is the player still close enough for a follow-up hit to connect? Uses the same reach and
+// height rules as the check that started the swing.
+function playerWithinReach(z){
+  const feet = camera.position.y - EYE_HEIGHT;
+  const d = Math.hypot(camera.position.x-z.group.position.x, camera.position.z-z.group.position.z);
+  return d <= (z.def.attackRange || 1.0) && Math.abs(z.feetY - feet) < 2.0;
+}
+
 // Headshot test. The raycast's uv is the quad's own 0..1 coordinate (unaffected by the
 // texture offset that selects the animation frame), so the top slice of the sprite is the head
 // regardless of which frame is showing. The fraction is per-type.
@@ -474,7 +482,10 @@ function updateZombieAnimations(delta){
     if(targetKey !== z.animKey){
       z.animKey = targetKey;
       z.animFrame = 0;
-      z.animTimer = 0;
+      // Frame 0 is given its full duration. Starting the timer at zero meant the very next
+      // update advanced straight past it, so every animation lost its opening frame and every
+      // frame event fired one step early.
+      z.animTimer = anim.duration/anim.frames;
       setEnemyFrame(z, anim, 0);
       // Frame 0 can itself be the trigger frame, so check it on entry rather than only when
       // advancing — otherwise an event scheduled on frame 1 would never fire.
@@ -525,21 +536,37 @@ function updateZombieAnimations(delta){
 function fireFrameEvents(z, key, frame){
   const def = z.def;
 
-  if(key === ANIM_ATTACK && !z.attackDamageDone){
-    const dmgFrame = (def.attackDamageFrame || 1) - 1;
-    if(frame >= dmgFrame){
-      z.attackDamageDone = true;
+  if(key === ANIM_ATTACK){
+    // A swing can land more than once — the children's punch loops and connects twice per
+    // cycle. Each listed frame fires at most once per animation.
+    const frames = def.attackDamageFrames || [def.attackDamageFrame || 1];
+    const done = z.attackHitsDone || 0;
+    if(done < frames.length && frame >= frames[done]-1){
+      z.attackHitsDone = done + 1;
       z.lastAttack = clock.getElapsedTime();
-      if(def.rangedAttack){
-        // Thrown at where the player IS RIGHT NOW, landing a moment later — so unlike a melee
-        // swing, this one genuinely can be side-stepped once it's in the air.
-        throwRice(z, def.rangedAttack);
-      } else {
-        // Deliberately no range re-check: the swing was committed when it started, so stepping
-        // out of reach mid-animation doesn't save the player.
-        takeDamage(z.dmg);
+      // The first hit is committed the moment the swing starts, so backing away can't undo
+      // it. Later hits in the same swing are only earned if the player is still there —
+      // otherwise a single punch would follow someone across the room.
+      const landed = (done === 0) || playerWithinReach(z);
+      if(landed){
+        if(def.rangedAttack){
+          // Thrown at where the player IS RIGHT NOW, landing a moment later — so unlike a
+          // melee swing, this one genuinely can be side-stepped once it's in the air.
+          throwRice(z, def.rangedAttack);
+        } else {
+          takeDamage(z.dmg);
+        }
+        if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', z.group.position, 0.6, z.def.id);
       }
-      if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', z.group.position, 0.6, z.def.id);
+    }
+  }
+
+  // Footsteps fire on the frames each type lists, and only while it's actually walking —
+  // the frame numbers differ per sheet because the foot doesn't land at the same point in
+  // every animation.
+  if((key === ANIM_WALK_TOWARD || key === ANIM_WALK_AWAY) && def.footstepFrames){
+    if(def.footstepFrames.indexOf(frame + 1) !== -1){
+      playEnemyFootstep(z.group.position, def.footstepVolume);
     }
   }
 

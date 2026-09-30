@@ -118,6 +118,15 @@ const ENEMY_HP_PER_WAVE = 11.9;  // was 14 (-15%)
 const DRESS_SATURATION_MIN = 0.5;
 const DRESS_BRIGHT_MIN = 0.85, DRESS_BRIGHT_MAX = 1.15;
 
+// Footsteps. The player's are on a timer rather than an animation, since there's no visible
+// stride to match; enemies use the frames listed on each type, because the artists weren't
+// consistent about when the foot actually lands.
+const PLAYER_STEP_WALK = 0.42;    // seconds between steps at walking pace
+const PLAYER_STEP_RUN = 0.30;     // ...and when sprinting
+const FOOTSTEP_FALLOFF = 22;      // metres to silence, shorter than voices
+const FOOTSTEP_ENEMY_VOLUME = 0.5;
+const FOOTSTEP_PLAYER_VOLUME = 0.32;
+
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 // Seconds the level-up screen ignores input for, so a shot or keypress from the fight
 // doesn't choose a card that can never be undone.
@@ -203,6 +212,7 @@ const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie(
 const ENEMY_TYPES = {
   TrajeA: {
     id:'TrajeA',
+    footstepFrames:[1, 5],      // walk frames on which a foot lands
     texture:'./TrajeA.png',
     cols:8, rows:4,
     anims:{
@@ -226,6 +236,8 @@ const ENEMY_TYPES = {
   },
   TrajeB: {
     id:'TrajeB',
+    footstepFrames:[3, 7],      // walk frames on which a foot lands
+    footstepVolume:1.15,
     texture:'./TrajeB.png',
     cols:8, rows:6,
     anims:{
@@ -253,6 +265,7 @@ const ENEMY_TYPES = {
   // --- Borrowing TrajeA's sheet until each has its own; `tint` keeps them distinguishable. ---
   MujerA: {
     id:'MujerA',
+    footstepFrames:[6, 14],      // walk frames on which a foot lands
     texture:'./MujerA.png',
     // Black-and-white companion sheet: white marks the dress, which is recoloured per spawn
     // so a crowd of guests isn't wearing the same frock.
@@ -270,7 +283,7 @@ const ENEMY_TYPES = {
     headHeightFraction:80/512,
     hpMult:0.7, speedMult:1.0, damageMult:0.5, rewardMult:1.1,
     attackRange:4.5,
-    attackDamageFrame:11,       // the throw lands about two thirds through the swing
+    attackDamageFrame:11,       // lands ~62% in, so the wind-up is readable before the throw
     attackSpeedMult:0.0,        // plants her feet to throw
     rangedAttack:{ aoeRadius:1.9, fallTime:0.45, particles:34 },
     minWave:2,
@@ -280,6 +293,7 @@ const ENEMY_TYPES = {
   },
   MujerB: {
     id:'MujerB',
+    footstepFrames:[6, 14],      // walk frames on which a foot lands
     // Borrowing MujerA's art until she has her own; the dress recolour keeps them distinct.
     texture:'./MujerA.png',
     mask:'./MujerA_Alpha.jpg',
@@ -295,7 +309,7 @@ const ENEMY_TYPES = {
     hitboxWidthFraction:115/256,
     headHeightFraction:80/512,
     hpMult:0.9, speedMult:0.9, damageMult:1.25, rewardMult:1.2,
-    attackDamageFrame:8,
+    attackDamageFrame:11,       // ~62% in, matching MujerA's readable wind-up
     attackSpeedMult:1.0,
     minWave:3,
     spawnWeight:0.45,
@@ -304,21 +318,24 @@ const ENEMY_TYPES = {
   },
   NinoA: {
     id:'NinoA',
-    texture:'./TrajeA.png',
-    cols:8, rows:4,
+    footstepFrames:[3, 7],      // walk frames on which a foot lands
+    footstepVolume:0.7,
+    texture:'./Nino.png',
+    cols:8, rows:6,
     anims:{
-      walkToward:{ startRow:0, frames:8,  duration:0.65 },   // quicker legs
-      walkAway:  { startRow:1, frames:8,  duration:0.65 },
-      attack:    { startRow:2, frames:8,  duration:0.7 },
-      death:     { startRow:3, frames:8,  duration:0.9 },
+      walkToward:{ startRow:0, frames:8,  duration:8/12 },    // 12 fps
+      walkAway:  { startRow:1, frames:8,  duration:8/12 },
+      attack:    { startRow:2, frames:16, duration:16/12 },   // rows 2-3, 12 fps
+      death:     { startRow:4, frames:16, duration:16/12 },   // rows 4-5, 12 fps
     },
-    tint:0x7fc4ff,              // boy
-    heightMult:0.62,
+    heightMult:0.7,             // 70% of TrajeA
     widthStretch:1.0,
     hitboxWidthFraction:100/256,
     headHeightFraction:110/512, // proportionally bigger head
-    hpMult:0.33, speedMult:1.25, damageMult:0.25, rewardMult:0.45,
-    attackDamageFrame:4,
+    hpMult:0.33, speedMult:1.25, damageMult:0.125, rewardMult:0.45,
+    // The punch loops, so it lands twice per cycle for half damage each rather than once for
+    // full — see attackDamageFrames in fireFrameEvents.
+    attackDamageFrames:[5, 13],  // a quarter and three quarters through the 16 frames
     attackSpeedMult:1.0,
     swarmSize:[3,6],
     wander:0.55,
@@ -329,21 +346,24 @@ const ENEMY_TYPES = {
   },
   NinaA: {
     id:'NinaA',
-    texture:'./TrajeA.png',
-    cols:8, rows:4,
+    footstepFrames:[3, 7],      // walk frames on which a foot lands
+    footstepVolume:0.7,
+    texture:'./Nina.png',
+    // Five rows used of six; the last is blank, which costs nothing since frames are
+    // addressed by row and column rather than counted off the end of the sheet.
+    cols:8, rows:6,
     anims:{
-      walkToward:{ startRow:0, frames:8,  duration:0.65 },
-      walkAway:  { startRow:1, frames:8,  duration:0.65 },
-      attack:    { startRow:2, frames:8,  duration:0.7 },
-      death:     { startRow:3, frames:8,  duration:0.9 },
+      walkToward:{ startRow:0, frames:8,  duration:8/12 },   // 12 fps
+      walkAway:  { startRow:1, frames:8,  duration:8/12 },
+      attack:    { startRow:2, frames:8,  duration:8/6 },    // single row at 6 fps
+      death:     { startRow:3, frames:16, duration:16/12 },  // rows 3-4, 12 fps
     },
-    tint:0xffe07f,              // girl
-    heightMult:0.62,
+    heightMult:0.7,
     widthStretch:1.0,
     hitboxWidthFraction:100/256,
     headHeightFraction:110/512,
-    hpMult:0.33, speedMult:1.25, damageMult:0.25, rewardMult:0.45,
-    attackDamageFrame:4,
+    hpMult:0.33, speedMult:1.25, damageMult:0.125, rewardMult:0.45,
+    attackDamageFrames:[3, 7],   // the same quarter and three-quarter points, over 8 frames
     attackSpeedMult:1.0,
     swarmSize:[3,6],
     wander:0.55,
@@ -633,6 +653,13 @@ const raycaster = new THREE.Raycaster();
 // the reset handler and the HTML input attributes, which is how they drifted out of sync.
 // Largest per-event mouse delta we'll act on, in raw movement units. Normal movement is well
 // under this; only coalesced bursts after a stall exceed it.
+// First-person weapon shading. One ray toward the sun, this often, decides whether the
+// weapon is lit or shaded; the rest is a fade between the scene's ambient and sun colours.
+const SHADE_CHECK_INTERVAL = 0.12;   // seconds between rays
+const SHADE_RAY_LENGTH = 80;         // metres to look for something blocking the sun
+const SHADE_FADE_TIME = 0.25;        // seconds to cross-fade in or out of shade
+const SHADE_MIN_BRIGHT = 0.55;       // how dark the weapon gets in full shade
+
 const MOUSE_DELTA_CAP = 120;
 // Low-res columns to aim for when pixel size is automatic. ~440 reproduces 6px at 2540 wide
 // and gives 4px at 1920, keeping the look consistent between the two.

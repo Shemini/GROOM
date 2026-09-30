@@ -412,6 +412,8 @@ function updateFPV(delta, elapsed){
     dropK = fpvState.swapOut ? (k*k) : (1-k)*(1-k);
   }
 
+  updateWeaponShading(delta);
+
   // --- apply --------------------------------------------------------------
   fpvLayers.forEach((l, i)=>{
     const layerDef = l.def;
@@ -491,6 +493,59 @@ function renderFPV(renderer){
   renderer.autoClear = false;
   renderer.render(fpvScene, fpvCamera);
   renderer.autoClear = prevAutoClear;
+}
+
+// =================================================================
+// WEAPON SHADING
+// The weapon is drawn in its own unlit overlay pass, so it can't receive real shadows without
+// moving it into the main scene — which would mean rebuilding its layout, depth handling and
+// animations. This approximates the result instead: one ray from the player toward the sun,
+// and the sprite is tinted between the scene's ambient and sun colours depending on whether
+// anything is in the way. The weapon visibly darkens in shade and warms in open sun, for one
+// raycast every SHADE_CHECK_INTERVAL rather than a rendering rebuild.
+// =================================================================
+let fpvShadeRay = null;
+let fpvLit = 1;              // 0 = fully shaded, 1 = full sun
+let fpvLitTarget = 1;
+let fpvShadeTimer = 0;
+const fpvShadeColor = { r:1, g:1, b:1 };
+const _fpvSunCol = { r:1, g:1, b:1 }, _fpvAmbCol = { r:1, g:1, b:1 };
+
+function updateWeaponShading(delta){
+  if(!scene || !collisionMeshes || collisionMeshes.length === 0) return;
+  if(!fpvShadeRay) fpvShadeRay = new THREE.Raycaster();
+
+  // Throttled: shade changes as the player walks, which is far slower than a frame.
+  fpvShadeTimer -= delta;
+  if(fpvShadeTimer <= 0){
+    fpvShadeTimer = SHADE_CHECK_INTERVAL;
+    const from = camera.position.clone();
+    from.y -= 0.35;                                  // from the chest, not the eyes
+    const toSun = SUN_DIRECTION.clone().multiplyScalar(-1);   // SUN_DIRECTION is where light travels
+    fpvShadeRay.set(from, toSun);
+    fpvShadeRay.far = SHADE_RAY_LENGTH;
+    fpvLitTarget = fpvShadeRay.intersectObjects(collisionMeshes, false).length > 0 ? 0 : 1;
+  }
+
+  // Eased, so stepping through a doorway fades rather than snapping.
+  fpvLit += (fpvLitTarget - fpvLit) * Math.min(1, delta/SHADE_FADE_TIME);
+
+  // Blend the scene's own ambient and sun colours, so this tracks the lighting sliders
+  // instead of being a separate hardcoded look.
+  hexToRgb(settings.sunColor, _fpvSunCol);
+  hexToRgb(settings.ambientColor, _fpvAmbCol);
+  const shadeMix = SHADE_MIN_BRIGHT + (1-SHADE_MIN_BRIGHT)*fpvLit;
+  fpvShadeColor.r = (_fpvAmbCol.r + (_fpvSunCol.r-_fpvAmbCol.r)*fpvLit) * shadeMix;
+  fpvShadeColor.g = (_fpvAmbCol.g + (_fpvSunCol.g-_fpvAmbCol.g)*fpvLit) * shadeMix;
+  fpvShadeColor.b = (_fpvAmbCol.b + (_fpvSunCol.b-_fpvAmbCol.b)*fpvLit) * shadeMix;
+
+  fpvLayers.forEach(l=>{ l.mat.color.setRGB(fpvShadeColor.r, fpvShadeColor.g, fpvShadeColor.b); });
+}
+
+function hexToRgb(hex, out){
+  const n = parseInt(String(hex).replace('#',''), 16);
+  out.r = ((n>>16)&255)/255; out.g = ((n>>8)&255)/255; out.b = (n&255)/255;
+  return out;
 }
 
 // Accumulated mouse delta, consumed by the sway above.

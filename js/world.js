@@ -42,6 +42,12 @@ function loadAssets(){
   // One sheet per enemy type. Loading is driven by the ENEMY_TYPES table, so a new enemy needs
   // no changes here. A type whose texture is missing is simply skipped at spawn time rather
   // than blocking the level.
+  // Sprite names can contain accents (Niño.png, Niña.png). Browsers usually cope, but a
+  // strict server won't serve the raw bytes — encoding the filename makes it reliable.
+  const encodeAssetPath = path => {
+    const i = path.lastIndexOf('/');
+    return i === -1 ? encodeURIComponent(path) : path.slice(0, i+1) + encodeURIComponent(path.slice(i+1));
+  };
   const typeIds = Object.keys(ENEMY_TYPES);
   // Masks count toward the same tally, so the level doesn't start before a dress can be
   // recoloured — an enemy spawned without its mask would keep the raw sheet colour forever.
@@ -49,7 +55,7 @@ function loadAssets(){
   const onTextureSettled = ()=>{ if(--texturesPending === 0){ spriteDone = true; tryFinishLoading(); } };
   typeIds.forEach(id=>{
     const def = ENEMY_TYPES[id];
-    new THREE.TextureLoader().load(def.texture, tex=>{
+    new THREE.TextureLoader().load(encodeAssetPath(def.texture), tex=>{
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.generateMipmaps = false; // mipmaps would blur neighbouring spritesheet frames at a distance
       tex.minFilter = THREE.LinearFilter;
@@ -64,7 +70,7 @@ function loadAssets(){
     });
 
     if(def.mask){
-      new THREE.TextureLoader().load(def.mask, m=>{
+      new THREE.TextureLoader().load(encodeAssetPath(def.mask), m=>{
         m.wrapS = m.wrapT = THREE.ClampToEdgeWrapping;
         m.generateMipmaps = false;
         m.minFilter = THREE.LinearFilter;
@@ -423,6 +429,19 @@ function updateMovement(delta){
   }
 
   camera.position.set(nx, feetY+EYE_HEIGHT, nz);
+  updatePlayerFootsteps(delta, move.lengthSq() > 0 && playerVelY === 0, sprinting);
+}
+
+// The player has no visible stride to hang steps off, so they run on a timer that shortens
+// when sprinting. The first step fires immediately on moving off, or setting out in silence
+// feels like the sound is broken.
+let playerStepTimer = 0;
+function updatePlayerFootsteps(delta, moving, sprinting){
+  if(!moving){ playerStepTimer = 0; return; }
+  playerStepTimer -= delta;
+  if(playerStepTimer > 0) return;
+  playerStepTimer = sprinting ? PLAYER_STEP_RUN : PLAYER_STEP_WALK;
+  if(typeof playPlayerFootstep === 'function') playPlayerFootstep();
 }
 
 // =================================================================

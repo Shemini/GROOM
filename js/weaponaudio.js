@@ -36,14 +36,23 @@ const BUBBLE_POP_SOUNDS = ['BurbujaPopA','BurbujaPopB','BurbujaPopC','BurbujaPop
 const SOUND_BULLET_IMPACT = 'BulletImpact';
 const SOUND_SHOOT_FAIL = 'ShootingFail';
 const SOUND_FUSE = 'Fuse';
+// Shared by the player and every enemy, so they live in Audio/ rather than Audio/Weapons/.
+const FOOTSTEP_SOUNDS = ['Footstep_A','Footstep_B','Footstep_C','Footstep_D','Footstep_E'];
+const FOOTSTEP_DIR = './Audio/';
 
 const wsndBuffers = {};      // name -> AudioBuffer
 const wsndMissing = new Set();
 let wsndReady = false;
 
 // Every distinct file referenced above, gathered so preloading needs no separate list.
+// Footsteps sit in a different folder from the weapon sounds, so the URL is resolved by name.
+function wsndUrlFor(name){
+  const dir = (FOOTSTEP_SOUNDS.indexOf(name) !== -1) ? FOOTSTEP_DIR : WEAPON_AUDIO_DIR;
+  return dir + encodeURIComponent(name) + '.ogg';
+}
+
 function wsndAllNames(){
-  const names = new Set([...THROW_SOUNDS, ...BUBBLE_POP_SOUNDS,
+  const names = new Set([...THROW_SOUNDS, ...BUBBLE_POP_SOUNDS, ...FOOTSTEP_SOUNDS,
     SOUND_BULLET_IMPACT, SOUND_SHOOT_FAIL, SOUND_FUSE]);
   for(const k in WEAPON_SOUNDS){
     const s = WEAPON_SOUNDS[k];
@@ -66,7 +75,7 @@ function loadWeaponAudio(){
   const names = wsndAllNames();
   let loaded = 0, failed = 0;
   names.forEach(name=>{
-    const url = WEAPON_AUDIO_DIR + encodeURIComponent(name) + '.ogg';
+    const url = wsndUrlFor(name);
     fetch(url)
       .then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
       .then(buf=>audioCtx.decodeAudioData(buf))
@@ -88,7 +97,8 @@ function wsndPlayAt(name, worldPos, baseVolume, opts){
   if(!worldPos || !camera) return wsndPlay(name, Object.assign({volume:baseVolume}, opts||{}));
   const dx = worldPos.x-camera.position.x, dz = worldPos.z-camera.position.z;
   const dist = Math.hypot(dx, dz);
-  const atten = Math.max(0, 1 - dist/WSND_FALLOFF);
+  const reach = (opts && opts.falloff) || WSND_FALLOFF;
+  const atten = Math.max(0, 1 - dist/reach);
   if(atten <= 0.001) return null;
   return wsndPlay(name, Object.assign({
     volume: baseVolume * atten * atten,   // squared reads as a more natural rolloff
@@ -295,4 +305,24 @@ function weaponReloadSequence(wIdx, totalTime){
 function weaponCancelReload(){
   reloadSources.forEach(h=>{ try{ h.src.stop(); }catch(e){} });
   reloadSources = [];
+}
+
+// ---------- footsteps ----------
+// Capped, because a wave of a dozen guests each planting two feet a second would otherwise
+// bury everything else in the mix.
+const footstepLimiter = createRateLimiter(14);
+function randomFootstep(){ return FOOTSTEP_SOUNDS[Math.floor(Math.random()*FOOTSTEP_SOUNDS.length)]; }
+
+// An enemy's step: positional, and quieter than a voice so a crowd stays readable.
+function playEnemyFootstep(pos, volumeMult){
+  if(!audioCtx) return;
+  if(!footstepLimiter(clock.getElapsedTime())) return;
+  wsndPlayAt(randomFootstep(), pos, FOOTSTEP_ENEMY_VOLUME*(volumeMult||1),
+             { falloff: FOOTSTEP_FALLOFF });
+}
+
+// The player's own step stays centred — it isn't coming from somewhere in the world.
+function playPlayerFootstep(){
+  if(!audioCtx) return;
+  wsndPlay(randomFootstep(), { volume: FOOTSTEP_PLAYER_VOLUME });
 }
