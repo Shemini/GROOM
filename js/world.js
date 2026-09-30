@@ -55,6 +55,11 @@ function loadAssets(){
   const onTextureSettled = ()=>{ if(--texturesPending === 0){ spriteDone = true; tryFinishLoading(); } };
   typeIds.forEach(id=>{
     const def = ENEMY_TYPES[id];
+    // Letter enemies have no image file: their texture is drawn from a font once it's ready.
+    if(def.glyph){
+      buildGlyphTexture(def).then(tex=>{ enemyTextures[id] = tex; onTextureSettled(); });
+      return;
+    }
     new THREE.TextureLoader().load(encodeAssetPath(def.texture), tex=>{
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.generateMipmaps = false; // mipmaps would blur neighbouring spritesheet frames at a distance

@@ -108,6 +108,8 @@ const STATUS_TINT_INFECTED = 0x7dff8a;   // covid — green
 const STATUS_TINT_BURNING  = 0xff6a3d;   // flames — red
 const STATUS_TINT_DRUNK    = 0xffe066;   // garrafón — yellow
 const STATUS_FLICKER_PERIOD = 0.28;      // seconds each effect holds when several are active
+const HIT_FLASH_COLOR = 0xb4b4b4;        // added glow on a discrete hit — white, so it reads on any status colour
+const HIT_FLASH_TIME = 0.12;
 
 const ENEMY_HP_BASE = 44;        // was 55 (-20%)
 const ENEMY_HP_PER_WAVE = 11.9;  // was 14 (-15%)
@@ -126,6 +128,12 @@ const PLAYER_STEP_RUN = 0.30;     // ...and when sprinting
 const FOOTSTEP_FALLOFF = 22;      // metres to silence, shorter than voices
 const FOOTSTEP_ENEMY_VOLUME = 0.5;
 const FOOTSTEP_PLAYER_VOLUME = 0.32;
+
+// Letter enemies: glyph drawing and how long to wait for their fonts. If a font hasn't
+// arrived in time the R is drawn in a fallback face rather than holding up the level.
+const GLYPH_FONT_PX = 320;          // drawn large so it survives the pixel filter intact
+const GLYPH_OUTLINE_FRACTION = 0.07;
+const GLYPH_FONT_TIMEOUT_MS = 5000;
 
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 // Seconds the level-up screen ignores input for, so a shot or keypress from the fight
@@ -371,6 +379,72 @@ const ENEMY_TYPES = {
     spawnWeight:0.30,
     slowField:null,
     deathExplosion:null,
+  },
+
+  // --- Letter enemies: drawn from fonts at load, no sprite sheet. One still texture each; all
+  // the movement is procedural (see updateGlyphMotion). The animation entries still exist, but
+  // only as timelines — their "frames" drive footsteps and the attack's hit timing, not art.
+  // TEST VALUES: they spawn from wave 1 and quite often, so they're easy to try out.
+  RSlab: {
+    id:'RSlab',
+    glyph:{ char:'R', family:'Alfa Slab One', weight:'400', style:'normal',
+            fill:'#f1e4c6', outline:'#2a1a0e' },
+    static:true, noVoice:true,
+    cols:1, rows:1,
+    anims:{
+      walkToward:{ startRow:0, frames:4, duration:0.9 },
+      walkAway:  { startRow:0, frames:4, duration:0.9 },
+      attack:    { startRow:0, frames:8, duration:1.1 },
+      death:     { startRow:0, frames:8, duration:0.6 },
+    },
+    footstepFrames:[1, 3], footstepVolume:1.25,   // a heavy, deliberate tread
+    heightMult:1.05, widthStretch:1.0,
+    hitboxWidthFraction:0.72, headHeightFraction:0.28,
+    hpMult:1.7, speedMult:0.75, damageMult:1.3, rewardMult:1.4,   // slow, tough, hits hard
+    attackDamageFrame:6, attackSpeedMult:0.6,
+    minWave:1, spawnWeight:0.45,
+    slowField:null, deathExplosion:null,
+  },
+  RItalic: {
+    id:'RItalic',
+    glyph:{ char:'R', family:'Barlow Condensed', weight:'800', style:'italic',
+            fill:'#f6d98a', outline:'#2a1a0e' },
+    static:true, noVoice:true,
+    cols:1, rows:1,
+    anims:{
+      walkToward:{ startRow:0, frames:4, duration:0.45 },
+      walkAway:  { startRow:0, frames:4, duration:0.45 },
+      attack:    { startRow:0, frames:8, duration:0.7 },
+      death:     { startRow:0, frames:8, duration:0.45 },
+    },
+    footstepFrames:[1, 3], footstepVolume:0.75,   // quick, light steps
+    heightMult:0.95, widthStretch:1.0,
+    hitboxWidthFraction:0.6, headHeightFraction:0.28,
+    hpMult:0.55, speedMult:1.4, damageMult:0.8, rewardMult:0.9,   // fast and fragile
+    attackDamageFrame:6, attackSpeedMult:1.0,
+    minWave:1, spawnWeight:0.45,
+    slowField:null, deathExplosion:null,
+  },
+  RScript: {
+    id:'RScript',
+    glyph:{ char:'R', family:'Lobster', weight:'400', style:'normal',
+            fill:'#f4b6c2', outline:'#2a1a0e' },
+    static:true, noVoice:true,
+    cols:1, rows:1,
+    anims:{
+      walkToward:{ startRow:0, frames:4, duration:0.6 },
+      walkAway:  { startRow:0, frames:4, duration:0.6 },
+      attack:    { startRow:0, frames:8, duration:0.85 },
+      death:     { startRow:0, frames:8, duration:0.5 },
+    },
+    footstepFrames:[1, 3], footstepVolume:0.9,
+    heightMult:0.98, widthStretch:1.0,
+    hitboxWidthFraction:0.66, headHeightFraction:0.28,
+    hpMult:0.9, speedMult:1.1, damageMult:1.0, rewardMult:1.0,
+    wander:0.65,                                 // weaves like the handwriting it's drawn in
+    attackDamageFrame:6, attackSpeedMult:1.0,
+    minWave:1, spawnWeight:0.45,
+    slowField:null, deathExplosion:null,
   },
 };
 const DEFAULT_ENEMY_TYPE = 'TrajeA';

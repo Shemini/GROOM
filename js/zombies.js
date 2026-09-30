@@ -200,6 +200,7 @@ function spawnOneEnemy(def, forcedPos){
     burnUntil:-999, burnDps:0, drunkUntil:-999, pukeTimer:0,
     stuckCheckTimer: 1.5+Math.random()*0.4, stuckCheckPos: { x: pos.x, z: pos.z },
     wanderPhase: Math.random()*6.28, wanderSeed: Math.random(),
+    glyphTipDir: Math.random() < 0.5 ? -1 : 1,
   };
   billboard.userData.zombieRef=z;
   zombies.push(z);
@@ -217,7 +218,7 @@ function updateZombies(delta, elapsed){
     const z = zombies[i];
     if(z.flashActive){
       z.flashTimer -= delta;
-      if(z.flashTimer<=0){ z.flashActive=false; applyStatusTint(z, elapsed); }
+      if(z.flashTimer<=0){ z.flashActive=false; z.billboard.material.emissive.setHex(0x000000); }
     }
     if(z.dying) continue;
     if(z.staggerTimer>0){ z.staggerTimer -= delta; continue; }
@@ -463,6 +464,7 @@ function isHeadshotHit(hit){
 
 function setEnemyFrame(z, anim, frame){
   const def = z.def;
+  if(def.static) return;   // letter enemies have a single still image; frames only mean timing
   const row = anim.startRow + Math.floor(frame/def.cols);
   const col = frame % def.cols;
   z.billboard.material.map.offset.set(col/def.cols, 1-(row+1)/def.rows);
@@ -474,6 +476,7 @@ function updateZombieAnimations(delta){
     const z = zombies[i];
     const def = z.def;
     applyStatusTint(z, elapsed);
+    if(def.static) updateGlyphMotion(z);
     const targetKey = z.dying ? ANIM_DEATH
                     : (z.attacking ? ANIM_ATTACK
                     : (z.movingToward ? ANIM_WALK_TOWARD : ANIM_WALK_AWAY));
@@ -641,7 +644,7 @@ function updateStatusEffects(delta, elapsed){
     if(elapsed < z.streamUntil && z.streamDps>bestDps){ bestDps=z.streamDps; source='stream'; }
     if(elapsed < z.burnUntil && z.burnDps>bestDps){ bestDps=z.burnDps; source='burn'; }
     if(bestDps>0){
-      const killed = damageZombie(z, bestDps*0.25, {});
+      const killed = damageZombie(z, bestDps*0.25, {dot:true});
       z.periodicTickTimer=0.25;
       if(source==='puddle' && bestPuddle.stains && !killed){
         z.stain = { dps:bestPuddle.stainDps, endTime:elapsed+bestPuddle.stainDuration, trailTimer:(z.stain?z.stain.trailTimer:0.3) };
@@ -651,8 +654,13 @@ function updateStatusEffects(delta, elapsed){
 }
 
 function triggerZombieFlash(z){
-  z.billboard.material.color.setHex(0xff3030);
-  z.flashTimer=0.12; z.flashActive=true;
+  // The hit flash is ADDED light, on the emissive channel, rather than a replacement colour.
+  // That keeps it entirely separate from the status tint underneath: the two can't fight over
+  // the same value, so there's nothing to restore when the flash ends — the tint was never
+  // touched. It also reads the same on every status, where a red flash was invisible on a
+  // burning (red) enemy.
+  z.billboard.material.emissive.setHex(HIT_FLASH_COLOR);
+  z.flashTimer=HIT_FLASH_TIME; z.flashActive=true;
 }
 function damageZombie(z, amount, opts){
   opts = opts||{};
@@ -664,7 +672,9 @@ function damageZombie(z, amount, opts){
   // Applied here rather than at each weapon, so damage-over-time and chained effects benefit
   // from the combo too instead of only direct hits.
   z.hp -= amount * (z.damageTakenMult||1) * vermut * comboDamageDealtMult();
-  triggerZombieFlash(z);
+  // Only discrete hits flash. Damage over time already has its own colour, and flashing on
+  // every tick buried it under a near-constant red.
+  if(!(opts && opts.dot)) triggerZombieFlash(z);
   spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount*(z.damageTakenMult||1)), !!opts.crit);
   if(opts.stagger){
     z.staggerTimer = STAGGER_DURATION;
@@ -875,7 +885,6 @@ function throwRice(z, cfg){
 // own tint. Several effects at once alternate on a fixed period: mixing green, red and yellow
 // would just produce mud, whereas cycling keeps each one identifiable.
 function applyStatusTint(z, elapsed){
-  if(z.flashActive) return;                 // a hit flash outranks any status colour
   const active = [];
   if(z.infected) active.push(STATUS_TINT_INFECTED);
   if(elapsed < z.burnUntil) active.push(STATUS_TINT_BURNING);
@@ -943,4 +952,120 @@ function applyDressVariation(mat, def){
   // Every dress shares one compiled program and differs only by uniforms, so they can all use
   // the same cache entry rather than compiling a shader per enemy.
   mat.customProgramCacheKey = ()=>'dressVariation';
+}
+
+// =================================================================
+// LETTER ENEMIES
+// =================================================================
+
+// Draws a type's glyph to a canvas and returns it as a texture. The font is waited on
+// explicitly: canvas drawing doesn't wait for web fonts, so without this the browser would
+// quietly render the R in a fallback face and that would be baked in for the whole run.
+function buildGlyphTexture(def){
+  const g = def.glyph;
+  const spec = g.style + ' ' + g.weight + ' ' + GLYPH_FONT_PX + 'px "' + g.family + '"';
+  const timeout = new Promise(res=>setTimeout(res, GLYPH_FONT_TIMEOUT_MS));
+  const ready = (document.fonts && document.fonts.load) ? document.fonts.load(spec, g.char) : Promise.resolve();
+  return Promise.race([ready, timeout]).catch(()=>{}).then(()=>{
+    const loaded = document.fonts && document.fonts.check ? document.fonts.check(spec, g.char) : true;
+    if(!loaded) console.warn('Font "' + g.family + '" did not load in time — ' + def.id + ' uses a fallback face.');
+    const face = loaded ? spec : (g.style + ' ' + g.weight + ' ' + GLYPH_FONT_PX + 'px serif');
+
+    // Measure the real ink bounds so the billboard fits the letter, not the font's line box.
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font = face;
+    const m = probe.measureText(g.char);
+    const outline = Math.round(GLYPH_FONT_PX*GLYPH_OUTLINE_FRACTION);
+    const pad = outline + 6;
+    const inkL = m.actualBoundingBoxLeft  || 0;
+    const inkR = m.actualBoundingBoxRight || m.width;
+    const inkA = m.actualBoundingBoxAscent  || GLYPH_FONT_PX*0.75;
+    const inkD = m.actualBoundingBoxDescent || 0;
+    const w = Math.ceil(inkL + inkR) + pad*2;
+    const h = Math.ceil(inkA + inkD) + pad*2;
+
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.font = face;
+    ctx.textBaseline = 'alphabetic';
+    ctx.lineJoin = 'round';
+    const x = pad + inkL, y = pad + inkA;
+    // A thick dark outline first, then the fill: keeps the letter legible through the pixel
+    // filter and against both sky and stone.
+    ctx.lineWidth = outline*2;
+    ctx.strokeStyle = g.outline;
+    ctx.strokeText(g.char, x, y);
+    ctx.fillStyle = g.fill;
+    ctx.fillText(g.char, x, y);
+    // A soft lower shade gives the flat letter a little volume.
+    const shade = ctx.createLinearGradient(0, y-inkA, 0, y+inkD);
+    shade.addColorStop(0, 'rgba(255,255,255,0.10)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.22)');
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    return tex;
+  });
+}
+
+// Letters have no animation frames, so their life comes from here: a bob and rock in step
+// with their footsteps, a wind-up and snap for the attack, a wobble when hit, and a collapse
+// on death. All of it is scale, roll and height on the billboard — the facing code only
+// touches yaw, so none of this fights it.
+function updateGlyphMotion(z){
+  if(!z.def.static) return;
+  const def = z.def, anim = def.anims[z.animKey];
+  if(!anim) return;
+  const frameDur = anim.duration/anim.frames;
+  // Progress through the current cycle, 0..1, smooth between the virtual frames.
+  const p = Math.min(1, (z.animFrame + (1 - Math.max(0, z.animTimer)/frameDur)) / anim.frames);
+
+  let sx = 1, sy = 1, lift = 0, roll = 0;
+  if(z.animKey === ANIM_DEATH){
+    // Crushed flat onto its base, tipping as it goes.
+    if(!z.glyphBurst){ z.glyphBurst = true; spawnGlyphBurst(z); }
+    sy = Math.max(0.02, 1 - p);
+    sx = 1 + 0.45*p;
+    roll = 0.55*p*(z.glyphTipDir || 1);
+  } else if(z.animKey === ANIM_ATTACK){
+    // Rear up during the wind-up, then snap down hard on the hit frame.
+    const hitP = ((def.attackDamageFrame || 1) - 1)/anim.frames;
+    if(p < hitP){ const k = p/hitP; sy = 1 + 0.14*k; sx = 1 - 0.08*k; roll = -0.08*k; }
+    else { const k = Math.min(1, (p-hitP)/0.18); sy = 0.84 + 0.16*k; sx = 1.16 - 0.16*k; }
+  } else {
+    // Two footfalls per cycle, so the bob has two humps; contact is at the bottom of each.
+    const step = Math.abs(Math.sin(p*Math.PI*2));
+    lift = step*0.07;
+    sy = 1 - 0.07*(1-step);
+    sx = 1 + 0.05*(1-step);
+    roll = Math.sin(p*Math.PI*2)*0.07;
+  }
+  // A hit sets the letter rattling for as long as the flash lasts.
+  if(z.flashActive) roll += Math.sin(clock.getElapsedTime()*55)*0.12*(z.flashTimer/HIT_FLASH_TIME);
+
+  const hh = z.height, ww = z.width;
+  z.billboard.scale.set(ww*sx, hh*sy, 1);
+  z.billboard.position.y = hh*sy/2 + lift*hh;
+  z.billboard.rotation.z = roll;
+}
+
+// Chips of the letter's own colour when it dies.
+function spawnGlyphBurst(z){
+  if(typeof spawnParticles !== 'function') return;
+  const g = z.def.glyph;
+  const col = parseInt(String(g.fill).replace('#',''), 16);
+  const origin = z.group.position.clone(); origin.y += z.height*0.5;
+  spawnParticles(origin, {
+    count: 26, dir: new THREE.Vector3(0,1,0), spread: 1.2,
+    speed:[2.5, 5.5], colors:[col, col, 0x2a1a0e],
+    size:[0.08, 0.16], drag:1.4, gravity:9, life:1.1, groundY: z.feetY,
+  });
 }

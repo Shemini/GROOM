@@ -252,7 +252,7 @@ function updateInfections(delta, elapsed){
     }
 
     playEnemyClip('coughing', z.group.position, 0.55, z.def.id);
-    damageZombie(z, coughDmg, {});
+    damageZombie(z, coughDmg, {dot:true});   // part of the infection, shown in green
     if(z.dying) continue;
     for(const other of zombies){
       if(other===z || other.dying || other.infected || other.immune) continue;

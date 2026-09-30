@@ -81,6 +81,7 @@ const attackSoundLimiter = createRateLimiter(6);
 function playEnemyClip(categoryKey, pos, volume, actor){
   const cat = AUDIO_CATEGORIES[categoryKey];
   if(!cat || !audioCtx) return;
+  if(actor && ENEMY_TYPES[actor] && ENEMY_TYPES[actor].noVoice) return;   // letters don't talk (yet)
   const who = actor || ENEMY_AUDIO_TYPE;
   const lvl = voiceLevel(pos, Math.min(1, (volume===undefined?0.6:volume)*ENEMY_VOICE_BOOST), ENEMY_VOICE_FALLOFF, 'linear');
   if(lvl.volume <= 0.001) return;
