@@ -262,6 +262,7 @@ function startWave(){
   scheduleDrops();
   comboSetFrozen(false);
   showWaveBanner(t('bn.wave',{n:wave.number}), t('bn.waveSub'));
+  if(typeof bossOnWaveStart === 'function') bossOnWaveStart();
   soundWaveStart();
 }
 function showWaveBanner(main, sub){
@@ -440,6 +441,8 @@ function restartRun(){
   if(typeof comboReset === 'function') comboReset();
   if(typeof weaponCancelReload === 'function') weaponCancelReload();
   boxState = 'idle';
+
+  if(typeof resetBoss === 'function') resetBoss();
 
   // --- the guitarist goes back to his corner and starts over ---
   if(typeof guitarrista !== 'undefined' && guitarrista){

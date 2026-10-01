@@ -159,7 +159,7 @@ function clusterPointNear(anchor, spread){
   return anchor.clone();
 }
 
-function spawnOneEnemy(def, forcedPos){
+function spawnOneEnemy(def, forcedPos, opts){
   const pos = forcedPos || findSpawnPosition();
 
   const heightMult = 1 + (Math.random()-0.5)*ZOMBIE_HEIGHT_VARIATION;
@@ -204,7 +204,10 @@ function spawnOneEnemy(def, forcedPos){
   };
   billboard.userData.zombieRef=z;
   zombies.push(z);
-  wave.spawned++;
+  // Enemies brought in by the boss are extra: counting them would cut the wave's own
+  // spawns short, and the wave still can't end while they're alive anyway.
+  if(!(opts && opts.noCount)) wave.spawned++;
+  return z;
 }
 
 // Strongest slow field the player is standing in, as a speed multiplier (1 = unaffected).
@@ -958,62 +961,97 @@ function applyDressVariation(mat, def){
 // LETTER ENEMIES
 // =================================================================
 
-// Draws a type's glyph to a canvas and returns it as a texture. The font is waited on
-// explicitly: canvas drawing doesn't wait for web fonts, so without this the browser would
-// quietly render the R in a fallback face and that would be baked in for the whole run.
+// Waits for a font so canvas text uses it. Canvas drawing doesn't wait for web fonts: without
+// this a slow connection would silently bake a fallback face in for the whole run. Resolves to
+// the CSS font string to draw with — the requested face, or a generic one if it never arrived.
+function awaitGlyphFont(g, px, sample){
+  const spec = g.style + ' ' + g.weight + ' ' + px + 'px "' + g.family + '"';
+  const timeout = new Promise(res=>setTimeout(res, GLYPH_FONT_TIMEOUT_MS));
+  const ready = (document.fonts && document.fonts.load) ? document.fonts.load(spec, sample) : Promise.resolve();
+  return Promise.race([ready, timeout]).catch(()=>{}).then(()=>{
+    const ok = document.fonts && document.fonts.check ? document.fonts.check(spec, sample) : true;
+    if(!ok) console.warn('Font "' + g.family + '" did not load in time — using a fallback face.');
+    return ok ? spec : (g.style + ' ' + g.weight + ' ' + px + 'px serif');
+  });
+}
+
+// White glyph with a soft vertical shade, so the material's colour supplies the hue. That's
+// what lets a status effect turn the whole letter green or red, rather than tinting on top of
+// a colour that's already there.
+function shadeGlyph(ctx, w, h){
+  const shade = ctx.createLinearGradient(0, 0, 0, h);
+  shade.addColorStop(0, 'rgba(255,255,255,0)');
+  shade.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function glyphCanvasTexture(cv){
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+// An enemy's letter, cropped tight to the ink so the billboard is exactly the letter's size.
 function buildGlyphTexture(def){
   const g = def.glyph;
-  const spec = g.style + ' ' + g.weight + ' ' + GLYPH_FONT_PX + 'px "' + g.family + '"';
-  const timeout = new Promise(res=>setTimeout(res, GLYPH_FONT_TIMEOUT_MS));
-  const ready = (document.fonts && document.fonts.load) ? document.fonts.load(spec, g.char) : Promise.resolve();
-  return Promise.race([ready, timeout]).catch(()=>{}).then(()=>{
-    const loaded = document.fonts && document.fonts.check ? document.fonts.check(spec, g.char) : true;
-    if(!loaded) console.warn('Font "' + g.family + '" did not load in time — ' + def.id + ' uses a fallback face.');
-    const face = loaded ? spec : (g.style + ' ' + g.weight + ' ' + GLYPH_FONT_PX + 'px serif');
-
-    // Measure the real ink bounds so the billboard fits the letter, not the font's line box.
+  return awaitGlyphFont(g, GLYPH_FONT_PX, g.char).then(face=>{
     const probe = document.createElement('canvas').getContext('2d');
     probe.font = face;
     const m = probe.measureText(g.char);
-    const outline = Math.round(GLYPH_FONT_PX*GLYPH_OUTLINE_FRACTION);
-    const pad = outline + 6;
+    const pad = 6;
     const inkL = m.actualBoundingBoxLeft  || 0;
     const inkR = m.actualBoundingBoxRight || m.width;
     const inkA = m.actualBoundingBoxAscent  || GLYPH_FONT_PX*0.75;
     const inkD = m.actualBoundingBoxDescent || 0;
-    const w = Math.ceil(inkL + inkR) + pad*2;
-    const h = Math.ceil(inkA + inkD) + pad*2;
-
-    const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
+    const w = Math.ceil(inkL + inkR) + pad*2, h = Math.ceil(inkA + inkD) + pad*2;
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d');
-    ctx.font = face;
-    ctx.textBaseline = 'alphabetic';
-    ctx.lineJoin = 'round';
-    const x = pad + inkL, y = pad + inkA;
-    // A thick dark outline first, then the fill: keeps the letter legible through the pixel
-    // filter and against both sky and stone.
-    ctx.lineWidth = outline*2;
-    ctx.strokeStyle = g.outline;
-    ctx.strokeText(g.char, x, y);
-    ctx.fillStyle = g.fill;
-    ctx.fillText(g.char, x, y);
-    // A soft lower shade gives the flat letter a little volume.
-    const shade = ctx.createLinearGradient(0, y-inkA, 0, y+inkD);
-    shade.addColorStop(0, 'rgba(255,255,255,0.10)');
-    shade.addColorStop(1, 'rgba(0,0,0,0.22)');
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalCompositeOperation = 'source-over';
-
-    const tex = new THREE.CanvasTexture(cv);
-    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    return tex;
+    ctx.font = face; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(g.char, pad + inkL, pad + inkA);
+    shadeGlyph(ctx, w, h);
+    return glyphCanvasTexture(cv);
   });
+}
+
+// A letter for the boss's sentences. Unlike an enemy's, these are NOT cropped to their ink:
+// every letter sits on the same fixed baseline in a canvas of the same height, so a line of
+// mixed fonts still reads as one line of text rather than letters bobbing up and down. The
+// advance width comes back too, for spacing them along the flight path.
+const sentenceGlyphCache = {};
+function buildSentenceLetter(g, ch, glow){
+  const key = g.family + '|' + g.style + g.weight + '|' + ch + '|' + (glow||'');
+  if(sentenceGlyphCache[key]) return sentenceGlyphCache[key];
+  const px = SENTENCE_FONT_PX;
+  sentenceGlyphCache[key] = awaitGlyphFont(g, px, ch).then(face=>{
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font = face;
+    const m = probe.measureText(ch);
+    // Generous side padding: swashes and italics reach well past their advance width.
+    const pad = Math.round(px*0.32);
+    const H = Math.round(px*1.5), base = Math.round(px*1.1);
+    const W = Math.max(8, Math.ceil(m.width)) + pad*2;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.font = face; ctx.textBaseline = 'alphabetic';
+    if(glow){
+      // A halo baked behind the highlighted letters, so they stand out in the line.
+      ctx.shadowColor = glow; ctx.shadowBlur = px*0.22;
+      ctx.fillStyle = glow;
+      ctx.fillText(ch, pad, base); ctx.fillText(ch, pad, base);
+      ctx.shadowBlur = 0;
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(ch, pad, base);
+    return { tex: glyphCanvasTexture(cv), aspect: W/H, advance: m.width/H, padFrac: pad/H };
+  });
+  return sentenceGlyphCache[key];
 }
 
 // Letters have no animation frames, so their life comes from here: a bob and rock in step
@@ -1060,12 +1098,11 @@ function updateGlyphMotion(z){
 // Chips of the letter's own colour when it dies.
 function spawnGlyphBurst(z){
   if(typeof spawnParticles !== 'function') return;
-  const g = z.def.glyph;
-  const col = parseInt(String(g.fill).replace('#',''), 16);
+  const col = z.def.tint !== undefined ? z.def.tint : 0xffffff;
   const origin = z.group.position.clone(); origin.y += z.height*0.5;
   spawnParticles(origin, {
     count: 26, dir: new THREE.Vector3(0,1,0), spread: 1.2,
-    speed:[2.5, 5.5], colors:[col, col, 0x2a1a0e],
+    speed:[2.5, 5.5], colors:[col, col, 0xffffff],
     size:[0.08, 0.16], drag:1.4, gravity:9, life:1.1, groundY: z.feetY,
   });
 }

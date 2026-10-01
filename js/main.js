@@ -18,6 +18,7 @@ function animate(){
     updateZombies(delta, elapsed);
     updateZombieAnimations(delta);
     updateGuitarrista(delta, elapsed);
+    updateBoss(delta, elapsed);
     updateBillboards();
     updateMinimap();
     updateFace(delta);

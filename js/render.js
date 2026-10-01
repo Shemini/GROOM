@@ -175,6 +175,8 @@ function onMouseMove(e){
 }
 
 function handleKeyDown(e){
+  // Test trigger while the boss is being tuned: J makes the R recite immediately.
+  if(e.code==='KeyJ' && gameState==='playing' && typeof launchBossSentence === 'function'){ launchBossSentence(); return; }
   // A second Esc leaves the pause screen, without waiting on the browser's relock cooldown.
   if(e.code==='Escape' && gameState==='paused'){ resumeFromPause(); return; }
   if(e.code==='KeyR' && gameState==='playing') startReload();

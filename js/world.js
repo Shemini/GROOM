@@ -160,6 +160,8 @@ function loadAssets(){
       placeStationsAndBox();
       spawnGuitarrista();
       gameState = 'menu';
+      // Built now, while the title is up, so its geometry is ready before the first frame.
+      if(typeof initBoss === 'function') initBoss();
       landingSetReady();   // unlocks PLAY on the title screen
     }, 10);
   }

@@ -132,8 +132,49 @@ const FOOTSTEP_PLAYER_VOLUME = 0.32;
 // Letter enemies: glyph drawing and how long to wait for their fonts. If a font hasn't
 // arrived in time the R is drawn in a fallback face rather than holding up the level.
 const GLYPH_FONT_PX = 320;          // drawn large so it survives the pixel filter intact
-const GLYPH_OUTLINE_FRACTION = 0.07;
 const GLYPH_FONT_TIMEOUT_MS = 5000;
+const SENTENCE_FONT_PX = 200;     // resolution of each sentence letter's texture
+
+// =================================================================
+// THE R (boss) — currently in TEST MODE: present from the first wave, reciting once a wave.
+// =================================================================
+const BOSS_ENABLED = true;
+const BOSS_FROM_WAVE = 1;
+const BOSS_FIRST_DELAY = 6;          // seconds into a wave before it speaks
+const BOSS_SENTENCES = [
+  'El perro de San Roque no tiene rabo porque Ramón Ramírez se lo ha arrancado',
+];
+// Only the trilled Rs glow and drop enemies (word-initial, doubled, or after n/l/s). Set to
+// false to make every R in the sentence count.
+const BOSS_ONLY_STRONG_R = true;
+const BOSS_DROPS_PER_R = 3;
+const BOSS_DROP_INTERVAL = 1.5;      // seconds between drops from one R
+const BOSS_MINION_SPEED = 32;        // metres a second, falling toward its spawn point
+// The R on the horizon
+const BOSS_COLOR = 0x7a1f2b;
+const BOSS_HAZE_COLOR = 0xa9c8e8;    // the air between it and you
+const BOSS_HAZE_AMOUNT = 0.42;       // how far its colour is pulled toward the haze
+// Sized by how much of the sky it fills from the middle of the level, not by a fixed height:
+// the level is over 500m across, so any fixed size either vanishes behind the trees or has
+// to be tuned again whenever the level changes.
+const BOSS_VIEW_ANGLE_DEG = 30;      // apparent height from the level's centre
+const BOSS_MIN_HEIGHT = 130;         // metres, a floor for very small levels
+const BOSS_EXTRA_DISTANCE = 170;     // metres beyond the level's edge
+const BOSS_DEPTH_FRACTION = 0.16;    // extrusion depth, as a fraction of letter height
+const BOSS_SPEAK_TIME = 3.0;
+// The flying sentence
+const SENTENCE_LETTER_HEIGHT = 7.5;  // metres — large enough to survive the pixel filter
+const SENTENCE_R_SCALE = 1.4;        // highlighted Rs are drawn this much larger
+const SENTENCE_SPACE_ADVANCE = 0.32; // word gap, as a fraction of letter height
+const SENTENCE_ALTITUDE = 19;        // metres above the player's eye
+const SENTENCE_SWEEP_DISTANCE = 48;  // metres in front of the player where it crosses
+const SENTENCE_SWEEP_HALFWIDTH = 55;
+const SENTENCE_SPEED_TRAVEL = 85;    // m/s on its way in and out
+const SENTENCE_SPEED_READ = 16;      // m/s while over the arena, so it can be read
+const SENTENCE_INK = 0x2b2433;       // ordinary letters: dark ink against the sky
+const SENTENCE_R_BODY = 0xfff6e2;    // highlighted Rs: pale, with a halo in their font's colour
+// R enemies come only from the boss. Set true to also mix them into ordinary waves.
+const R_IN_NORMAL_WAVES = false;
 
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 // Seconds the level-up screen ignores input for, so a shot or keypress from the fight
@@ -217,6 +258,29 @@ const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie(
 //                 lands where the player WAS, so it can be dodged
 //   swarmSize     [min,max] spawned together as a group rather than one at a time
 //   wander        sideways drift on its approach, in radians of heading noise
+// Builds a letter enemy from the few things that differ between fonts.
+function rType(id, glyph, tint, o){
+  return {
+    id, glyph:Object.assign({ char:'R' }, glyph), tint,
+    static:true, noVoice:true, cols:1, rows:1,
+    anims:{
+      walkToward:{ startRow:0, frames:4, duration:o.walk },
+      walkAway:  { startRow:0, frames:4, duration:o.walk },
+      attack:    { startRow:0, frames:8, duration:o.attack },
+      death:     { startRow:0, frames:8, duration:0.55 },
+    },
+    footstepFrames:[1, 3], footstepVolume:o.footstepVolume,
+    heightMult:o.heightMult, widthStretch:1.0,
+    hitboxWidthFraction:o.hitboxWidthFraction, headHeightFraction:0.28,
+    hpMult:o.hpMult, speedMult:o.speedMult, damageMult:o.damageMult, rewardMult:o.rewardMult,
+    wander:o.wander || 0,
+    attackDamageFrame:6, attackSpeedMult:0.8,
+    // Only the boss's sentences bring these in — see R_IN_NORMAL_WAVES.
+    minWave:1, spawnWeight: R_IN_NORMAL_WAVES ? 0.3 : 0,
+    slowField:null, deathExplosion:null,
+  };
+}
+
 const ENEMY_TYPES = {
   TrajeA: {
     id:'TrajeA',
@@ -381,71 +445,28 @@ const ENEMY_TYPES = {
     deathExplosion:null,
   },
 
-  // --- Letter enemies: drawn from fonts at load, no sprite sheet. One still texture each; all
-  // the movement is procedural (see updateGlyphMotion). The animation entries still exist, but
-  // only as timelines — their "frames" drive footsteps and the attack's hit timing, not art.
-  // TEST VALUES: they spawn from wave 1 and quite often, so they're easy to try out.
-  RSlab: {
-    id:'RSlab',
-    glyph:{ char:'R', family:'Alfa Slab One', weight:'400', style:'normal',
-            fill:'#f1e4c6', outline:'#2a1a0e' },
-    static:true, noVoice:true,
-    cols:1, rows:1,
-    anims:{
-      walkToward:{ startRow:0, frames:4, duration:0.9 },
-      walkAway:  { startRow:0, frames:4, duration:0.9 },
-      attack:    { startRow:0, frames:8, duration:1.1 },
-      death:     { startRow:0, frames:8, duration:0.6 },
-    },
-    footstepFrames:[1, 3], footstepVolume:1.25,   // a heavy, deliberate tread
-    heightMult:1.05, widthStretch:1.0,
-    hitboxWidthFraction:0.72, headHeightFraction:0.28,
-    hpMult:1.7, speedMult:0.75, damageMult:1.3, rewardMult:1.4,   // slow, tough, hits hard
-    attackDamageFrame:6, attackSpeedMult:0.6,
-    minWave:1, spawnWeight:0.45,
-    slowField:null, deathExplosion:null,
-  },
-  RItalic: {
-    id:'RItalic',
-    glyph:{ char:'R', family:'Barlow Condensed', weight:'800', style:'italic',
-            fill:'#f6d98a', outline:'#2a1a0e' },
-    static:true, noVoice:true,
-    cols:1, rows:1,
-    anims:{
-      walkToward:{ startRow:0, frames:4, duration:0.45 },
-      walkAway:  { startRow:0, frames:4, duration:0.45 },
-      attack:    { startRow:0, frames:8, duration:0.7 },
-      death:     { startRow:0, frames:8, duration:0.45 },
-    },
-    footstepFrames:[1, 3], footstepVolume:0.75,   // quick, light steps
-    heightMult:0.95, widthStretch:1.0,
-    hitboxWidthFraction:0.6, headHeightFraction:0.28,
-    hpMult:0.55, speedMult:1.4, damageMult:0.8, rewardMult:0.9,   // fast and fragile
-    attackDamageFrame:6, attackSpeedMult:1.0,
-    minWave:1, spawnWeight:0.45,
-    slowField:null, deathExplosion:null,
-  },
-  RScript: {
-    id:'RScript',
-    glyph:{ char:'R', family:'Lobster', weight:'400', style:'normal',
-            fill:'#f4b6c2', outline:'#2a1a0e' },
-    static:true, noVoice:true,
-    cols:1, rows:1,
-    anims:{
-      walkToward:{ startRow:0, frames:4, duration:0.6 },
-      walkAway:  { startRow:0, frames:4, duration:0.6 },
-      attack:    { startRow:0, frames:8, duration:0.85 },
-      death:     { startRow:0, frames:8, duration:0.5 },
-    },
-    footstepFrames:[1, 3], footstepVolume:0.9,
-    heightMult:0.98, widthStretch:1.0,
-    hitboxWidthFraction:0.66, headHeightFraction:0.28,
-    hpMult:0.9, speedMult:1.1, damageMult:1.0, rewardMult:1.0,
-    wander:0.65,                                 // weaves like the handwriting it's drawn in
-    attackDamageFrame:6, attackSpeedMult:1.0,
-    minWave:1, spawnWeight:0.45,
-    slowField:null, deathExplosion:null,
-  },
+  // --- Letter enemies, one per font. Drawn white and coloured by `tint`, so a status effect
+  // recolours the whole letter clearly instead of mixing into its base colour. The palette
+  // deliberately avoids green, orange-red and yellow, which are taken by the status tints.
+  // Their animation entries are timelines only: "frames" drive footsteps and hit timing.
+  RPlayfair: rType('RPlayfair', { family:'Playfair Display', weight:'800', style:'italic' }, 0x4b78dc,
+    { hpMult:0.7, speedMult:1.3, damageMult:0.9, rewardMult:1.0, heightMult:1.0,
+      walk:0.5, attack:0.75, hitboxWidthFraction:0.62, footstepVolume:0.8 }),            // quick
+  RCinzel: rType('RCinzel', { family:'Cinzel Decorative', weight:'900', style:'normal' }, 0x7a52c7,
+    { hpMult:2.0, speedMult:0.7, damageMult:1.4, rewardMult:1.8, heightMult:1.1,
+      walk:0.95, attack:1.15, hitboxWidthFraction:0.6, footstepVolume:1.3 }),            // elite tank
+  RFraktur: rType('RFraktur', { family:'UnifrakturMaguntia', weight:'400', style:'normal' }, 0x76819c,
+    { hpMult:1.6, speedMult:0.8, damageMult:1.2, rewardMult:1.5, heightMult:1.05,
+      walk:0.85, attack:1.05, hitboxWidthFraction:0.62, footstepVolume:1.15 }),          // tough
+  RPirata: rType('RPirata', { family:'Pirata One', weight:'400', style:'normal' }, 0xc3438a,
+    { hpMult:1.0, speedMult:1.05, damageMult:1.4, rewardMult:1.2, heightMult:1.0,
+      walk:0.65, attack:0.85, hitboxWidthFraction:0.6, footstepVolume:1.0 }),            // hits hard
+  RKaushan: rType('RKaushan', { family:'Kaushan Script', weight:'400', style:'normal' }, 0x2ea3c9,
+    { hpMult:0.9, speedMult:1.15, damageMult:1.0, rewardMult:1.0, heightMult:0.98,
+      walk:0.6, attack:0.85, hitboxWidthFraction:0.62, footstepVolume:0.9, wander:0.65 }), // weaves
+  RBodoni: rType('RBodoni', { family:'Bodoni Moda', weight:'700', style:'italic' }, 0xb0703e,
+    { hpMult:0.55, speedMult:1.45, damageMult:0.8, rewardMult:0.9, heightMult:0.96,
+      walk:0.45, attack:0.7, hitboxWidthFraction:0.58, footstepVolume:0.7 }),            // fast, fragile
 };
 const DEFAULT_ENEMY_TYPE = 'TrajeA';
 
