@@ -9,6 +9,8 @@ function animate(){
   // Outside the state check: the title screen is on show while the level is still loading,
   // which is exactly when someone is most likely to be playing with the filters.
   if(typeof updateCoverTreatment === 'function') updateCoverTreatment();
+  // Outside the play branch on purpose: it has to notice the game pausing to stop the voice.
+  if(typeof syncBossVoicePause === 'function') syncBossVoicePause(gameState === 'playing');
 
   if(gameState==='playing'){
     gameTime += delta;   // frozen whenever the game isn't in play

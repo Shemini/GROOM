@@ -137,8 +137,12 @@ function letterFonts(){
 function launchBossSentence(text){
   if(!boss) initBoss();
   if(!boss) return;
-  text = text || BOSS_SENTENCES[Math.floor(Math.random()*BOSS_SENTENCES.length)];
-  boss.speakUntil = gameTime + BOSS_SPEAK_TIME;
+  const entry = text ? { text } : BOSS_SENTENCES[Math.floor(Math.random()*BOSS_SENTENCES.length)];
+  text = entry.text;
+  // If there's a recording, it sets the pace: the R shudders for as long as it speaks, and the
+  // letters leave its face at the speed of the speech.
+  const voiceDur = playBossVoice(entry.voice);
+  boss.speakUntil = gameTime + (voiceDur || BOSS_SPEAK_TIME);
 
   const fonts = letterFonts();
   const hard = strongRIndices(text);
@@ -151,10 +155,10 @@ function launchBossSentence(text){
     return { ch, def, glow };
   });
   Promise.all(plan.map(p=> p.space ? null : buildSentenceLetter(p.def.glyph, p.ch, p.glow)))
-    .then(glyphs=>{ if(boss) startSentenceFlight(plan, glyphs); });
+    .then(glyphs=>{ if(boss) startSentenceFlight(plan, glyphs, voiceDur); });
 }
 
-function startSentenceFlight(plan, glyphs){
+function startSentenceFlight(plan, glyphs, voiceDur){
   const H = SENTENCE_LETTER_HEIGHT;
   const letters = [];
   let cursor = 0;
@@ -212,6 +216,8 @@ function startSentenceFlight(plan, glyphs){
     letters, curve, total, length,
     head: 0,                                 // arc position of the first letter
     sweepStart: sAt(2), sweepEnd: sAt(4),
+    // With a recording, the whole line takes exactly as long as the voice to leave the R.
+    emitSpeed: voiceDur ? length/voiceDur : 0,
   });
 }
 
@@ -222,7 +228,9 @@ function updateSentences(delta, t){
     // Fast while it's on its way in or out; slow while any of it is over the arena, so the
     // line has time to be read.
     const reading = S.head > S.sweepStart - 20 && tail < S.sweepEnd + 20;
-    S.head += (reading ? SENTENCE_SPEED_READ : SENTENCE_SPEED_TRAVEL) * delta;
+    const emerging = S.emitSpeed > 0 && tail < 0;     // still coming out of its mouth
+    const speed = emerging ? S.emitSpeed : (reading ? SENTENCE_SPEED_READ : SENTENCE_SPEED_TRAVEL);
+    S.head += speed * delta;
 
     for(const L of S.letters){
       const s = S.head - L.offset;
@@ -312,6 +320,75 @@ function landMinion(M){
   }
 }
 
+// ---------- the voice ----------
+// Comes from the R itself: no distance falloff, but always panned to where it stands relative
+// to the camera, and re-panned every frame so turning your head moves the voice. A low-pass
+// filter closes down as the R moves behind you, since panning alone can't tell front from back.
+let bossVoice = null;   // { source, filter, panner, gain, name, startedAt, offset, duration, paused }
+
+function bossVoicePosition(){
+  const p = boss.mesh.position.clone();
+  p.y += boss.height*0.6;
+  return p;
+}
+
+function playBossVoice(name, offset){
+  if(!name || !audioCtx || typeof wsndBuffers === 'undefined') return 0;
+  const buf = wsndBuffers[name];
+  if(!buf){ console.warn('Boss voice "' + name + '" not loaded (Audio/Boss/' + name + '.ogg).'); return 0; }
+  stopBossVoice();
+  const source = audioCtx.createBufferSource();
+  source.buffer = buf;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 20000;
+  const panner = audioCtx.createStereoPanner();
+  const gain = audioCtx.createGain();
+  gain.gain.value = BOSS_VOICE_VOLUME;
+  source.connect(filter).connect(panner).connect(gain).connect(masterGain);
+  const from = Math.max(0, offset || 0);
+  source.start(0, from);
+  bossVoice = { source, filter, panner, gain, name, startedAt: audioCtx.currentTime - from,
+                duration: buf.duration, paused: false, offset: 0 };
+  source.onended = ()=>{ if(bossVoice && bossVoice.source === source && !bossVoice.paused) bossVoice = null; };
+  updateBossVoiceDirection();
+  return buf.duration - from;
+}
+
+function updateBossVoiceDirection(){
+  if(!bossVoice || bossVoice.paused || !boss) return;
+  const pos = bossVoicePosition();
+  bossVoice.panner.pan.value = computePan(pos);
+  // 1 straight ahead, -1 directly behind.
+  const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+  const rel = pos.sub(camera.position).normalize();
+  const facing = fwd.dot(rel);
+  const behind = Math.max(0, -facing);                 // 0 in front, up to 1 behind
+  const cutoff = 20000 - (20000 - BOSS_VOICE_BEHIND_CUTOFF)*behind;
+  bossVoice.filter.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.05);
+}
+
+function stopBossVoice(){
+  if(!bossVoice) return;
+  try{ bossVoice.source.onended = null; bossVoice.source.stop(); }catch(e){}
+  bossVoice = null;
+}
+
+// Pausing freezes the sentence mid-air, so the voice has to stop with it and pick up from
+// the same word — otherwise it keeps talking over a frozen sky and finishes out of sync.
+function syncBossVoicePause(playing){
+  if(!bossVoice || !audioCtx) return;
+  if(!playing && !bossVoice.paused){
+    bossVoice.offset = audioCtx.currentTime - bossVoice.startedAt;
+    bossVoice.paused = true;
+    try{ bossVoice.source.onended = null; bossVoice.source.stop(); }catch(e){}
+  } else if(playing && bossVoice.paused){
+    const at = bossVoice.offset, name = bossVoice.name;
+    bossVoice = null;
+    if(at < (wsndBuffers[name] ? wsndBuffers[name].duration : 0)) playBossVoice(name, at);
+  }
+}
+
 // ---------- scheduling ----------
 
 function bossOnWaveStart(){
@@ -328,6 +405,7 @@ function updateBoss(delta, t){
     bossNextSentenceAt = -1;
     launchBossSentence();
   }
+  updateBossVoiceDirection();
   updateSentences(delta, gameTime);
   updateMinions(delta);
 }
@@ -339,5 +417,6 @@ function resetBoss(){
   bossMinions.forEach(M=>{ scene.remove(M.mesh); M.mesh.geometry.dispose(); M.mesh.material.dispose(); });
   bossMinions = [];
   bossNextSentenceAt = -1;
+  stopBossVoice();
   if(boss) boss.speakUntil = -1;
 }

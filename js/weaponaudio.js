@@ -46,13 +46,18 @@ let wsndReady = false;
 
 // Every distinct file referenced above, gathered so preloading needs no separate list.
 // Footsteps sit in a different folder from the weapon sounds, so the URL is resolved by name.
+function bossVoiceNames(){
+  return (typeof BOSS_SENTENCES !== 'undefined') ? BOSS_SENTENCES.map(s=>s.voice).filter(Boolean) : [];
+}
 function wsndUrlFor(name){
-  const dir = (FOOTSTEP_SOUNDS.indexOf(name) !== -1) ? FOOTSTEP_DIR : WEAPON_AUDIO_DIR;
+  const dir = (FOOTSTEP_SOUNDS.indexOf(name) !== -1) ? FOOTSTEP_DIR
+            : (bossVoiceNames().indexOf(name) !== -1) ? BOSS_VOICE_DIR
+            : WEAPON_AUDIO_DIR;
   return dir + encodeURIComponent(name) + '.ogg';
 }
 
 function wsndAllNames(){
-  const names = new Set([...THROW_SOUNDS, ...BUBBLE_POP_SOUNDS, ...FOOTSTEP_SOUNDS,
+  const names = new Set([...THROW_SOUNDS, ...BUBBLE_POP_SOUNDS, ...FOOTSTEP_SOUNDS, ...bossVoiceNames(),
     SOUND_BULLET_IMPACT, SOUND_SHOOT_FAIL, SOUND_FUSE]);
   for(const k in WEAPON_SOUNDS){
     const s = WEAPON_SOUNDS[k];

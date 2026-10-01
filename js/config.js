@@ -141,9 +141,17 @@ const SENTENCE_FONT_PX = 200;     // resolution of each sentence letter's textur
 const BOSS_ENABLED = true;
 const BOSS_FROM_WAVE = 1;
 const BOSS_FIRST_DELAY = 6;          // seconds into a wave before it speaks
+// Each sentence can carry a recording, in Audio/Boss/. While the voice plays, the letters
+// stream out of the R at the speed of the speech, so the words leave its face as they're said.
 const BOSS_SENTENCES = [
-  'El perro de San Roque no tiene rabo porque Ramón Ramírez se lo ha arrancado',
+  { text:'El perro de San Roque no tiene rabo porque Ramón Ramírez se lo ha arrancado',
+    voice:'ElPerroDeSanRoque' },
 ];
+const BOSS_VOICE_DIR = './Audio/Boss/';
+const BOSS_VOICE_VOLUME = 1.0;        // constant: no falloff, it's meant to fill the sky
+// Stereo panning only knows left from right, so a voice behind you would sound the same as
+// one in front. Muffling it when the R is behind the camera gives that missing cue.
+const BOSS_VOICE_BEHIND_CUTOFF = 1500; // Hz, low-pass when facing directly away
 // Only the trilled Rs glow and drop enemies (word-initial, doubled, or after n/l/s). Set to
 // false to make every R in the sentence count.
 const BOSS_ONLY_STRONG_R = true;
