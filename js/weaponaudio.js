@@ -47,7 +47,9 @@ let wsndReady = false;
 // Every distinct file referenced above, gathered so preloading needs no separate list.
 // Footsteps sit in a different folder from the weapon sounds, so the URL is resolved by name.
 function bossVoiceNames(){
-  return (typeof BOSS_SENTENCES !== 'undefined') ? BOSS_SENTENCES.map(s=>s.voice).filter(Boolean) : [];
+  const names = (typeof BOSS_SENTENCES !== 'undefined') ? BOSS_SENTENCES.map(s=>s.voice).filter(Boolean) : [];
+  if(typeof BOSS_RUMBLE_FILE !== 'undefined' && BOSS_RUMBLE_FILE) names.push(BOSS_RUMBLE_FILE);
+  return names;
 }
 function wsndUrlFor(name){
   const dir = (FOOTSTEP_SOUNDS.indexOf(name) !== -1) ? FOOTSTEP_DIR

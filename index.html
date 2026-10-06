@@ -206,6 +206,20 @@
   #faceClip{width:256px;height:256px;overflow:hidden;}
   #faceCanvas{width:256px;height:256px;}
 
+  /* ---- BOSS HEALTH ---- */
+  #bossBar{position:fixed;top:44px;left:50%;transform:translateX(-50%);width:min(56vw,760px);
+    z-index:16;pointer-events:none;display:none;}
+  #bossBar.on{display:block;}
+  #bossBarName{font-family:'Press Start 2P',monospace;font-size:13px;letter-spacing:5px;
+    color:#f1e4c6;text-align:center;margin-bottom:6px;text-shadow:0 2px 0 #000,0 0 6px rgba(0,0,0,.6);}
+  #bossBarTrack{position:relative;height:18px;background:#160e0c;
+    box-shadow:inset 0 0 0 2px #6b5330,0 0 0 2px #160e0c,0 4px 0 rgba(0,0,0,.45);}
+  #bossBarLag,#bossBarFill{position:absolute;left:3px;top:3px;bottom:3px;max-width:calc(100% - 6px);}
+  /* The pale trail that lingers behind the fill, showing the size of each hit. */
+  #bossBarLag{background:#e9dcb4;}
+  #bossBarFill{background:linear-gradient(180deg,#d04a5b 0%,#9c2738 55%,#6e1826 100%);}
+  .bossSeg{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#160e0c;}
+
   /* ---- TITLE / LANDING ---- */
   #startOverlay{position:fixed;inset:0;z-index:30;overflow:hidden;
     background:#10131a url('./Cover.jpg') center center / cover no-repeat;
@@ -702,6 +716,17 @@
     <button id="btnCopy">COPY JSON</button>
   </div>
   <textarea id="jsonOut" readonly></textarea>
+</div>
+
+<!-- The R's health: five equal shares, one per round of the fight. -->
+<div id="bossBar">
+  <div id="bossBarName">LA R</div>
+  <div id="bossBarTrack">
+    <div id="bossBarLag"></div>
+    <div id="bossBarFill"></div>
+    <div class="bossSeg" style="left:20%"></div><div class="bossSeg" style="left:40%"></div>
+    <div class="bossSeg" style="left:60%"></div><div class="bossSeg" style="left:80%"></div>
+  </div>
 </div>
 
 <div id="startOverlay">

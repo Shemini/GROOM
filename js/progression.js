@@ -284,7 +284,8 @@ function updateWave(delta, elapsed){
     comboSetFrozen(wave.spawned === 0);
     wave.spawnTimer -= delta;
     if(wave.spawnTimer<=0){ spawnZombie(); wave.spawnTimer=wave.spawnInterval; }
-  } else if(zombies.length===0){
+  } else if(zombies.length===0 && !(typeof bossBlocksWaveEnd === 'function' && bossBlocksWaveEnd())){
+    if(typeof bossOnWaveClear === 'function') bossOnWaveClear();
     const bonus = 100+wave.number*25;
     addMoney(bonus);
     showWaveBanner(t('bn.clear',{n:wave.number}), t('bn.clearSub',{b:bonus}));

@@ -700,6 +700,7 @@ function damageZombie(z, amount, opts){
 // the actual removal from the scene is deferred, until the death animation has played through.
 // updateZombieAnimations() performs the real cleanup once z.deathAnimDone is set.
 function killZombie(z, headshot){
+  if(typeof bossOnEnemyKilled === 'function') bossOnEnemyKilled(z);
   if(z.dying) return; // guard against a second damage source killing the same corpse
   z.dying = true;
   z.deathAnimDone = false;
@@ -1025,8 +1026,11 @@ function buildGlyphTexture(def){
 // mixed fonts still reads as one line of text rather than letters bobbing up and down. The
 // advance width comes back too, for spacing them along the flight path.
 const sentenceGlyphCache = {};
-function buildSentenceLetter(g, ch, glow){
-  const key = g.family + '|' + g.style + g.weight + '|' + ch + '|' + (glow||'');
+// `body` is the letter's colour and `halo` how strongly it glows (0 = none). Both are baked
+// into the texture rather than tinted by the material: a tint multiplies everything, which
+// would drag a pale halo down to the same colour as the letter and make it pointless.
+function buildSentenceLetter(g, ch, body, halo){
+  const key = g.family + '|' + g.style + g.weight + '|' + ch + '|' + body + '|' + halo;
   if(sentenceGlyphCache[key]) return sentenceGlyphCache[key];
   const px = SENTENCE_FONT_PX;
   sentenceGlyphCache[key] = awaitGlyphFont(g, px, ch).then(face=>{
@@ -1034,20 +1038,23 @@ function buildSentenceLetter(g, ch, glow){
     probe.font = face;
     const m = probe.measureText(ch);
     // Generous side padding: swashes and italics reach well past their advance width.
-    const pad = Math.round(px*0.32);
+    const pad = Math.round(px*0.34);
     const H = Math.round(px*1.5), base = Math.round(px*1.1);
     const W = Math.max(8, Math.ceil(m.width)) + pad*2;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const ctx = cv.getContext('2d');
     ctx.font = face; ctx.textBaseline = 'alphabetic';
-    if(glow){
-      // A halo baked behind the highlighted letters, so they stand out in the line.
-      ctx.shadowColor = glow; ctx.shadowBlur = px*0.22;
-      ctx.fillStyle = glow;
-      ctx.fillText(ch, pad, base); ctx.fillText(ch, pad, base);
+    if(halo > 0){
+      // A soft pale glow behind the letter: keeps dark ink legible over dark stone, and
+      // makes the highlighted Rs stand out against anything. Blurred, never a hard edge.
+      ctx.shadowColor = SENTENCE_HALO_COLOR;
+      ctx.shadowBlur = px*0.22*halo;
+      ctx.fillStyle = SENTENCE_HALO_COLOR;
+      const passes = halo >= 1 ? 3 : 1;
+      for(let i=0;i<passes;i++) ctx.fillText(ch, pad, base);
       ctx.shadowBlur = 0;
     }
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = body;
     ctx.fillText(ch, pad, base);
     return { tex: glyphCanvasTexture(cv), aspect: W/H, advance: m.width/H, padFrac: pad/H };
   });

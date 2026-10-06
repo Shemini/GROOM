@@ -175,8 +175,12 @@ function onMouseMove(e){
 }
 
 function handleKeyDown(e){
-  // Test trigger while the boss is being tuned: J makes the R recite immediately.
-  if(e.code==='KeyJ' && gameState==='playing' && typeof launchBossSentence === 'function'){ launchBossSentence(); return; }
+  // Test keys while the boss is being tuned: J recites (or makes it rise if it's down),
+  // K takes a whole round off it, for reaching the defeat without playing five rounds.
+  if(BOSS_DEBUG_KEYS && gameState==='playing'){
+    if(e.code==='KeyJ' && typeof bossDebugRecite === 'function'){ bossDebugRecite(); return; }
+    if(e.code==='KeyK' && typeof bossDebugTakeRound === 'function'){ bossDebugTakeRound(); return; }
+  }
   // A second Esc leaves the pause screen, without waiting on the browser's relock cooldown.
   if(e.code==='Escape' && gameState==='paused'){ resumeFromPause(); return; }
   if(e.code==='KeyR' && gameState==='playing') startReload();

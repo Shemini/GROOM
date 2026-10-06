@@ -139,8 +139,23 @@ const SENTENCE_FONT_PX = 200;     // resolution of each sentence letter's textur
 // THE R (boss) — currently in TEST MODE: present from the first wave, reciting once a wave.
 // =================================================================
 const BOSS_ENABLED = true;
-const BOSS_FROM_WAVE = 1;
+const BOSS_FROM_WAVE = 2;            // TEST: first rises at the start of this wave
 const BOSS_FIRST_DELAY = 6;          // seconds into a wave before it speaks
+// It isn't always there: it gets up off the ground at the start of a wave, and falls back
+// down when beaten. Both are slow, heavy and loud.
+const BOSS_RISE_TIME = 9.0;          // seconds to stand up
+const BOSS_FALL_TIME = 6.5;          // seconds to topple back down when defeated
+const BOSS_RESPAWN_ROUNDS = 2;       // TEST: rounds after a defeat before it rises again
+// Health: a fixed number of rounds, each worth an equal share. Within a round, every R it
+// sends is worth an equal slice of that share — 20 Rs in a round makes each 1% of the total.
+const BOSS_ROUNDS = 5;
+const BOSS_SHAKE = 0.07;             // camera shake at the peak of the rise or fall, metres
+// TEST KEYS while tuning: J recites (or makes it rise if it's down); K takes a whole round.
+const BOSS_DEBUG_KEYS = true;
+const BOSS_RUMBLE_VOLUME = 0.85;
+// A recorded rumble in Audio/Boss/, without extension, replaces the synthesised one. null =
+// synthesise it. (Left null so the game doesn't request a file that doesn't exist yet.)
+const BOSS_RUMBLE_FILE = null;
 // Each sentence can carry a recording, in Audio/Boss/. While the voice plays, the letters
 // stream out of the R at the speed of the speech, so the words leave its face as they're said.
 const BOSS_SENTENCES = [
@@ -171,16 +186,20 @@ const BOSS_EXTRA_DISTANCE = 170;     // metres beyond the level's edge
 const BOSS_DEPTH_FRACTION = 0.16;    // extrusion depth, as a fraction of letter height
 const BOSS_SPEAK_TIME = 3.0;
 // The flying sentence
-const SENTENCE_LETTER_HEIGHT = 7.5;  // metres — large enough to survive the pixel filter
+const SENTENCE_LETTER_HEIGHT = 15;   // metres — doubled; large and legible through the pixel filter
 const SENTENCE_R_SCALE = 1.4;        // highlighted Rs are drawn this much larger
 const SENTENCE_SPACE_ADVANCE = 0.32; // word gap, as a fraction of letter height
-const SENTENCE_ALTITUDE = 19;        // metres above the player's eye
-const SENTENCE_SWEEP_DISTANCE = 48;  // metres in front of the player where it crosses
-const SENTENCE_SWEEP_HALFWIDTH = 55;
+const SENTENCE_ALTITUDE = 21;        // metres above the player's eye
+const SENTENCE_SWEEP_DISTANCE = 62;  // metres in front of the player where it crosses
+const SENTENCE_SWEEP_HALFWIDTH = 75;
 const SENTENCE_SPEED_TRAVEL = 85;    // m/s on its way in and out
-const SENTENCE_SPEED_READ = 16;      // m/s while over the arena, so it can be read
-const SENTENCE_INK = 0x2b2433;       // ordinary letters: dark ink against the sky
-const SENTENCE_R_BODY = 0xfff6e2;    // highlighted Rs: pale, with a halo in their font's colour
+// Doubled along with the letters: the same speed with twice-as-wide letters would scroll
+// half as many characters past per second, and the line would drag.
+const SENTENCE_SPEED_READ = 32;      // m/s while over the arena, so it can be read
+const SENTENCE_INK = '#2b2433';      // ordinary letters: dark ink against the sky
+const SENTENCE_HALO_COLOR = '#fff6e0'; // the soft glow behind letters
+const SENTENCE_INK_HALO = 0.45;      // how much the ordinary letters glow (0 = none);
+                                     // highlighted Rs always glow fully
 // R enemies come only from the boss. Set true to also mix them into ordinary waves.
 const R_IN_NORMAL_WAVES = false;
 
@@ -861,6 +880,16 @@ const GUITARRISTA_TRACKS = [
 // them as interchangeable — a folder called 'canciones' will 404 when the code asks for
 // 'Canciones'. Set these to match exactly what is on disk.
 const GUITARRISTA_FOLDER_CANCIONES = 'Canciones';
+
+// Boss music. When the R rises, the guitarist breaks off whatever he's playing and switches
+// to these; when it falls, he goes back to his normal set. To add songs:
+//   1. put the .ogg files in   Audio/Guitarrista/CancionesBoss/
+//   2. list each one below as  { file:'Name_Without_Extension', title:'Shown title' },
+// While this list is empty he simply keeps playing his normal songs through the fight.
+const GUITARRISTA_FOLDER_BOSS = 'CancionesBoss';
+const GUITARRISTA_BOSS_TRACKS = [
+  // { file:'Ejemplo_Cancion_Boss', title:'Ejemplo' },
+];
 const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (the sting below is separate)
 const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';
 const GUITARRISTA_FELICITACIONES_COUNT = 4;   // four files on disk

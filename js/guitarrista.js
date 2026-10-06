@@ -21,6 +21,8 @@ let guitarristaHitThisShot = false; // one registered hit per trigger pull (shot
 // --- music playback -------------------------------------------------------
 let musicEl = null, musicGain = null, musicPan = null;
 let musicBag = [];                  // shuffle bag: no repeats until every track has played
+let bossMusicBag = [];              // the same, for the boss set
+let bossMusicMode = false;          // true while the R is up
 let musicCurrentTitle = '';
 let emptyPlaylistWarned = false;
 
@@ -52,18 +54,49 @@ function startNextTrack(){
   }
   initMusicChain();
   if(!musicEl) return;
-  if(musicBag.length===0) musicBag = shuffle(GUITARRISTA_TRACKS.slice());
-  const track = musicBag.pop();
+  // During the boss he plays from the boss set — if there is one yet. With no boss songs
+  // declared he just carries on with his normal set rather than going quiet.
+  const bossSet = bossMusicMode && GUITARRISTA_BOSS_TRACKS.length > 0;
+  let track, folder;
+  if(bossSet){
+    if(bossMusicBag.length===0) bossMusicBag = shuffle(GUITARRISTA_BOSS_TRACKS.slice());
+    track = bossMusicBag.pop();
+    folder = GUITARRISTA_FOLDER_BOSS;
+  } else {
+    if(musicBag.length===0) musicBag = shuffle(GUITARRISTA_TRACKS.slice());
+    track = musicBag.pop();
+    folder = GUITARRISTA_FOLDER_CANCIONES;
+  }
   musicCurrentTitle = track.title || track.file;
   // Filenames may contain accents or spaces (e.g. 'Sombras_de_Jaén'), which have to be
   // percent-encoded to survive the round trip to the server reliably.
-  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/${GUITARRISTA_FOLDER_CANCIONES}/${encodeURIComponent(track.file)}.${AUDIO_EXT}`;
+  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/${folder}/${encodeURIComponent(track.file)}.${AUDIO_EXT}`;
   console.log('Guitarrista: playing "' + musicCurrentTitle + '" -> ' + musicEl.src);
   musicEl.play().catch(()=>{
     console.warn('Guitarrista: could not play track ' + track.file);
     musicCurrentTitle = '';
   });
   updateMusicHUD();
+}
+
+// The R has risen: break off mid-song and switch to the boss set.
+function guitarristaBeginBossMusic(){
+  if(bossMusicMode) return;
+  bossMusicMode = true;
+  if(GUITARRISTA_BOSS_TRACKS.length > 0) cutToNextTrack();
+}
+// The R has fallen: back to the normal set, again without waiting for the song to end.
+function guitarristaEndBossMusic(){
+  if(!bossMusicMode) return;
+  bossMusicMode = false;
+  if(GUITARRISTA_BOSS_TRACKS.length > 0) cutToNextTrack();
+}
+// Only if he's actually playing: a dismissed or silent guitarist stays silent.
+function cutToNextTrack(){
+  if(!guitarrista) return;
+  if(guitarrista.state!=='home_playing' && guitarrista.state!=='following') return;
+  if(musicEl){ try{ musicEl.pause(); }catch(e){} }
+  startNextTrack();
 }
 
 function stopMusic(){

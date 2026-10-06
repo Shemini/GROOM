@@ -20,6 +20,10 @@ let boss = null;                 // { mesh, home, height, speakUntil }
 let bossSentences = [];          // letters in flight
 let bossMinions = [];            // Rs falling from the sky toward a spawn point
 let bossNextSentenceAt = -1;     // game time of the next scheduled recital
+// Recitals launched but whose letters are still being drawn. Building the letters is
+// asynchronous, and without this there's a gap where the recital is neither scheduled nor
+// in flight — long enough for a wave to end and lose that round's Rs entirely.
+let bossRecitalsBuilding = 0;
 
 // ---------- construction ----------
 
@@ -76,13 +80,123 @@ function initBoss(){
   const needed = dist + radius + height*1.2;
   if(camera.far < needed){ camera.far = needed; camera.updateProjectionMatrix(); }
 
-  boss = { mesh, home, height, speakUntil: -1, swayPhase: Math.random()*6.28 };
+  // Yaw first, then tilt about its own width: that's what lets it lie on its back and get up
+  // facing the player, rather than tipping about a fixed world axis.
+  mesh.rotation.order = 'YXZ';
+  mesh.visible = false;
+
+  boss = {
+    mesh, home, height, speakUntil: -1, swayPhase: Math.random()*6.28,
+    state: 'absent',            // absent | rising | active | falling
+    stateAt: 0,                 // game time the current state began
+    nextRiseWave: BOSS_FROM_WAVE,
+    roundsDone: 0,              // completed rounds, each worth 1/BOSS_ROUNDS of its health
+    round: null,                // { id, expected, killed } for the round in progress
+    roundCounter: 0,
+    barLag: 1,                  // the pale trail behind the health fill
+  };
+}
+
+// ---------- lifecycle: rising, standing, falling ----------
+const BOSS_LYING = -Math.PI/2;   // flat on its back, top pointing away from the arena
+
+function bossBeginRise(){
+  boss.state = 'rising';
+  boss.stateAt = gameTime;
+  boss.roundsDone = 0;
+  boss.barLag = 1;
+  boss.mesh.visible = true;
+  boss.mesh.rotation.x = BOSS_LYING;
+  startBossRumble(BOSS_RISE_TIME, false);
+  if(typeof guitarristaBeginBossMusic === 'function') guitarristaBeginBossMusic();
+  showWaveBanner(t('bn.bossRise'), t('bn.bossRiseSub'));
+  setBossBarVisible(true);
+}
+
+function bossBeginFall(){
+  boss.state = 'falling';
+  boss.stateAt = gameTime;
+  boss.round = null;
+  bossNextSentenceAt = -1;
+  boss.nextRiseWave = wave.number + BOSS_RESPAWN_ROUNDS;
+  startBossRumble(BOSS_FALL_TIME, true);
+  if(typeof guitarristaEndBossMusic === 'function') guitarristaEndBossMusic();
+  showWaveBanner(t('bn.bossFall'), t('bn.bossFallSub'));
+}
+
+function easeInOutCubic(x){ return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3)/2; }
+
+// Tilt about its base for the current state: 0 is upright, BOSS_LYING is flat on its back.
+function bossTiltNow(){
+  const st = boss.state;
+  if(st === 'rising'){
+    const k = Math.min(1, (gameTime - boss.stateAt)/BOSS_RISE_TIME);
+    if(k < 0.82){
+      // Heaving itself up: eased, with a stagger part way, like something very heavy
+      // struggling to its feet.
+      const p = k/0.82;
+      return BOSS_LYING*(1 - easeInOutCubic(p)) + Math.sin(p*Math.PI*2.5)*0.05*(1-p);
+    }
+    // ...then it overshoots onto its toes a little and settles back.
+    const p = (k-0.82)/0.18;
+    return 0.07*Math.sin(p*Math.PI);
+  }
+  if(st === 'falling'){
+    // The rise in reverse: it sways where it stands, then topples backwards, accelerating.
+    const k = Math.min(1, (gameTime - boss.stateAt)/BOSS_FALL_TIME);
+    if(k < 0.25) return 0.06*Math.sin((k/0.25)*Math.PI*2);
+    const p = (k-0.25)/0.75;
+    return BOSS_LYING*p*p;
+  }
+  return 0;
+}
+
+// Shake for the moment: builds through the rise, and slams at the end of the fall.
+function bossShakeNow(){
+  if(boss.state === 'rising'){
+    const k = Math.min(1, (gameTime - boss.stateAt)/BOSS_RISE_TIME);
+    return BOSS_SHAKE*Math.sin(k*Math.PI);
+  }
+  if(boss.state === 'falling'){
+    const tt = gameTime - boss.stateAt;
+    const k = Math.min(1, tt/BOSS_FALL_TIME);
+    let s = BOSS_SHAKE*0.6*k*k;
+    const since = tt - BOSS_FALL_TIME;            // after it hits the ground
+    if(since > 0) s = BOSS_SHAKE*2.2*Math.max(0, 1 - since/1.2);
+    return s;
+  }
+  return 0;
+}
+
+function updateBossLifecycle(){
+  if(boss.state === 'rising' && gameTime - boss.stateAt >= BOSS_RISE_TIME){
+    boss.state = 'active';
+    boss.stateAt = gameTime;
+  }
+  if(boss.state === 'falling'){
+    const since = gameTime - boss.stateAt - BOSS_FALL_TIME;
+    if(since >= 0 && !boss.impactDone){ boss.impactDone = true; bossImpactThud(); }
+    if(since > 1.4){
+      boss.state = 'absent';
+      boss.impactDone = false;
+      boss.mesh.visible = false;
+      setBossBarVisible(false);
+    }
+  }
+  // Applied after the player has moved this frame, and overwritten by the next move, so it
+  // jolts the view without ever drifting the player's actual position.
+  const shake = bossShakeNow();
+  if(shake > 0.001){
+    camera.position.x += (Math.random()-0.5)*shake*2;
+    camera.position.y += (Math.random()-0.5)*shake*2;
+    camera.position.z += (Math.random()-0.5)*shake*2;
+  }
 }
 
 // ---------- the boss itself ----------
 
 function updateBossBody(delta, t){
-  if(!boss) return;
+  if(!boss || boss.state === 'absent') return;
   const m = boss.mesh;
   // Slowly turns its face toward the player, so the R reads from anywhere in the level.
   const want = Math.atan2(camera.position.x - boss.home.x, camera.position.z - boss.home.z);
@@ -101,6 +215,7 @@ function updateBossBody(delta, t){
   }
   m.position.y = boss.home.y + bob;
   m.rotation.z = roll;
+  m.rotation.x = bossTiltNow();
   const base = boss.height / (m.geometry.boundingBox.max.y - m.geometry.boundingBox.min.y);
   m.scale.set(base*pulse, base*pulse, base*pulse);
 }
@@ -136,7 +251,7 @@ function letterFonts(){
 
 function launchBossSentence(text){
   if(!boss) initBoss();
-  if(!boss) return;
+  if(!boss || boss.state !== 'active') return;
   const entry = text ? { text } : BOSS_SENTENCES[Math.floor(Math.random()*BOSS_SENTENCES.length)];
   text = entry.text;
   // If there's a recording, it sets the pace: the R shudders for as long as it speaks, and the
@@ -146,16 +261,23 @@ function launchBossSentence(text){
 
   const fonts = letterFonts();
   const hard = strongRIndices(text);
+  // Every R this recital will send is known now, which sets what each one is worth.
+  if(boss.round) boss.round.expected += hard.size * BOSS_DROPS_PER_R;
   const chars = [...text];
   // Each letter gets a random font. A highlighted R drops enemies of the font it's drawn in.
   const plan = chars.map((ch, i)=>{
     if(ch === ' ') return { ch, space:true };
     const def = fonts[Math.floor(Math.random()*fonts.length)];
-    const glow = hard.has(i) ? '#' + new THREE.Color(def.tint).getHexString() : null;
-    return { ch, def, glow };
+    const glow = hard.has(i);
+    // A highlighted R wears its enemy's colour, so you can see what it's going to drop.
+    const body = glow ? '#' + new THREE.Color(def.tint).getHexString() : SENTENCE_INK;
+    return { ch, def, glow, body };
   });
-  Promise.all(plan.map(p=> p.space ? null : buildSentenceLetter(p.def.glyph, p.ch, p.glow)))
-    .then(glyphs=>{ if(boss) startSentenceFlight(plan, glyphs, voiceDur); });
+  bossRecitalsBuilding++;
+  Promise.all(plan.map(p=> p.space ? null : buildSentenceLetter(p.def.glyph, p.ch, p.body, p.glow ? 1 : SENTENCE_INK_HALO)))
+    .then(glyphs=>{ if(boss) startSentenceFlight(plan, glyphs, voiceDur); })
+    .catch(e=>console.warn('Boss sentence could not be built', e))
+    .finally(()=>{ bossRecitalsBuilding = Math.max(0, bossRecitalsBuilding - 1); });
 }
 
 function startSentenceFlight(plan, glyphs, voiceDur){
@@ -167,11 +289,11 @@ function startSentenceFlight(plan, glyphs, voiceDur){
     const g = glyphs[i];
     const scale = p.glow ? SENTENCE_R_SCALE : 1;
     const adv = g.advance*H*scale;
+    // Colour is in the texture. Drawn over the scene rather than depth-tested against it:
+    // the line flies high enough to pass behind the cathedral from many spots, and a sentence
+    // you can only half see defeats the point of it being a sentence.
     const mat = new THREE.MeshBasicMaterial({
-      map: g.tex, transparent: true, depthWrite: false,
-      // Plain letters are dark ink against the sky; the hard Rs are pale with a halo in
-      // their own font's colour, so each glowing R already hints at what it'll drop.
-      color: p.glow ? SENTENCE_R_BODY : SENTENCE_INK,
+      map: g.tex, transparent: true, depthWrite: false, depthTest: false,
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), mat);
     mesh.scale.set(g.aspect*H*scale, H*scale, 1);
@@ -248,6 +370,11 @@ function updateSentences(delta, t){
           L.nextDrop = t + BOSS_DROP_INTERVAL*(0.75 + Math.random()*0.5);
           dropMinion(L);
         }
+        // Leaving the arena with Rs still owed: send the rest now. Each one is already
+        // counted toward the round, so skipping any would leave the boss unkillable.
+        if(L.dropsLeft > 0 && s >= S.sweepEnd + 40){
+          while(L.dropsLeft > 0){ L.dropsLeft--; dropMinion(L); }
+        }
       }
     }
     if(tail > S.total){
@@ -265,9 +392,11 @@ function updateSentences(delta, t){
 function dropMinion(L){
   const def = L.def;
   const tex = enemyTextures[def.id];
-  if(!tex) return;
-  const to = findSpawnPosition();
-  if(!to) return;
+  const to = tex ? findSpawnPosition() : null;
+  if(!tex || !to){
+    if(boss && boss.round) boss.round.expected = Math.max(0, boss.round.expected - 1);
+    return;
+  }
   const img = tex.image;
   const h = AVG_ZOMBIE_HEIGHT*def.heightMult;
   const w = h*(img.width/img.height);
@@ -280,7 +409,7 @@ function dropMinion(L){
   scene.add(mesh);
   const dist = from.distanceTo(to);
   bossMinions.push({
-    mesh, def, from, to, h, t: 0,
+    mesh, def, from, to, h, t: 0, roundId: boss && boss.round ? boss.round.id : -1,
     dur: Math.min(2.4, Math.max(1.0, dist/BOSS_MINION_SPEED)),
     arc: Math.min(14, dist*0.12),
     spin: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random()*2),
@@ -306,7 +435,8 @@ function updateMinions(delta){
 }
 
 function landMinion(M){
-  spawnOneEnemy(M.def, M.to.clone(), { noCount:true });
+  const z = spawnOneEnemy(M.def, M.to.clone(), { noCount:true });
+  if(z){ z.fromBoss = true; z.bossRoundId = M.roundId; }
   if(typeof spawnParticles === 'function'){
     spawnParticles(M.to.clone().setY(M.to.y + 0.1), {
       count: 18, dir: new THREE.Vector3(0,1,0), spread: 1.4,
@@ -377,6 +507,7 @@ function stopBossVoice(){
 // Pausing freezes the sentence mid-air, so the voice has to stop with it and pick up from
 // the same word — otherwise it keeps talking over a frozen sky and finishes out of sync.
 function syncBossVoicePause(playing){
+  if(!playing && bossRumble) bossRumble.gain.gain.value = 0;   // restored by the next update
   if(!bossVoice || !audioCtx) return;
   if(!playing && !bossVoice.paused){
     bossVoice.offset = audioCtx.currentTime - bossVoice.startedAt;
@@ -389,34 +520,205 @@ function syncBossVoicePause(playing){
   }
 }
 
+// ---------- health and rounds ----------
+// The bar is split into BOSS_ROUNDS equal shares. In a round, every R the boss sends is
+// worth an equal slice of that round's share, so the bar always empties by exactly one share
+// per round however many Rs it took.
+function bossHealth(){
+  if(!boss) return 1;
+  let done = boss.roundsDone;
+  const r = boss.round;
+  if(r && r.expected > 0) done += Math.min(1, r.killed / r.expected);
+  return Math.max(0, 1 - done/BOSS_ROUNDS);
+}
+
+function startBossRound(){
+  boss.roundCounter++;
+  boss.round = { id: boss.roundCounter, expected: 0, killed: 0 };
+}
+
+// Called by killZombie for every enemy; only the Rs this round sent count against it.
+function bossOnEnemyKilled(z){
+  if(!boss || !boss.round || z.bossRoundId !== boss.round.id) return;
+  boss.round.killed++;
+  if(bossHealth() <= 1e-6 && boss.state === 'active') bossBeginFall();
+}
+
+// A wave can't end while the boss still has Rs to send or in the air — otherwise a fast
+// player could clear the wave before the recital and skip that round's share of damage.
+function bossBlocksWaveEnd(){
+  if(!boss || (boss.state !== 'rising' && boss.state !== 'active')) return false;
+  return bossNextSentenceAt >= 0 || bossRecitalsBuilding > 0 ||
+         bossSentences.length > 0 || bossMinions.length > 0;
+}
+
+function bossOnWaveClear(){
+  if(!boss || !boss.round) return;
+  const r = boss.round;
+  if(r.expected > 0) boss.roundsDone += Math.min(1, r.killed / r.expected);
+  boss.round = null;
+}
+
 // ---------- scheduling ----------
 
 function bossOnWaveStart(){
-  if(!BOSS_ENABLED || wave.number < BOSS_FROM_WAVE) return;
-  bossNextSentenceAt = gameTime + BOSS_FIRST_DELAY;
+  if(!BOSS_ENABLED) return;
+  if(!boss) initBoss();
+  if(!boss) return;
+  if(boss.state === 'absent' && wave.number >= boss.nextRiseWave){
+    bossBeginRise();
+    startBossRound();
+    // It speaks once it's on its feet, not while it's still getting up.
+    bossNextSentenceAt = gameTime + BOSS_RISE_TIME + BOSS_FIRST_DELAY;
+  } else if(boss.state === 'active'){
+    startBossRound();
+    bossNextSentenceAt = gameTime + BOSS_FIRST_DELAY;
+  }
 }
 
 function updateBoss(delta, t){
   if(!BOSS_ENABLED) return;
   if(!boss) initBoss();
   if(!boss) return;
+  updateBossLifecycle();
   updateBossBody(delta, gameTime);
-  if(bossNextSentenceAt >= 0 && gameTime >= bossNextSentenceAt){
+  updateBossRumble();
+  if(boss.state === 'active' && bossNextSentenceAt >= 0 && gameTime >= bossNextSentenceAt){
     bossNextSentenceAt = -1;
     launchBossSentence();
   }
   updateBossVoiceDirection();
   updateSentences(delta, gameTime);
   updateMinions(delta);
+  updateBossBar(delta);
 }
 
-// Clears everything the boss has in flight; the boss itself stays on the horizon.
+// Test keys while tuning the fight.
+function bossDebugRecite(){
+  if(!boss) initBoss();
+  if(!boss) return;
+  if(boss.state === 'absent'){ bossBeginRise(); startBossRound(); bossNextSentenceAt = gameTime + BOSS_RISE_TIME + 1; return; }
+  if(boss.state === 'active'){ if(!boss.round) startBossRound(); launchBossSentence(); }
+}
+function bossDebugTakeRound(){
+  if(!boss || boss.state !== 'active') return;
+  boss.roundsDone = Math.min(BOSS_ROUNDS, boss.roundsDone + 1);
+  if(bossHealth() <= 1e-6) bossBeginFall();
+}
+
+// ---------- health bar ----------
+function setBossBarVisible(on){
+  const el2 = document.getElementById('bossBar');
+  if(el2) el2.classList.toggle('on', on);
+}
+function updateBossBar(delta){
+  const el2 = document.getElementById('bossBar');
+  if(!el2 || !boss) return;
+  // Fills up as it rises, like a boss intro; drains as it's beaten.
+  let hp = bossHealth();
+  if(boss.state === 'rising') hp = Math.min(1, (gameTime - boss.stateAt)/BOSS_RISE_TIME);
+  if(boss.state === 'falling') hp = 0;
+  // The pale trail lingers a moment before catching up, so each hit's size is readable.
+  if(boss.barLag < hp) boss.barLag = hp;
+  else boss.barLag += (hp - boss.barLag)*Math.min(1, delta*2.2);
+  const fill = document.getElementById('bossBarFill');
+  const lag = document.getElementById('bossBarLag');
+  if(fill) fill.style.width = (hp*100).toFixed(2) + '%';
+  if(lag) lag.style.width = (boss.barLag*100).toFixed(2) + '%';
+  const name = document.getElementById('bossBarName');
+  if(name && name.textContent !== t('boss.name')) name.textContent = t('boss.name');
+}
+
+// ---------- rumble ----------
+// Synthesised: brown noise through a low-pass, plus a slow sub tone, swelling with the
+// motion. If a recorded rumble is added later, set BOSS_RUMBLE_FILE and it's used instead.
+let bossRumble = null;   // { nodes..., dur, at, falling }
+
+function startBossRumble(duration, falling){
+  stopBossRumble();
+  if(!audioCtx) return;
+  const ctx = audioCtx;
+  const gain = ctx.createGain(); gain.gain.value = 0;
+  const panner = ctx.createStereoPanner();
+  gain.connect(panner).connect(masterGain);
+  const sources = [];
+  const sample = (BOSS_RUMBLE_FILE && typeof wsndBuffers !== 'undefined') ? wsndBuffers[BOSS_RUMBLE_FILE] : null;
+  if(sample){
+    const s = ctx.createBufferSource(); s.buffer = sample; s.loop = true;
+    s.connect(gain); s.start(); sources.push(s);
+  } else {
+    const len = ctx.sampleRate*2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for(let i=0;i<len;i++){ last = (last + 0.02*(Math.random()*2-1))/1.02; d[i] = last*3.5; }
+    const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 120;
+    noise.connect(lp).connect(gain); noise.start(); sources.push(noise);
+    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 38;
+    const subGain = ctx.createGain(); subGain.gain.value = 0.55;
+    sub.connect(subGain).connect(gain); sub.start(); sources.push(sub);
+    // A slow wobble in the sub, so it groans rather than hums.
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.6;
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 6;
+    lfo.connect(lfoGain).connect(sub.frequency); lfo.start(); sources.push(lfo);
+  }
+  bossRumble = { gain, panner, sources, dur: duration, at: gameTime, falling };
+}
+
+// Loudness follows the motion: swelling through the rise; building through the fall.
+function updateBossRumble(){
+  if(!bossRumble) return;
+  const k = (gameTime - bossRumble.at)/bossRumble.dur;
+  if(k >= 1.05){ stopBossRumble(); return; }
+  let env = bossRumble.falling ? Math.min(1, k*1.2) : Math.sin(Math.min(1,k)*Math.PI);
+  env = Math.max(0, Math.min(1, env)) * (k > 1 ? Math.max(0, 1-(k-1)*20) : 1);
+  bossRumble.gain.gain.value = env * BOSS_RUMBLE_VOLUME;
+  if(boss) bossRumble.panner.pan.value = computePan(bossVoicePosition());
+}
+
+function stopBossRumble(){
+  if(!bossRumble) return;
+  bossRumble.sources.forEach(s=>{ try{ s.stop(); }catch(e){} });
+  try{ bossRumble.gain.disconnect(); }catch(e){}
+  bossRumble = null;
+}
+
+// The ground-shaking moment it lands on its back.
+function bossImpactThud(){
+  if(!audioCtx) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+  const len = Math.floor(ctx.sampleRate*1.6);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for(let i=0;i<len;i++){ last = (last + 0.04*(Math.random()*2-1))/1.04; d[i] = last*4*Math.pow(1 - i/len, 2.2); }
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+  const g = ctx.createGain(); g.gain.value = BOSS_RUMBLE_VOLUME*1.6;
+  const pan = ctx.createStereoPanner(); if(boss) pan.pan.value = computePan(bossVoicePosition());
+  src.connect(lp).connect(g).connect(pan).connect(masterGain);
+  src.start(now);
+}
+
+// Clears everything in flight and puts the boss back down, as at the start of a run.
 function resetBoss(){
   bossSentences.forEach(S=>S.letters.forEach(L=>{ scene.remove(L.mesh); L.mesh.geometry.dispose(); L.mesh.material.dispose(); }));
   bossSentences = [];
   bossMinions.forEach(M=>{ scene.remove(M.mesh); M.mesh.geometry.dispose(); M.mesh.material.dispose(); });
   bossMinions = [];
   bossNextSentenceAt = -1;
+  bossRecitalsBuilding = 0;
   stopBossVoice();
-  if(boss) boss.speakUntil = -1;
+  stopBossRumble();
+  if(boss){
+    boss.speakUntil = -1;
+    boss.state = 'absent';
+    boss.mesh.visible = false;
+    boss.nextRiseWave = BOSS_FROM_WAVE;
+    boss.roundsDone = 0; boss.round = null; boss.roundCounter = 0;
+    boss.impactDone = false;
+  }
+  setBossBarVisible(false);
+  if(typeof guitarristaEndBossMusic === 'function') guitarristaEndBossMusic();
 }
