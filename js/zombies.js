@@ -383,7 +383,13 @@ function updateZombies(delta, elapsed){
     // cancels the hit, so how often an enemy can hurt the player is governed by the length of
     // its attack animation — which is what makes a slow, heavy attacker meaningfully
     // different from a fast one rather than just a numbers change.
-    if(!z.attacking && inMeleeRange){
+    // Letter behaviours, by font.
+    if(z.def.hops && !z.attacking && !inMeleeRange) updateHop(z, delta, elapsed);
+    if(z.def.kamikaze) updateKamikaze(z, distToPlayer, elapsed);
+    if(z.def.spawner) updateSpawner(z, delta);
+
+    // The kamikaze never swings — getting close is how it attacks.
+    if(!z.attacking && inMeleeRange && !z.def.kamikaze){
       z.attacking = true;
       z.attackHitsDone = 0;
       z.animKey = null; // force the animation driver to restart the attack cycle from frame 0
@@ -555,7 +561,9 @@ function fireFrameEvents(z, key, frame){
       // otherwise a single punch would follow someone across the room.
       const landed = (done === 0) || playerWithinReach(z);
       if(landed){
-        if(def.rangedAttack){
+        if(def.rangedMine){
+          throwFloatingR(z);
+        } else if(def.rangedAttack){
           // Thrown at where the player IS RIGHT NOW, landing a moment later — so unlike a
           // melee swing, this one genuinely can be side-stepped once it's in the air.
           throwRice(z, def.rangedAttack);
@@ -700,9 +708,16 @@ function damageZombie(z, amount, opts){
 // the actual removal from the scene is deferred, until the death animation has played through.
 // updateZombieAnimations() performs the real cleanup once z.deathAnimDone is set.
 function killZombie(z, headshot){
-  if(typeof bossOnEnemyKilled === 'function') bossOnEnemyKilled(z);
   if(z.dying) return; // guard against a second damage source killing the same corpse
   z.dying = true;
+  // After the guard, not before: two hits finishing the same R in one frame used to credit
+  // the boss twice, draining its health faster than its rules allow.
+  if(typeof bossOnEnemyKilled === 'function') bossOnEnemyKilled(z);
+  stopKamikazeFuse(z);
+  // An elite always leaves something behind.
+  if(z.elite) spawnDropPickup(z.group.position.clone(), ['ammo','health','double','instakill'][Math.floor(Math.random()*4)]);
+  // A kamikaze that blew itself up still has to count as gone, but it isn't the player's kill.
+  if(z.noReward){ wave.killedThisWave++; return; }
   z.deathAnimDone = false;
   soundDeath(computePan(z.group.position));
   if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
@@ -895,7 +910,7 @@ function applyStatusTint(z, elapsed){
   if(elapsed < z.drunkUntil) active.push(STATUS_TINT_DRUNK);
 
   let want;
-  if(active.length === 0) want = (z.def.tint !== undefined) ? z.def.tint : 0xffffff;
+  if(active.length === 0) want = (z.baseTint !== undefined) ? z.baseTint : ((z.def.tint !== undefined) ? z.def.tint : 0xffffff);
   else if(active.length === 1) want = active[0];
   else active.length && (want = active[Math.floor(elapsed/STATUS_FLICKER_PERIOD) % active.length]);
 
@@ -1005,7 +1020,7 @@ function buildGlyphTexture(def){
     const probe = document.createElement('canvas').getContext('2d');
     probe.font = face;
     const m = probe.measureText(g.char);
-    const pad = 6;
+    const pad = 6 + Math.ceil(GLYPH_FONT_PX*(g.boost||0));
     const inkL = m.actualBoundingBoxLeft  || 0;
     const inkR = m.actualBoundingBoxRight || m.width;
     const inkA = m.actualBoundingBoxAscent  || GLYPH_FONT_PX*0.75;
@@ -1014,6 +1029,10 @@ function buildGlyphTexture(def){
     const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
     const ctx = cv.getContext('2d');
     ctx.font = face; ctx.textBaseline = 'alphabetic';
+    // Fonts drawn as thin sketchy outlines vanish through the pixel filter at a distance, so
+    // their strokes are thickened — in the letter's own colour, a heavier pen rather than a
+    // contrasting border.
+    if(g.boost){ ctx.lineJoin='round'; ctx.lineWidth = GLYPH_FONT_PX*g.boost; ctx.strokeStyle='#ffffff'; ctx.strokeText(g.char, pad + inkL, pad + inkA); }
     ctx.fillStyle = '#ffffff';
     ctx.fillText(g.char, pad + inkL, pad + inkA);
     shadeGlyph(ctx, w, h);
@@ -1062,6 +1081,7 @@ function buildSentenceLetter(g, ch, body, halo, pixel){
       ctx.fillStyle = SENTENCE_TEXT_SHADOW;
       ctx.fillText(ch, pad + o, base + o);
     }
+    if(g.boost){ ctx.lineJoin='round'; ctx.lineWidth = px*g.boost; ctx.strokeStyle = body; ctx.strokeText(ch, pad, base); }
     ctx.fillStyle = body;
     ctx.fillText(ch, pad, base);
     const tex = glyphCanvasTexture(cv);
@@ -1106,6 +1126,22 @@ function updateGlyphMotion(z){
   // A hit sets the letter rattling for as long as the flash lasts.
   if(z.flashActive) roll += Math.sin(clock.getElapsedTime()*55)*0.12*(z.flashTimer/HIT_FLASH_TIME);
 
+  // Kranky's hop: up in an arc, leaning into the direction it's going.
+  if(z.hopLift){ lift += z.hopLift*0.32; roll += z.hopLift*0.3*(z.hopX >= 0 ? -1 : 1); sy *= 1 + z.hopLift*0.08; }
+
+  // A lit kamikaze throbs and flickers, faster and harder the closer it is to going off, so
+  // the countdown can be read at a glance without any timer on screen.
+  if(z.fuseLit && !z.dying){
+    const k = Math.max(0, Math.min(1, (gameTime - z.fuseStart)/R_KAMIKAZE_FUSE));
+    const freq = 4 + 26*k*k;
+    const beat = Math.abs(Math.sin(clock.getElapsedTime()*freq));
+    const throb = 1 + (0.05 + 0.15*k)*beat;
+    sx *= throb; sy *= throb;
+    const on = Math.sin(clock.getElapsedTime()*freq*1.3) > 0;
+    const glow = on ? (0.15 + 0.65*k) : 0;
+    z.billboard.material.emissive.setRGB(glow, glow*0.92, glow*0.8);
+  }
+
   const hh = z.height, ww = z.width;
   z.billboard.scale.set(ww*sx, hh*sy, 1);
   z.billboard.position.y = hh*sy/2 + lift*hh;
@@ -1122,4 +1158,201 @@ function spawnGlyphBurst(z){
     speed:[2.5, 5.5], colors:[col, col, 0xffffff],
     size:[0.08, 0.16], drag:1.4, gravity:9, life:1.1, groundY: z.feetY,
   });
+}
+
+// =================================================================
+// LETTER ENEMY BEHAVIOURS
+// =================================================================
+
+// An elite: its font's colour instead of black, a size up, three times the health and
+// twice the bite. One is sent per highlighted R in a sentence.
+function applyEliteR(z){
+  if(!z || z.elite) return;
+  z.elite = true;
+  z.hp *= R_ELITE_HP; z.maxHp *= R_ELITE_HP;
+  z.dmg *= R_ELITE_DAMAGE;
+  z.height *= R_ELITE_SCALE; z.width *= R_ELITE_SCALE;
+  z.collisionRadius = (z.collisionRadius || ZOMBIE_RADIUS) * R_ELITE_SCALE;
+  z.billboard.scale.set(z.width, z.height, 1);
+  z.billboard.position.y = z.height/2;
+  if(z.blob) z.blob.scale.multiplyScalar(R_ELITE_SCALE);
+  z.baseTint = z.def.eliteTint;
+  z.tintShown = null;   // force the next tint pass to repaint
+}
+
+// --- Kranky: sideways hops ---
+// Every so often it springs sideways off its line, which makes it much harder to keep in
+// the crosshair than its speed alone would suggest.
+function updateHop(z, delta, elapsed){
+  if(z.hopT > 0){
+    const k = 1 - z.hopT/R_HOP_TIME;
+    const step = (z.hopDist/R_HOP_TIME)*delta;
+    const nx = z.group.position.x + z.hopX*step, nz = z.group.position.z + z.hopZ*step;
+    const fy = getFloorY(nx, nz, z.feetY + 1.2);
+    // Never hop into a wall or off a ledge: just cut the hop short.
+    if(!isPositionBlocked(nx, nz) && fy !== null && Math.abs(fy - z.feetY) < 1.0){
+      z.group.position.x = nx; z.group.position.z = nz; z.feetY = fy;
+      z.group.position.y = fy;
+    } else { z.hopT = 0; z.hopLift = 0; return; }
+    z.hopLift = Math.sin(k*Math.PI);
+    z.hopT -= delta;
+    if(z.hopT <= 0){ z.hopT = 0; z.hopLift = 0; }
+    return;
+  }
+  z.hopTimer = (z.hopTimer === undefined) ? R_HOP_INTERVAL[0] + Math.random()*(R_HOP_INTERVAL[1]-R_HOP_INTERVAL[0]) : z.hopTimer - delta;
+  if(z.hopTimer > 0) return;
+  z.hopTimer = R_HOP_INTERVAL[0] + Math.random()*(R_HOP_INTERVAL[1]-R_HOP_INTERVAL[0]);
+  // Sideways relative to the line toward the player, left or right at random.
+  const dx = camera.position.x - z.group.position.x, dz = camera.position.z - z.group.position.z;
+  const d = Math.hypot(dx, dz) || 1, side = Math.random() < 0.5 ? -1 : 1;
+  z.hopX = (-dz/d)*side; z.hopZ = (dx/d)*side;
+  z.hopDist = R_HOP_DISTANCE * (z.def.upper ? 1 : 0.7);
+  z.hopT = R_HOP_TIME;
+}
+
+// --- Fascinate Inline: kamikaze ---
+// Lights its fuse once it's close and keeps coming. Six seconds later it goes off, hurting
+// the player and anything else nearby. Killing it first puts the fuse out.
+function updateKamikaze(z, distToPlayer, elapsed){
+  if(z.dying) return;
+  if(!z.fuseLit){
+    if(distToPlayer < R_KAMIKAZE_TRIGGER){
+      z.fuseLit = true;
+      // Game time, not the wall clock: otherwise pausing for six seconds with a fuse lit
+      // would set it off the instant play resumed.
+      z.fuseStart = gameTime;
+      startKamikazeFuse(z);
+    }
+    return;
+  }
+  updateKamikazeFuseSound(z);
+  if(gameTime - z.fuseStart >= R_KAMIKAZE_FUSE) detonateKamikaze(z);
+}
+
+function detonateKamikaze(z){
+  const pos = z.group.position.clone();
+  stopKamikazeFuse(z);
+  soundExplosion(computePan(pos));
+  spawnExplosionVisual(pos, R_KAMIKAZE_RADIUS);
+  const dmg = z.dmg * R_KAMIKAZE_DAMAGE;
+  // Full force at the centre, easing to 40% at the edge of the blast.
+  const pd = Math.hypot(camera.position.x - pos.x, camera.position.z - pos.z);
+  if(pd <= R_KAMIKAZE_RADIUS) takeDamage(dmg * (1 - 0.6*pd/R_KAMIKAZE_RADIUS));
+  for(const o of zombies){
+    if(o === z || o.dying) continue;
+    const d = Math.hypot(o.group.position.x - pos.x, o.group.position.z - pos.z);
+    if(d <= R_KAMIKAZE_RADIUS) damageZombie(o, dmg * (1 - 0.6*d/R_KAMIKAZE_RADIUS), { knockFrom: pos });
+  }
+  z.noReward = true;
+  killZombie(z, false);
+}
+
+// The fuse hiss follows the letter around, getting quieter with distance.
+function startKamikazeFuse(z){
+  if(!audioCtx || typeof wsndBuffers === 'undefined' || !wsndBuffers[SOUND_FUSE]) return;
+  const src = audioCtx.createBufferSource();
+  src.buffer = wsndBuffers[SOUND_FUSE]; src.loop = true;
+  const gain = audioCtx.createGain(); gain.gain.value = 0;
+  const pan = audioCtx.createStereoPanner();
+  src.connect(gain).connect(pan).connect(masterGain);
+  src.start();
+  z.fuseSound = { src, gain, pan };
+  updateKamikazeFuseSound(z);
+}
+function updateKamikazeFuseSound(z){
+  const s = z.fuseSound; if(!s) return;
+  const d = Math.hypot(camera.position.x - z.group.position.x, camera.position.z - z.group.position.z);
+  const a = Math.max(0, 1 - d/30);
+  s.gain.gain.value = 0.7*a*a;
+  s.pan.pan.value = computePan(z.group.position);
+}
+function stopKamikazeFuse(z){
+  if(!z || !z.fuseSound) return;
+  try{ z.fuseSound.src.stop(); }catch(e){}
+  try{ z.fuseSound.gain.disconnect(); }catch(e){}
+  z.fuseSound = null;
+}
+
+// --- Fredericka the Great: spawner ---
+// Every so often it buds off a lowercase copy of itself. Those copies aren't part of the
+// boss's tally (they'd change what each R is worth mid-round), but the wave still waits
+// for them to die.
+function updateSpawner(z, delta){
+  if(z.dying) return;
+  z.spawnTimer = (z.spawnTimer === undefined) ? R_SPAWNER_INTERVAL : z.spawnTimer - delta;
+  if(z.spawnTimer > 0) return;
+  z.spawnTimer = R_SPAWNER_INTERVAL;
+  const alive = zombies.filter(o=>o.spawnParent === z && !o.dying).length;
+  if(alive >= R_SPAWNER_MAX_CHILDREN) return;
+  const childDef = ENEMY_TYPES[rTypeId(z.def.font, false)];
+  if(!childDef || !enemyTextures[childDef.id]) return;
+  const at = clusterPointNear(z.group.position, 1.6);
+  const child = spawnOneEnemy(childDef, at, { noCount:true });
+  if(child){
+    child.spawnParent = z;
+    if(typeof spawnParticles === 'function'){
+      spawnParticles(at.clone().setY(at.y + 0.8), { count:14, dir:new THREE.Vector3(0,1,0), spread:1.3,
+        speed:[1.5,3.2], colors:[R_BLACK, 0x5a5560, 0xffffff], size:[0.06,0.12], drag:2, gravity:6, life:0.8, groundY:at.y });
+    }
+  }
+}
+
+// --- Berkshire Swash: hovering rs ---
+// It throws small rs of its own font that drift out and hang in the air for a few seconds.
+// Walking into one hurts; you can dodge them, or wait for them to fade.
+let rMines = [];
+function throwFloatingR(z){
+  const tex = enemyTextures[rTypeId(z.def.font, false)] || enemyTextures[z.def.id];
+  if(!tex) return;
+  const from = z.group.position.clone(); from.y += z.height*0.6;
+  // Aimed near the player rather than at them, so a stream of them builds a field to weave
+  // through instead of every one homing straight in.
+  const a = Math.random()*Math.PI*2, r = 0.6 + Math.random()*1.4;
+  const to = new THREE.Vector3(camera.position.x + Math.cos(a)*r, camera.position.y - 0.5, camera.position.z + Math.sin(a)*r);
+  const img = tex.image, h = 0.62, w = h*(img.width/img.height);
+  const mat = new THREE.MeshLambertMaterial({ map:tex, transparent:true, alphaTest:0.4, side:THREE.DoubleSide,
+    color: z.baseTint !== undefined ? z.baseTint : z.def.tint });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), mat);
+  mesh.scale.set(w, h, 1);
+  mesh.position.copy(from);
+  scene.add(mesh);
+  rMines.push({ mesh, from, to, t:0, life:R_MINE_LIFE, dmg:z.dmg, w, h, phase:Math.random()*6.28 });
+}
+
+function updateRMines(delta){
+  for(let i=rMines.length-1; i>=0; i--){
+    const m = rMines[i];
+    m.t += delta;
+    if(m.t < R_MINE_THROW_TIME){
+      // Eases out to its spot, then stops dead and hangs there.
+      const k = m.t/R_MINE_THROW_TIME, e = 1 - Math.pow(1-k, 3);
+      m.mesh.position.lerpVectors(m.from, m.to, e);
+    } else {
+      m.mesh.position.y = m.to.y + Math.sin((m.t + m.phase)*2.4)*0.12;
+    }
+    m.mesh.rotation.set(0, Math.atan2(camera.position.x - m.mesh.position.x, camera.position.z - m.mesh.position.z),
+                        Math.sin(m.t*1.7 + m.phase)*0.25);
+    // Fades over its last half-second.
+    const left = R_MINE_THROW_TIME + m.life - m.t;
+    m.mesh.material.opacity = Math.min(1, left/0.5);
+    const dx = camera.position.x - m.mesh.position.x, dz = camera.position.z - m.mesh.position.z;
+    const dy = (camera.position.y - 0.6) - m.mesh.position.y;
+    const touched = Math.hypot(dx, dz) < R_MINE_RADIUS && Math.abs(dy) < 1.1;
+    if(touched || left <= 0){
+      if(touched){
+        takeDamage(m.dmg);
+        if(typeof spawnParticles === 'function'){
+          spawnParticles(m.mesh.position.clone(), { count:12, dir:new THREE.Vector3(0,1,0), spread:1.6,
+            speed:[1.2,2.6], colors:[m.mesh.material.color.getHex(), 0xffffff], size:[0.05,0.1], drag:2, gravity:4, life:0.6 });
+        }
+      }
+      scene.remove(m.mesh); m.mesh.geometry.dispose(); m.mesh.material.dispose();
+      rMines.splice(i, 1);
+    }
+  }
+}
+
+function clearRMines(){
+  rMines.forEach(m=>{ scene.remove(m.mesh); m.mesh.geometry.dispose(); m.mesh.material.dispose(); });
+  rMines = [];
 }

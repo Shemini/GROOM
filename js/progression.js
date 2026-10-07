@@ -420,6 +420,8 @@ function restartRun(){
   Object.assign(wave, JSON.parse(JSON.stringify(INITIAL_WAVE)));
 
   // --- anything spawned into the scene ---
+  // Fuses first: once the list is cleared there'd be nothing left to silence them by.
+  zombies.forEach(z=>{ if(typeof stopKamikazeFuse === 'function') stopKamikazeFuse(z); });
   zombies.forEach(z=>{ scene.remove(z.group); releaseObject(z.group); });   zombies.length = 0;
   drops.forEach(d=>{ scene.remove(d.mesh); releaseObject(d.mesh); });       drops.length = 0;
   projectiles.forEach(p2=>scene.remove(p2.mesh));      projectiles.length = 0;
@@ -444,6 +446,7 @@ function restartRun(){
   boxState = 'idle';
 
   if(typeof resetBoss === 'function') resetBoss();
+  if(typeof clearRMines === 'function') clearRMines();
 
   // --- the guitarist goes back to his corner and starts over ---
   if(typeof guitarrista !== 'undefined' && guitarrista){

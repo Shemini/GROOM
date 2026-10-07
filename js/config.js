@@ -170,7 +170,6 @@ const BOSS_VOICE_BEHIND_CUTOFF = 1500; // Hz, low-pass when facing directly away
 // Only the trilled Rs glow and drop enemies (word-initial, doubled, or after n/l/s). Set to
 // false to make every R in the sentence count.
 const BOSS_ONLY_STRONG_R = true;
-const BOSS_DROPS_PER_R = 3;
 const BOSS_DROP_INTERVAL = 1.5;      // seconds between drops from one R
 const BOSS_MINION_SPEED = 32;        // metres a second, falling toward its spawn point
 // The R on the horizon
@@ -208,6 +207,26 @@ const SENTENCE_TEXT_SHADOW = '#1a120d';
 const SENTENCE_HALO_COLOR = '#fff6e0'; // the glow behind the highlighted Rs
 // R enemies come only from the boss. Set true to also mix them into ordinary waves.
 const R_IN_NORMAL_WAVES = false;
+// Elites: one per highlighted R, in that R's colour.
+const R_ELITE_SCALE = 1.15, R_ELITE_HP = 3, R_ELITE_DAMAGE = 2;
+// What each highlighted R in a sentence sends down. A capital sends adults one at a time; a
+// lowercase r sends packs of children. One of them is always the elite.
+const BOSS_DROPS_UPPER = 3;          // single adults
+const BOSS_DROPS_LOWER = 2;          // packs of children...
+const R_CHILD_PACK = 3;              // ...this many to a pack
+// Font behaviours
+const R_MINE_LIFE = 4.5;             // seconds a thrown r hangs in the air
+const R_MINE_RADIUS = 0.9;           // metres: touch it and it hurts
+const R_MINE_THROW_TIME = 0.7;       // seconds to drift out to where it hangs
+const R_HOP_INTERVAL = [0.6, 1.5];   // seconds between sideways hops
+const R_HOP_DISTANCE = 2.2;          // metres (children hop shorter)
+const R_HOP_TIME = 0.35;
+const R_KAMIKAZE_TRIGGER = 4.5;      // metres from the player when it lights its fuse
+const R_KAMIKAZE_FUSE = 6.0;         // seconds from lighting to going off
+const R_KAMIKAZE_RADIUS = 5.0;
+const R_KAMIKAZE_DAMAGE = 3.0;       // times its normal hit
+const R_SPAWNER_INTERVAL = 20;       // seconds between Fredericka's offspring
+const R_SPAWNER_MAX_CHILDREN = 5;    // alive at once, per parent
 
 const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members appear within
 // Seconds the level-up screen ignores input for, so a shot or keypress from the fight
@@ -291,29 +310,6 @@ const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie(
 //                 lands where the player WAS, so it can be dodged
 //   swarmSize     [min,max] spawned together as a group rather than one at a time
 //   wander        sideways drift on its approach, in radians of heading noise
-// Builds a letter enemy from the few things that differ between fonts.
-function rType(id, glyph, tint, o){
-  return {
-    id, glyph:Object.assign({ char:'R' }, glyph), tint,
-    static:true, noVoice:true, cols:1, rows:1,
-    anims:{
-      walkToward:{ startRow:0, frames:4, duration:o.walk },
-      walkAway:  { startRow:0, frames:4, duration:o.walk },
-      attack:    { startRow:0, frames:8, duration:o.attack },
-      death:     { startRow:0, frames:8, duration:0.55 },
-    },
-    footstepFrames:[1, 3], footstepVolume:o.footstepVolume,
-    heightMult:o.heightMult, widthStretch:1.0,
-    hitboxWidthFraction:o.hitboxWidthFraction, headHeightFraction:0.28,
-    hpMult:o.hpMult, speedMult:o.speedMult, damageMult:o.damageMult, rewardMult:o.rewardMult,
-    wander:o.wander || 0,
-    attackDamageFrame:6, attackSpeedMult:0.8,
-    // Only the boss's sentences bring these in — see R_IN_NORMAL_WAVES.
-    minWave:1, spawnWeight: R_IN_NORMAL_WAVES ? 0.3 : 0,
-    slowField:null, deathExplosion:null,
-  };
-}
-
 const ENEMY_TYPES = {
   TrajeA: {
     id:'TrajeA',
@@ -478,29 +474,90 @@ const ENEMY_TYPES = {
     deathExplosion:null,
   },
 
-  // --- Letter enemies, one per font. Drawn white and coloured by `tint`, so a status effect
-  // recolours the whole letter clearly instead of mixing into its base colour. The palette
-  // deliberately avoids green, orange-red and yellow, which are taken by the status tints.
-  // Their animation entries are timelines only: "frames" drive footsteps and hit timing.
-  RPlayfair: rType('RPlayfair', { family:'Playfair Display', weight:'800', style:'italic' }, 0x4b78dc,
-    { hpMult:0.7, speedMult:1.3, damageMult:0.9, rewardMult:1.0, heightMult:1.0,
-      walk:0.5, attack:0.75, hitboxWidthFraction:0.62, footstepVolume:0.8 }),            // quick
-  RCinzel: rType('RCinzel', { family:'Cinzel Decorative', weight:'900', style:'normal' }, 0x7a52c7,
-    { hpMult:2.0, speedMult:0.7, damageMult:1.4, rewardMult:1.8, heightMult:1.1,
-      walk:0.95, attack:1.15, hitboxWidthFraction:0.6, footstepVolume:1.3 }),            // elite tank
-  RFraktur: rType('RFraktur', { family:'UnifrakturMaguntia', weight:'400', style:'normal' }, 0x76819c,
-    { hpMult:1.6, speedMult:0.8, damageMult:1.2, rewardMult:1.5, heightMult:1.05,
-      walk:0.85, attack:1.05, hitboxWidthFraction:0.62, footstepVolume:1.15 }),          // tough
-  RPirata: rType('RPirata', { family:'Pirata One', weight:'400', style:'normal' }, 0xc3438a,
-    { hpMult:1.0, speedMult:1.05, damageMult:1.4, rewardMult:1.2, heightMult:1.0,
-      walk:0.65, attack:0.85, hitboxWidthFraction:0.6, footstepVolume:1.0 }),            // hits hard
-  RKaushan: rType('RKaushan', { family:'Kaushan Script', weight:'400', style:'normal' }, 0x2ea3c9,
-    { hpMult:0.9, speedMult:1.15, damageMult:1.0, rewardMult:1.0, heightMult:0.98,
-      walk:0.6, attack:0.85, hitboxWidthFraction:0.62, footstepVolume:0.9, wander:0.65 }), // weaves
-  RBodoni: rType('RBodoni', { family:'Bodoni Moda', weight:'700', style:'italic' }, 0xb0703e,
-    { hpMult:0.55, speedMult:1.45, damageMult:0.8, rewardMult:0.9, heightMult:0.96,
-      walk:0.45, attack:0.7, hitboxWidthFraction:0.58, footstepVolume:0.7 }),            // fast, fragile
 };
+
+// =================================================================
+// LETTER ENEMIES
+// Each R is a combination of three things, built here rather than written out twelve times:
+//   CASE   uppercase = adult (spawns alone, average speed and health)
+//          lowercase = child (comes in packs: fast, fragile, light hits)
+//   FONT   its behaviour — see R_FONTS
+//   COLOUR black for ordinary ones; an elite wears its font's colour (applied at spawn, see
+//          R_ELITE_* — it isn't a separate type)
+// Stats multiply age by font, and then scale with the wave like every other enemy.
+// =================================================================
+const R_BLACK = 0x1d1b20;
+
+const R_AGES = {
+  U: { hp:1.0,  speed:1.0,  damage:1.0, height:1.0,  walk:0.70, attack:1.0,  footstep:1.0, range:1.0 },
+  L: { hp:0.33, speed:1.4,  damage:0.3, height:0.7,  walk:0.45, attack:0.7,  footstep:0.7, range:0.7 },
+};
+
+const R_FONTS = {
+  // Like TrajeB — huge, slow to swing, bursts on death and hurts the guests around it — but
+  // without TrajeB's slowing aura.
+  bartle: { family:'BBH Bartle', weight:'400', style:'normal', colour:0xa3243f,
+            hp:4.0, damage:2.0, speed:0.9, height:1.08, attackTime:1.4, attackSpeedMult:0.5,
+            deathExplosion:{ radius:4.5, healthFraction:0.10, frame:6 }, footstep:1.3 },
+  // Throws hovering rs that drift into the air and hang there; walking into one hurts.
+  berkshire: { family:'Berkshire Swash', weight:'400', style:'normal', colour:0x7a52c7,
+            hp:0.9, damage:1.0, speed:0.95, ranged:'mine', range:9, attackSpeedMult:0 },
+  // Hops sideways at random as it comes at you: the clown of the set.
+  kranky: { family:'Kranky', weight:'400', style:'normal', colour:0xd0489a, boost:0.03,
+            hp:0.9, damage:1.0, speed:1.1, hops:true },
+  // Kamikaze: gets close, lights its fuse, and goes off six seconds later.
+  fascinate: { family:'Fascinate Inline', weight:'400', style:'normal', colour:0x2ea3c9,
+            hp:2.5, damage:1.0, speed:1.05, kamikaze:true },
+  // Only ever arrives as a capital, and keeps producing lowercase copies of itself.
+  fredericka: { family:'Fredericka the Great', weight:'400', style:'normal', colour:0x3f6fd8, boost:0.025,
+            hp:1.3, damage:1.0, speed:0.95, spawner:true, adultOnly:true },
+  // The plain one.
+  roboto: { family:'Roboto', weight:'700', style:'normal', colour:0xb0703e,
+            hp:1.0, damage:1.0, speed:1.0 },
+};
+
+function rTypeId(font, upper){ return 'R_' + font + '_' + (upper ? 'U' : 'L'); }
+
+function buildRTypes(){
+  const out = {};
+  for(const fk in R_FONTS){
+    const f = R_FONTS[fk];
+    for(const ak of ['U','L']){
+      const a = R_AGES[ak], upper = ak === 'U';
+      const id = rTypeId(fk, upper);
+      const attack = a.attack*(f.attackTime||1);
+      out[id] = {
+        id, font:fk, upper,
+        glyph:{ char: upper ? 'R' : 'r', family:f.family, weight:f.weight, style:f.style, boost:f.boost||0 },
+        tint: R_BLACK, eliteTint: f.colour,
+        static:true, noVoice:true, cols:1, rows:1,
+        anims:{
+          walkToward:{ startRow:0, frames:4, duration:a.walk/(f.speed||1) },
+          walkAway:  { startRow:0, frames:4, duration:a.walk/(f.speed||1) },
+          attack:    { startRow:0, frames:8, duration:attack },
+          death:     { startRow:0, frames:8, duration:0.55 },
+        },
+        footstepFrames:[1, 3], footstepVolume:a.footstep*(f.footstep||1),
+        heightMult:a.height*(f.height||1), widthStretch:1.0,
+        hitboxWidthFraction:0.62, headHeightFraction:0.28,
+        hpMult:a.hp*f.hp, speedMult:a.speed*f.speed, damageMult:a.damage*f.damage,
+        rewardMult: Math.max(0.4, a.hp*f.hp*0.6),
+        swarmSize: upper ? null : [R_CHILD_PACK, R_CHILD_PACK],
+        wander: upper ? 0 : 0.35,
+        attackDamageFrame:6,
+        attackSpeedMult: f.attackSpeedMult !== undefined ? f.attackSpeedMult : 0.8,
+        attackRange: f.ranged ? f.range*a.range : undefined,
+        rangedMine: f.ranged === 'mine',
+        hops: !!f.hops, kamikaze: !!f.kamikaze, spawner: !!f.spawner && upper, adultOnly: !!f.adultOnly,
+        deathExplosion: f.deathExplosion || null, slowField:null,
+        // Only the boss's sentences bring these in.
+        minWave:1, spawnWeight: R_IN_NORMAL_WAVES ? 0.15 : 0,
+      };
+    }
+  }
+  return out;
+}
+Object.assign(ENEMY_TYPES, buildRTypes());
 const DEFAULT_ENEMY_TYPE = 'TrajeA';
 
 // Sun light-travel direction, converted from the 3ds Max (-0.29, 0.222, -0.916) Z-up vector

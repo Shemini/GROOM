@@ -245,9 +245,6 @@ function strongRIndices(text){
   return out;
 }
 
-function letterFonts(){
-  return Object.values(ENEMY_TYPES).filter(d=>d.glyph);
-}
 
 function launchBossSentence(text){
   if(!boss) initBoss();
@@ -259,23 +256,31 @@ function launchBossSentence(text){
   const voiceDur = playBossVoice(entry.voice);
   boss.speakUntil = gameTime + (voiceDur || BOSS_SPEAK_TIME);
 
-  const fonts = letterFonts();
   const hard = strongRIndices(text);
-  // Every R this recital will send is known now, which sets what each one is worth.
-  if(boss.round) boss.round.expected += hard.size * BOSS_DROPS_PER_R;
+  const fontKeys = Object.keys(R_FONTS);
   const chars = [...text];
-  // Each letter gets a random font. A highlighted R drops enemies of the font it's drawn in.
+  let expected = 0;
   const plan = chars.map((ch, i)=>{
     if(ch === ' ') return { ch, space:true };
-    const def = fonts[Math.floor(Math.random()*fonts.length)];
-    const glow = hard.has(i);
-    // Only a hard R gets a special font, its enemy's colour and a glow, so you can see what
-    // it's going to drop. Everything else is the game's own pixel font.
-    if(!glow) return { ch, def, glow:false, glyph:SENTENCE_FONT, body:SENTENCE_TEXT_COLOR, pixel:true };
-    // Always a capital, whatever the sentence says: it has to look like the enemy it drops,
-    // and "peRRo" reads as the emphasis it is.
-    return { ch:'R', def, glow:true, glyph:def.glyph, body:'#' + new THREE.Color(def.tint).getHexString(), pixel:false };
+    if(!hard.has(i)) return { ch, glow:false, glyph:SENTENCE_FONT, body:SENTENCE_TEXT_COLOR, pixel:true };
+    // Its case decides what it sends: a capital sends adults, a lowercase r sends children.
+    const upper = ch === ch.toUpperCase();
+    const pool = fontKeys.filter(k=> upper || !R_FONTS[k].adultOnly);   // Fredericka is capitals only
+    const font = pool[Math.floor(Math.random()*pool.length)];
+    const def = ENEMY_TYPES[rTypeId(font, upper)];
+    // What it will drop: adults one at a time, children in packs — and exactly one elite,
+    // in this R's colour, hidden somewhere in that list.
+    const drops = upper ? Array.from({length:BOSS_DROPS_UPPER}, ()=>({ count:1 }))
+                        : Array.from({length:BOSS_DROPS_LOWER}, ()=>({ count:R_CHILD_PACK }));
+    const total = drops.reduce((s,d)=>s+d.count, 0);
+    let pick = Math.floor(Math.random()*total);
+    for(const d of drops){ if(pick < d.count){ d.elite = pick; break; } pick -= d.count; }
+    expected += total;
+    return { ch, def, glow:true, glyph:def.glyph, body:'#' + new THREE.Color(def.eliteTint).getHexString(),
+             pixel:false, drops };
   });
+  // Every R this recital will send is known now, which sets what each one is worth.
+  if(boss.round) boss.round.expected += expected;
   bossRecitalsBuilding++;
   Promise.all(plan.map(p=> p.space ? null : buildSentenceLetter(p.glyph, p.ch, p.body, p.glow ? 1 : 0, p.pixel)))
     .then(glyphs=>{ if(boss) startSentenceFlight(plan, glyphs, voiceDur); })
@@ -292,11 +297,10 @@ function startSentenceFlight(plan, glyphs, voiceDur){
     const g = glyphs[i];
     const scale = p.glow ? SENTENCE_R_SCALE : 1;
     const adv = g.advance*H*scale;
-    // Colour is in the texture. Drawn over the scene rather than depth-tested against it:
-    // the line flies high enough to pass behind the cathedral from many spots, and a sentence
-    // you can only half see defeats the point of it being a sentence.
+    // Colour is in the texture. Depth-tested, so a building between you and the line hides
+    // it like anything else in the world would.
     const mat = new THREE.MeshBasicMaterial({
-      map: g.tex, transparent: true, depthWrite: false, depthTest: false,
+      map: g.tex, transparent: true, depthWrite: false, depthTest: true,
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), mat);
     mesh.scale.set(g.aspect*H*scale, H*scale, 1);
@@ -305,7 +309,7 @@ function startSentenceFlight(plan, glyphs, voiceDur){
     scene.add(mesh);
     letters.push({
       mesh, offset: cursor + adv/2, h: H*scale, w: g.aspect*H*scale,
-      hard: !!p.glow, def: p.def, dropsLeft: p.glow ? BOSS_DROPS_PER_R : 0, nextDrop: 0,
+      hard: !!p.glow, def: p.def, drops: p.drops || [], dropsLeft: p.drops ? p.drops.length : 0, nextDrop: 0,
       pulse: Math.random()*6.28,
     });
     cursor += adv;
@@ -374,14 +378,14 @@ function updateSentences(delta, t){
         L.mesh.scale.set(L.w*k, L.h*k, 1);
         // Shed enemies while passing over the arena.
         if(L.dropsLeft > 0 && s > S.sweepStart - 40 && s < S.sweepEnd + 40 && t >= L.nextDrop){
+          dropMinion(L);
           L.dropsLeft--;
           L.nextDrop = t + BOSS_DROP_INTERVAL*(0.75 + Math.random()*0.5);
-          dropMinion(L);
         }
         // Leaving the arena with Rs still owed: send the rest now. Each one is already
         // counted toward the round, so skipping any would leave the boss unkillable.
         if(L.dropsLeft > 0 && s >= S.sweepEnd + 40){
-          while(L.dropsLeft > 0){ L.dropsLeft--; dropMinion(L); }
+          while(L.dropsLeft > 0){ dropMinion(L); L.dropsLeft--; }
         }
       }
     }
@@ -398,18 +402,31 @@ function updateSentences(delta, t){
 // point chosen for the player's position — exactly where any other enemy would appear — so
 // it never lands on a roof or out of bounds, and the fight stays fair.
 function dropMinion(L){
+  // Called before the counter drops, so this is the next entry still owed.
+  const entry = L.drops[L.drops.length - L.dropsLeft] || { count:1 };
   const def = L.def;
   const tex = enemyTextures[def.id];
-  const to = tex ? findSpawnPosition() : null;
-  if(!tex || !to){
-    if(boss && boss.round) boss.round.expected = Math.max(0, boss.round.expected - 1);
+  const anchor = tex ? findSpawnPosition() : null;
+  if(!tex || !anchor){
+    // Can't be sent after all: take it off the round's tally so the boss stays killable.
+    if(boss && boss.round) boss.round.expected = Math.max(0, boss.round.expected - entry.count);
     return;
   }
+  for(let i=0; i<entry.count; i++){
+    // A pack lands together, scattered around one spawn point like any other swarm.
+    const to = i === 0 ? anchor : clusterPointNear(anchor, SWARM_SPREAD);
+    launchMinion(L, def, tex, to, entry.elite === i);
+  }
+}
+
+// One R falling from the sentence to its spawn point. Lowercase rs and elites look the part
+// on the way down, so what's landing is readable before it lands.
+function launchMinion(L, def, tex, to, elite){
   const img = tex.image;
-  const h = AVG_ZOMBIE_HEIGHT*def.heightMult;
+  const h = AVG_ZOMBIE_HEIGHT*def.heightMult*(elite ? R_ELITE_SCALE : 1);
   const w = h*(img.width/img.height);
   const mat = new THREE.MeshLambertMaterial({ map: tex, transparent:true, alphaTest:0.5,
-    side: THREE.DoubleSide, color: def.tint });
+    side: THREE.DoubleSide, color: elite ? def.eliteTint : def.tint });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), mat);
   mesh.scale.set(w, h, 1);
   const from = L.mesh.position.clone();
@@ -417,8 +434,8 @@ function dropMinion(L){
   scene.add(mesh);
   const dist = from.distanceTo(to);
   bossMinions.push({
-    mesh, def, from, to, h, t: 0, roundId: boss && boss.round ? boss.round.id : -1,
-    dur: Math.min(2.4, Math.max(1.0, dist/BOSS_MINION_SPEED)),
+    mesh, def, from, to, h, t: 0, elite, roundId: boss && boss.round ? boss.round.id : -1,
+    dur: Math.min(2.4, Math.max(1.0, dist/BOSS_MINION_SPEED)) * (0.9 + Math.random()*0.25),
     arc: Math.min(14, dist*0.12),
     spin: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random()*2),
   });
@@ -444,7 +461,7 @@ function updateMinions(delta){
 
 function landMinion(M){
   const z = spawnOneEnemy(M.def, M.to.clone(), { noCount:true });
-  if(z){ z.fromBoss = true; z.bossRoundId = M.roundId; }
+  if(z){ z.fromBoss = true; z.bossRoundId = M.roundId; if(M.elite) applyEliteR(z); }
   if(typeof spawnParticles === 'function'){
     spawnParticles(M.to.clone().setY(M.to.y + 0.1), {
       count: 18, dir: new THREE.Vector3(0,1,0), spread: 1.4,
@@ -516,6 +533,8 @@ function stopBossVoice(){
 // the same word — otherwise it keeps talking over a frozen sky and finishes out of sync.
 function syncBossVoicePause(playing){
   if(!playing && bossRumble) bossRumble.gain.gain.value = 0;   // restored by the next update
+  // Lit kamikaze fuses go quiet too; their next update restores the hiss.
+  if(!playing) zombies.forEach(z=>{ if(z.fuseSound) z.fuseSound.gain.gain.value = 0; });
   if(!bossVoice || !audioCtx) return;
   if(!playing && !bossVoice.paused){
     bossVoice.offset = audioCtx.currentTime - bossVoice.startedAt;
