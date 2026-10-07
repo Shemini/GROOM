@@ -183,23 +183,29 @@ const BOSS_HAZE_AMOUNT = 0.42;       // how far its colour is pulled toward the 
 const BOSS_VIEW_ANGLE_DEG = 30;      // apparent height from the level's centre
 const BOSS_MIN_HEIGHT = 130;         // metres, a floor for very small levels
 const BOSS_EXTRA_DISTANCE = 170;     // metres beyond the level's edge
+const BOSS_SIZE_MULT = 1.5;          // scale on top of the view-angle sizing
 const BOSS_DEPTH_FRACTION = 0.16;    // extrusion depth, as a fraction of letter height
 const BOSS_SPEAK_TIME = 3.0;
 // The flying sentence
 const SENTENCE_LETTER_HEIGHT = 15;   // metres — doubled; large and legible through the pixel filter
-const SENTENCE_R_SCALE = 1.4;        // highlighted Rs are drawn this much larger
-const SENTENCE_SPACE_ADVANCE = 0.32; // word gap, as a fraction of letter height
+// Larger than before: the pixel font fills more of its cell than the serif Rs do, so at the
+// old ratio the highlighted Rs no longer stood clear of the letters around them.
+const SENTENCE_R_SCALE = 1.75;       // highlighted Rs are drawn this much larger
+const SENTENCE_SPACE_ADVANCE = 0.45; // word gap, as a fraction of letter height
 const SENTENCE_ALTITUDE = 21;        // metres above the player's eye
 const SENTENCE_SWEEP_DISTANCE = 62;  // metres in front of the player where it crosses
 const SENTENCE_SWEEP_HALFWIDTH = 75;
 const SENTENCE_SPEED_TRAVEL = 85;    // m/s on its way in and out
-// Doubled along with the letters: the same speed with twice-as-wide letters would scroll
-// half as many characters past per second, and the line would drag.
-const SENTENCE_SPEED_READ = 32;      // m/s while over the arena, so it can be read
-const SENTENCE_INK = '#2b2433';      // ordinary letters: dark ink against the sky
-const SENTENCE_HALO_COLOR = '#fff6e0'; // the soft glow behind letters
-const SENTENCE_INK_HALO = 0.45;      // how much the ordinary letters glow (0 = none);
-                                     // highlighted Rs always glow fully
+// Measured in characters, not metres: the pixel font is monospaced and twice as wide as the
+// serif faces, so a fixed speed in metres would scroll half as many letters past per second.
+const SENTENCE_READ_CPS = 6;         // characters a second while over the arena
+// Ordinary letters are in the game's own pixel font, styled like the HUD: pale with a hard
+// dark drop shadow, which reads against bright sky and dark stone alike. Only the hard Rs
+// get a special font, their enemy's colour and a glow.
+const SENTENCE_FONT = { family:'Press Start 2P', weight:'400', style:'normal' };
+const SENTENCE_TEXT_COLOR = '#efe6cf';
+const SENTENCE_TEXT_SHADOW = '#1a120d';
+const SENTENCE_HALO_COLOR = '#fff6e0'; // the glow behind the highlighted Rs
 // R enemies come only from the boss. Set true to also mix them into ordinary waves.
 const R_IN_NORMAL_WAVES = false;
 

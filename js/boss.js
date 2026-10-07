@@ -65,7 +65,7 @@ function initBoss(){
   if(look.lengthSq() < 1e-6) look.set(0,0,-1);
   look.normalize();
   const dist = radius + BOSS_EXTRA_DISTANCE;
-  const height = Math.max(BOSS_MIN_HEIGHT, dist*Math.tan(BOSS_VIEW_ANGLE_DEG*Math.PI/180));
+  const height = Math.max(BOSS_MIN_HEIGHT, dist*Math.tan(BOSS_VIEW_ANGLE_DEG*Math.PI/180)) * BOSS_SIZE_MULT;
   const home = center.clone().addScaledVector(look, dist);
   // Its foot sits below the lowest point of the level, so it rises from beyond the horizon
   // instead of standing on ground that isn't there.
@@ -269,12 +269,15 @@ function launchBossSentence(text){
     if(ch === ' ') return { ch, space:true };
     const def = fonts[Math.floor(Math.random()*fonts.length)];
     const glow = hard.has(i);
-    // A highlighted R wears its enemy's colour, so you can see what it's going to drop.
-    const body = glow ? '#' + new THREE.Color(def.tint).getHexString() : SENTENCE_INK;
-    return { ch, def, glow, body };
+    // Only a hard R gets a special font, its enemy's colour and a glow, so you can see what
+    // it's going to drop. Everything else is the game's own pixel font.
+    if(!glow) return { ch, def, glow:false, glyph:SENTENCE_FONT, body:SENTENCE_TEXT_COLOR, pixel:true };
+    // Always a capital, whatever the sentence says: it has to look like the enemy it drops,
+    // and "peRRo" reads as the emphasis it is.
+    return { ch:'R', def, glow:true, glyph:def.glyph, body:'#' + new THREE.Color(def.tint).getHexString(), pixel:false };
   });
   bossRecitalsBuilding++;
-  Promise.all(plan.map(p=> p.space ? null : buildSentenceLetter(p.def.glyph, p.ch, p.body, p.glow ? 1 : SENTENCE_INK_HALO)))
+  Promise.all(plan.map(p=> p.space ? null : buildSentenceLetter(p.glyph, p.ch, p.body, p.glow ? 1 : 0, p.pixel)))
     .then(glyphs=>{ if(boss) startSentenceFlight(plan, glyphs, voiceDur); })
     .catch(e=>console.warn('Boss sentence could not be built', e))
     .finally(()=>{ bossRecitalsBuilding = Math.max(0, bossRecitalsBuilding - 1); });
@@ -338,8 +341,10 @@ function startSentenceFlight(plan, glyphs, voiceDur){
     letters, curve, total, length,
     head: 0,                                 // arc position of the first letter
     sweepStart: sAt(2), sweepEnd: sAt(4),
-    // With a recording, the whole line takes exactly as long as the voice to leave the R.
+    // With a recording, the whole line takes as long as the voice to leave the R.
     emitSpeed: voiceDur ? length/voiceDur : 0,
+    // Reading pace in characters, converted to metres for this line's actual letter widths.
+    readSpeed: SENTENCE_READ_CPS * (length / Math.max(1, letters.length)),
   });
 }
 
@@ -351,7 +356,10 @@ function updateSentences(delta, t){
     // line has time to be read.
     const reading = S.head > S.sweepStart - 20 && tail < S.sweepEnd + 20;
     const emerging = S.emitSpeed > 0 && tail < 0;     // still coming out of its mouth
-    const speed = emerging ? S.emitSpeed : (reading ? SENTENCE_SPEED_READ : SENTENCE_SPEED_TRAVEL);
+    // Reading wins over the voice sync. A long line can't finish leaving the R before its
+    // first words reach the arena, and racing them past at speech pace would make them
+    // unreadable — so once it's overhead it slows, even if the tail is still emerging.
+    const speed = reading ? S.readSpeed : (emerging ? S.emitSpeed : SENTENCE_SPEED_TRAVEL);
     S.head += speed * delta;
 
     for(const L of S.letters){

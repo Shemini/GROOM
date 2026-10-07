@@ -1029,8 +1029,10 @@ const sentenceGlyphCache = {};
 // `body` is the letter's colour and `halo` how strongly it glows (0 = none). Both are baked
 // into the texture rather than tinted by the material: a tint multiplies everything, which
 // would drag a pale halo down to the same colour as the letter and make it pointless.
-function buildSentenceLetter(g, ch, body, halo){
-  const key = g.family + '|' + g.style + g.weight + '|' + ch + '|' + body + '|' + halo;
+// `pixel` styles it like the HUD's pixel text: a hard one-pixel drop shadow, no blur, and
+// nearest-neighbour sampling so the font's square pixels stay square.
+function buildSentenceLetter(g, ch, body, halo, pixel){
+  const key = g.family + '|' + g.style + g.weight + '|' + ch + '|' + body + '|' + halo + '|' + (pixel?1:0);
   if(sentenceGlyphCache[key]) return sentenceGlyphCache[key];
   const px = SENTENCE_FONT_PX;
   sentenceGlyphCache[key] = awaitGlyphFont(g, px, ch).then(face=>{
@@ -1054,9 +1056,17 @@ function buildSentenceLetter(g, ch, body, halo){
       for(let i=0;i<passes;i++) ctx.fillText(ch, pad, base);
       ctx.shadowBlur = 0;
     }
+    if(pixel){
+      // One font-pixel down and right; Press Start 2P draws on an 8x8 grid per em.
+      const o = Math.max(1, Math.round(px/8));
+      ctx.fillStyle = SENTENCE_TEXT_SHADOW;
+      ctx.fillText(ch, pad + o, base + o);
+    }
     ctx.fillStyle = body;
     ctx.fillText(ch, pad, base);
-    return { tex: glyphCanvasTexture(cv), aspect: W/H, advance: m.width/H, padFrac: pad/H };
+    const tex = glyphCanvasTexture(cv);
+    if(pixel){ tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; }
+    return { tex, aspect: W/H, advance: m.width/H, padFrac: pad/H };
   });
   return sentenceGlyphCache[key];
 }
