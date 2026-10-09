@@ -341,8 +341,7 @@ function updateHUD(){
 function triggerGameOver(){
   gameState='gameover';
   document.exitPointerLock();
-  el('gameOverStats').textContent = t('go.stats',{w:wave.number, l:player.level, k:player.kills, p:(player.points||0).toLocaleString()});
-  gameOverOverlay.classList.remove('hidden');
+  showRunSummary();
 }
 
 // =================================================================
@@ -437,6 +436,7 @@ function restartRun(){
 
   // --- timers and meters that live outside the player object ---
   gameTime = 0;
+  resetRunStats();
   playerStamina = PLAYER_STAMINA_MAX;
   playerExhausted = false;
   playerVelY = 0;

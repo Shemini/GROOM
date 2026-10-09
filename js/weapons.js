@@ -183,7 +183,7 @@ function tryShoot(elapsed){
     // Melee never runs dry, so skip the magazine bookkeeping entirely.
     player.lastShotTime = elapsed;
     const dm = 1+statValue('damage'), crit = Math.random()<statValue('critChance'), cm = CRIT_MULTIPLIER;
-    fpvOnFire(wIdx, ()=>fireMelee(wIdx, dm, crit, cm));
+    fpvOnFire(wIdx, withCredit(wIdx, ()=>fireMelee(wIdx, dm, crit, cm)));
     return;
   }
   if(ammo.mag<=0){
@@ -222,7 +222,8 @@ function tryShoot(elapsed){
       default:        fireHitscan(wIdx,dmgMult,isCrit,critMultVal); break;
     }
   };
-  fpvOnFire(wIdx, launch);
+  // Credited to this weapon even when it fires later, mid-throw.
+  fpvOnFire(wIdx, withCredit(wIdx, launch));
   weaponFireSound(wIdx); flashMuzzle(); updateHUD();
 }
 
@@ -485,7 +486,7 @@ function fireHellgun(wIdx, dmgMult, isCrit, critMultVal){
   const dmg = effectiveDamage(wIdx)*dmgMult*(headshot?2:1)*(isCrit?critMultVal:1);
   const primaryKilled = damageZombie(ref, dmg, {headshot, crit:isCrit});
   soundHit(headshot, isCrit);
-  if(!primaryKilled) ref.dot = { dps: mods.coneDot*dmgMult, endTime: clock.getElapsedTime()+mods.coneDuration };
+  if(!primaryKilled) ref.dot = { dps: mods.coneDot*dmgMult, endTime: clock.getElapsedTime()+mods.coneDuration, source: damageCredit };
   const coneOrigin = hit.point.clone();
   for(const z of zombies){
     if(z===ref) continue;
@@ -496,7 +497,7 @@ function fireHellgun(wIdx, dmgMult, isCrit, critMultVal){
     const angle = Math.acos(THREE.MathUtils.clamp(forward.dot(toZ),-1,1));
     if(angle < THREE.MathUtils.degToRad(55)){
       const killed = damageZombie(z, mods.coneDamage*dmgMult, {});
-      if(!killed) z.dot = { dps: mods.coneDot*dmgMult, endTime: clock.getElapsedTime()+mods.coneDuration };
+      if(!killed) z.dot = { dps: mods.coneDot*dmgMult, endTime: clock.getElapsedTime()+mods.coneDuration, source: damageCredit };
     }
   }
   spawnHellfireCone(coneOrigin, forward, mods.coneRadius);
@@ -545,7 +546,7 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
   mesh.position.copy(startPos); scene.add(mesh);
   const evolved = player.weaponEvolved[wIdx];
   const fuse = weaponStartFuse(wIdx);
-  projectiles.push({
+  projectiles.push({ source: damageCredit,
     mesh, spin:9.0, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true, fuseDelay:weapon.fuseDelay,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
@@ -578,7 +579,7 @@ function fireGrenade(wIdx, dmgMult, isCrit, critMultVal){
           const subMesh = createProjectileMesh(0xffb066,0.12);
           subMesh.position.copy(pos); scene.add(subMesh);
           const subDmg = dmg*0.4, subRadius = radius*0.6;
-          projectiles.push({
+          projectiles.push({ source: damageCredit,
             mesh:subMesh, pos:pos.clone(), vel:subVel, gravity:true, radius:0.25, groundOnly:true, fuseDelay:0.35,
             spawnTime:clock.getElapsedTime(), maxLife:2, landed:false,
             onImpact:(subPos)=>{ explodeAt(subPos, subRadius, subDmg, true); }
@@ -599,7 +600,7 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
   const radius=effectivePuddleRadius(wIdx), duration=effectivePuddleDuration(wIdx), dps=effectivePuddleDps(wIdx);
   const evolved = player.weaponEvolved[wIdx];
   const stainDps=dps*0.5, stainDuration=duration*0.6;
-  projectiles.push({
+  projectiles.push({ source: damageCredit,
     mesh, spin:6.5, pos:startPos.clone(), vel, gravity:true, radius:0.3, groundOnly:true,
     spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
@@ -610,7 +611,7 @@ function firePuddleVial(wIdx, dmgMult, isCrit, critMultVal){
         const until = clock.getElapsedTime()+duration*1.4;
         for(const z of zombies){
           const d = Math.hypot(z.group.position.x-pos.x, z.group.position.z-pos.z);
-          if(d<=radius){ z.drunkUntil = until; z.drunkPukeDps = dps*0.4; z.pukeTimer = 0.6; }
+          if(d<=radius){ z.drunkUntil = until; z.drunkPukeDps = dps*0.4; z.pukeTimer = 0.6; z.drunkSource = damageCredit; }
         }
       }
     }
@@ -626,7 +627,7 @@ function fireVortex(wIdx, dmgMult, isCrit, critMultVal){
   mesh.position.copy(startPos); scene.add(mesh);
   const radius=effectiveVortexRadius(wIdx), duration=effectiveVortexDuration(wIdx);
   const evolved = player.weaponEvolved[wIdx];
-  projectiles.push({
+  projectiles.push({ source: damageCredit,
     mesh, pos:startPos.clone(), vel, gravity:false, radius:0.3, groundOnly:false,
     spawnTime:clock.getElapsedTime(), maxLife:1.2, landed:false,
     onImpact:(pos)=>{
@@ -639,6 +640,7 @@ function fireVortex(wIdx, dmgMult, isCrit, critMultVal){
 function updateProjectiles(delta, elapsed){
   for(let i=projectiles.length-1;i>=0;i--){
     const p = projectiles[i];
+    damageCredit = p.source;   // what it does on landing belongs to the weapon that threw it
     if(p.landed){
       p.fuseTimer -= delta;
       p.mesh.material.emissiveIntensity = 0.8+0.6*Math.sin(elapsed*20);
@@ -743,7 +745,7 @@ function spawnPuddle(pos, radius, dps, duration, stains, stainDps, stainDuration
   mesh.position.set(pos.x, pos.y+0.06, pos.z);
   scene.add(mesh);
   soundSplat();
-  puddles.push({ mesh, pos:{x:pos.x,z:pos.z}, radius, dps, expiresAt:clock.getElapsedTime()+duration,
+  puddles.push({ source: damageCredit, mesh, pos:{x:pos.x,z:pos.z}, radius, dps, expiresAt:clock.getElapsedTime()+duration,
     stains:!!stains, stainDps:stainDps||0, stainDuration:stainDuration||1, kind:k, slow:slow||1 });
 }
 function updatePuddles(delta, elapsed){
@@ -761,11 +763,12 @@ function spawnVortex(pos, radius, duration, pull, dps, burst){
   mesh.position.set(pos.x, pos.y+0.6, pos.z);
   scene.add(mesh);
   soundVortexSpawn(computePan(pos));
-  vortexFields.push({ mesh, pos:{x:pos.x,z:pos.z}, radius, pull, dps, burst, tickTimer:0.25, expiresAt:clock.getElapsedTime()+duration });
+  vortexFields.push({ source: damageCredit, mesh, pos:{x:pos.x,z:pos.z}, radius, pull, dps, burst, tickTimer:0.25, expiresAt:clock.getElapsedTime()+duration });
 }
 function updateVortexFields(delta, elapsed){
   for(let i=vortexFields.length-1;i>=0;i--){
     const v = vortexFields[i];
+    damageCredit = v.source;
     v.mesh.rotation.z += delta*2;
     if(elapsed>=v.expiresAt){
       for(let j=zombies.length-1;j>=0;j--){
@@ -799,11 +802,12 @@ function spawnBlackHole(pos, radius, duration){
   ring.position.copy(mesh.position);
   scene.add(ring);
   soundVortexSpawn(computePan(pos));
-  blackHoles.push({ mesh, ring, pos:{x:pos.x,z:pos.z}, radius, duration, spawnTime:clock.getElapsedTime(), phase:'active', implodeStart:0 });
+  blackHoles.push({ source: damageCredit, mesh, ring, pos:{x:pos.x,z:pos.z}, radius, duration, spawnTime:clock.getElapsedTime(), phase:'active', implodeStart:0 });
 }
 function updateBlackHoles(delta, elapsed){
   for(let i=blackHoles.length-1;i>=0;i--){
     const b = blackHoles[i];
+    damageCredit = b.source;
     b.mesh.rotation.y += delta*2; b.ring.rotation.z += delta*3;
     if(b.phase==='active'){
       if(elapsed-b.spawnTime>=b.duration){

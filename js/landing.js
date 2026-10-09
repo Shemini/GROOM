@@ -35,7 +35,7 @@ function initLanding(){
   // Preloaded rather than created on cue, so the sting isn't late on a slow connection.
   sndGroom = new Audio('./Audio/GROOM.ogg');
   sndTremolo = new Audio('./Audio/TremoloMinor.ogg');
-  [sndGroom, sndTremolo].forEach(a=>{ a.preload='auto'; a.volume = 0.8; });
+  [sndGroom, sndTremolo].forEach(a=>{ a.preload='auto'; a.volume = titleVolume(); });
   sndGroom.addEventListener('ended', ()=>{ titleCueState = 'done'; startTremoloCycle(); });
   sndGroom.addEventListener('error', ()=>console.warn('Audio/GROOM.ogg missing'));
   sndTremolo.addEventListener('error', ()=>console.warn('Audio/TremoloMinor.ogg missing'));
@@ -154,7 +154,7 @@ function startTremoloCycle(){
   if(tremoloRunning && !sndTremolo.paused) return;   // already going
   tremoloRunning = true;
   sndTremolo.currentTime = 0;
-  sndTremolo.volume = titleMuted ? 0 : 0.8;
+  sndTremolo.volume = titleMuted ? 0 : titleVolume();
   const p = sndTremolo.play();
   if(p && p.catch) p.catch(()=>{ tremoloRunning = false; });
   watchTremoloTail();
@@ -170,7 +170,7 @@ function watchTremoloTail(){
     if(isFinite(d) && d > 0){
       const left = d - sndTremolo.currentTime;
       if(left <= TREMOLO_FADE){
-        sndTremolo.volume = titleMuted ? 0 : Math.max(0, 0.8*(left/TREMOLO_FADE));
+        sndTremolo.volume = titleMuted ? 0 : Math.max(0, titleVolume()*(left/TREMOLO_FADE));
       }
       if(left <= 0.05){
         sndTremolo.pause();
@@ -184,11 +184,18 @@ function watchTremoloTail(){
   tremoloFadeRaf = requestAnimationFrame(step);
 }
 
+// The title music plays through plain audio elements rather than the game's mixer, so the
+// master volume setting is applied here directly.
+function titleVolume(){ return 0.8 * (typeof getMasterVolume === 'function' ? getMasterVolume() : 1); }
+function refreshTitleVolume(){
+  [sndGroom, sndTremolo].forEach(a=>{ if(a) a.volume = titleMuted ? 0 : titleVolume(); });
+}
+
 function toggleTitleMute(){
   titleMuted = !titleMuted;
   const b = document.getElementById('btnTitleMute');
   if(b){ b.textContent = titleMuted ? t('ui.soundOff') : t('ui.soundOn'); b.classList.toggle('muted', titleMuted); }
-  [sndGroom, sndTremolo].forEach(a=>{ if(a) a.volume = titleMuted ? 0 : 0.8; });
+  [sndGroom, sndTremolo].forEach(a=>{ if(a) a.volume = titleMuted ? 0 : titleVolume(); });
   // Keep the in-game mute in step, so the button means the same thing on both sides.
   if(typeof muted !== 'undefined' && muted !== titleMuted && typeof toggleMute === 'function') toggleMute();
 }

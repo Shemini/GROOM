@@ -81,6 +81,7 @@ function init(){
   });
 
   applyStaticTranslations();   // before anything is shown, so the first frame is already localised
+  initMenus();                 // saved sensitivity and volume, before anything can use them
   initLanding();
   refreshLandingText();
   wireSettingsUI();
@@ -181,6 +182,8 @@ function handleKeyDown(e){
     if(e.code==='KeyJ' && typeof bossDebugRecite === 'function'){ bossDebugRecite(); return; }
     if(e.code==='KeyK' && typeof bossDebugTakeRound === 'function'){ bossDebugTakeRound(); return; }
   }
+  // Esc closes the settings panel first, wherever it was opened from.
+  if(e.code==='Escape' && typeof settingsModalOpen === 'function' && settingsModalOpen()){ closeSettingsModal(); return; }
   // A second Esc leaves the pause screen, without waiting on the browser's relock cooldown.
   if(e.code==='Escape' && gameState==='paused'){ resumeFromPause(); return; }
   if(e.code==='KeyR' && gameState==='playing') startReload();

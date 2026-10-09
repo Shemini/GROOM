@@ -88,6 +88,13 @@ const I18N = {
     'sw.title':'INVENTARIO LLENO', 'sw.sub':'Elige un arma para cambiarla por {w}',
     'go.title':'HAS MUERTO', 'go.restart':'REINTENTAR',
     'go.stats':'Oleada {w} · Nivel {l} · {k} caídos · {p} puntos',
+    'go.summary':'OLEADA {w} · NV {l}', 'go.score':'PUNTUACIÓN FINAL',
+    'go.points':'PUNTOS', 'go.pace':'RITMO', 'go.kpmShort':'bajas/min',
+    'go.statsTitle':'ESTADÍSTICAS', 'go.kills':'Enemigos abatidos', 'go.kpm':'Bajas por minuto',
+    'go.wave':'Oleada alcanzada', 'go.level':'Nivel', 'go.time':'Tiempo',
+    'go.damage':'DAÑO POR ARMA', 'go.noDamage':'SIN DAÑO REGISTRADO',
+    'set.title':'AJUSTES', 'set.sens':'Sensibilidad del ratón', 'set.volume':'Volumen',
+    'set.lang':'Idioma', 'set.langName':'ESPAÑOL', 'set.back':'VOLVER',
 
     // --- combo stages ---
     'combo.0':'SERIO', 'combo.1':'CONTENTO', 'combo.2':'EUFÓRICO', 'combo.3':'LOCO',
@@ -201,6 +208,13 @@ const I18N = {
     'sw.title':'INVENTORY FULL', 'sw.sub':'Choose a weapon to replace with {w}',
     'go.title':'YOU DIED', 'go.restart':'RESTART',
     'go.stats':'Wave {w} · Level {l} · {k} down · {p} points',
+    'go.summary':'WAVE {w} · LV {l}', 'go.score':'FINAL SCORE',
+    'go.points':'POINTS', 'go.pace':'PACE', 'go.kpmShort':'kills/min',
+    'go.statsTitle':'STATS', 'go.kills':'Enemies killed', 'go.kpm':'Kills per minute',
+    'go.wave':'Wave reached', 'go.level':'Level', 'go.time':'Time',
+    'go.damage':'DAMAGE BY WEAPON', 'go.noDamage':'NO DAMAGE RECORDED',
+    'set.title':'SETTINGS', 'set.sens':'Mouse sensitivity', 'set.volume':'Volume',
+    'set.lang':'Language', 'set.langName':'ENGLISH', 'set.back':'BACK',
 
     'combo.0':'SERIOUS', 'combo.1':'HAPPY', 'combo.2':'ECSTATIC', 'combo.3':'CRAZY',
 

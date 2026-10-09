@@ -317,6 +317,68 @@
   #btnTitleMute:hover{color:#0f0b05;background:#ffcf5c;box-shadow:inset 0 0 0 3px #fff0c0;}
   #btnTitleMute.muted{color:#7a3a1e;}
 
+  /* ---- SHARED STONE PANEL (end of run, settings) ---- */
+  .stonePanel{position:relative;box-sizing:border-box;padding:34px 34px 30px;transform-origin:center;
+    background-color:var(--stone-bar);
+    background-image:
+      repeating-linear-gradient(0deg,rgba(70,50,24,.45) 0 5px,rgba(0,0,0,0) 5px 98px),
+      repeating-linear-gradient(90deg,rgba(70,50,24,.45) 0 5px,rgba(0,0,0,0) 5px 300px),
+      repeating-linear-gradient(63deg,rgba(120,88,44,.17) 0 4px,rgba(0,0,0,0) 4px 15px),
+      linear-gradient(180deg,rgba(255,240,205,.24) 0 8px,rgba(0,0,0,0) 8px);
+    box-shadow:inset 0 -6px 0 rgba(48,36,18,.85), 0 0 0 4px var(--cell-line), 0 24px 0 rgba(4,4,5,.45);}
+  .stonePanel .filigree{position:absolute;left:0;right:0;height:14px;
+    background-image:repeating-linear-gradient(45deg,rgba(207,168,105,.85) 0 3px,rgba(0,0,0,0) 3px 10px),
+      repeating-linear-gradient(-45deg,rgba(90,68,34,.7) 0 3px,rgba(0,0,0,0) 3px 10px);}
+  .stonePanel .filigree.top{top:0;} .stonePanel .filigree.bottom{bottom:0;}
+  .stonePanel .stud{position:absolute;width:12px;height:12px;background:var(--gold);}
+  .stonePanel .stud.tl{left:12px;top:26px;} .stonePanel .stud.tr{right:12px;top:26px;}
+  .stonePanel .stud.bl{left:12px;bottom:26px;} .stonePanel .stud.br{right:12px;bottom:26px;}
+  .panelHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:16px;}
+  .panelSummary{font-family:'Press Start 2P',monospace;font-size:13px;color:var(--plaque);}
+  .panelButtons{display:flex;justify-content:center;gap:12px;margin-top:18px;}
+  .panelButtons .pauseBtn{width:260px;}
+
+  /* ---- END OF RUN ---- */
+  #gameOverOverlay{position:fixed;inset:0;z-index:29;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 45%, rgba(40,8,10,.45) 0%, rgba(4,4,5,.94) 78%);}
+  #gameOverOverlay.hidden{display:none;}
+  #runPanel{width:1120px;}
+  #runScoreBlock{text-align:center;padding:14px 0 18px;margin-bottom:14px;background:var(--cell);
+    box-shadow:inset 3px 3px 0 var(--cell-dark), inset -3px -3px 0 var(--cell-light), 0 0 0 2px var(--cell-line);}
+  #runScoreLabel{font-size:12px;letter-spacing:6px;color:var(--vitor);}
+  #runScore{font-family:'Press Start 2P',monospace;font-size:52px;line-height:1.25;color:var(--gold);
+    text-shadow:0 4px 0 rgba(0,0,0,.6);margin:6px 0 4px;}
+  #runScoreMath{font-size:12px;letter-spacing:2px;color:var(--txt-muted);}
+  #runScoreMath b{font-weight:normal;color:var(--txt-2);}
+  #runBody{display:grid;grid-template-columns:1fr 1.5fr;gap:22px;}
+  .runCol{padding:14px 16px;background:var(--cell);
+    box-shadow:inset 3px 3px 0 var(--cell-dark), inset -3px -3px 0 var(--cell-light), 0 0 0 2px var(--cell-line);}
+  .runStat{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;
+    border-bottom:1px solid rgba(107,83,48,.35);font-size:12px;color:var(--txt-2);}
+  .runStat b{font-family:'Press Start 2P',monospace;font-weight:normal;font-size:13px;color:var(--gold);}
+  .runWeapon{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:6px 0;
+    border-bottom:1px solid rgba(107,83,48,.35);}
+  .runWeapon img{width:44px;height:44px;image-rendering:pixelated;object-fit:contain;}
+  .runWeapon .rwName{font-size:11px;letter-spacing:1px;color:var(--gold-lt);margin-bottom:5px;}
+  .runWeapon .rwBar{height:7px;background:#33291a;box-shadow:inset 0 0 0 1px #0d0904;}
+  .runWeapon .rwBar i{display:block;height:100%;background:var(--gold);}
+  .runWeapon .rwNum{text-align:right;font-family:'Press Start 2P',monospace;font-size:11px;color:var(--txt-2);}
+  .runWeapon .rwNum small{display:block;font-family:'Silkscreen',monospace;font-size:10px;color:var(--txt-muted);margin-top:4px;}
+
+  /* ---- SETTINGS ---- */
+  #settingsModal{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,4,5,.72);}
+  #settingsModal.hidden{display:none;}
+  /* Not #settingsPanel: that's the developer tuning panel's id. */
+  #playerSettingsPanel{width:560px;}
+  .setRow{padding:14px 16px;margin-bottom:10px;background:var(--cell);
+    box-shadow:inset 3px 3px 0 var(--cell-dark), inset -3px -3px 0 var(--cell-light), 0 0 0 2px var(--cell-line);}
+  .setLabel{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:2px;
+    color:var(--txt-2);margin-bottom:10px;}
+  .setVal{font-family:'Press Start 2P',monospace;font-size:11px;color:var(--gold);}
+  .setRow input[type=range]{width:100%;accent-color:var(--gold);}
+  .setRow .pauseBtn{width:100%;}
+
   /* ---- PAUSE MENU ---- */
   #pauseOverlay{position:fixed;inset:0;z-index:28;display:flex;align-items:center;justify-content:center;
     background:radial-gradient(ellipse at 50% 45%, rgba(24,18,10,.35) 0%, rgba(4,4,5,.92) 78%);}
@@ -750,7 +812,7 @@
 
   <div id="titleMenu">
     <button id="startBtn" class="titleBtn primary" disabled data-i18n="ui.play">PLAY</button>
-    <button id="btnSettingsMenu" class="titleBtn" disabled data-i18n="ui.settings">SETTINGS</button>
+    <button id="btnSettingsMenu" class="titleBtn" data-i18n="ui.settings">SETTINGS</button>
     <button id="btnLanguageMenu" class="titleBtn" data-i18n="ui.language">LANGUAGE</button>
     <div id="titleHelper">
       <div id="loadingBar"><div id="loadingFill"></div></div>
@@ -803,10 +865,58 @@
   </div>
 </div>
 
-<div id="gameOverOverlay" class="overlay hidden">
-  <h1 data-i18n="go.title">YOU DIED</h1>
-  <p id="gameOverStats"></p>
-  <button class="btn" id="restartBtn" data-i18n="go.restart">RESTART</button>
+<!-- End of run: final score, how it was reached, and what each weapon contributed. -->
+<div id="gameOverOverlay" class="hidden">
+  <div id="runPanel" class="stonePanel">
+    <div class="filigree top"></div><div class="filigree bottom"></div>
+    <div class="stud tl"></div><div class="stud tr"></div><div class="stud bl"></div><div class="stud br"></div>
+    <div class="panelHeader">
+      <span class="chip lvlChip" data-i18n="go.title">YOU DIED</span>
+      <span id="runSummary" class="panelSummary"></span>
+    </div>
+    <div id="runScoreBlock">
+      <div id="runScoreLabel" data-i18n="go.score">FINAL SCORE</div>
+      <div id="runScore">0</div>
+      <div id="runScoreMath"></div>
+    </div>
+    <div id="runBody">
+      <div class="runCol">
+        <div class="pauseSectionTitle" data-i18n="go.statsTitle">STATS</div>
+        <div id="runStatList"></div>
+      </div>
+      <div class="runCol wide">
+        <div class="pauseSectionTitle" data-i18n="go.damage">DAMAGE BY WEAPON</div>
+        <div id="runWeaponList"></div>
+      </div>
+    </div>
+    <div class="panelButtons">
+      <button class="pauseBtn primary" id="restartBtn" data-i18n="go.restart">RESTART</button>
+    </div>
+  </div>
+</div>
+
+<!-- Player settings, opened from the title screen and from the pause menu. -->
+<div id="settingsModal" class="hidden">
+  <div id="playerSettingsPanel" class="stonePanel">
+    <div class="filigree top"></div><div class="filigree bottom"></div>
+    <div class="stud tl"></div><div class="stud tr"></div><div class="stud bl"></div><div class="stud br"></div>
+    <div class="panelHeader"><span class="chip lvlChip" data-i18n="set.title">SETTINGS</span></div>
+    <div class="setRow">
+      <div class="setLabel"><span data-i18n="set.sens">Mouse sensitivity</span><span class="setVal" id="setSensVal">x1.00</span></div>
+      <input type="range" id="setSens" min="0" max="100" step="1" value="50">
+    </div>
+    <div class="setRow">
+      <div class="setLabel"><span data-i18n="set.volume">Volume</span><span class="setVal" id="setVolVal">100%</span></div>
+      <input type="range" id="setVol" min="0" max="100" step="1" value="100">
+    </div>
+    <div class="setRow">
+      <div class="setLabel"><span data-i18n="set.lang">Language</span></div>
+      <button class="pauseBtn" id="setLang">ESPAÑOL</button>
+    </div>
+    <div class="panelButtons">
+      <button class="pauseBtn primary" id="setBack" data-i18n="set.back">BACK</button>
+    </div>
+  </div>
 </div>
 
 <div id="levelUp" class="hidden">
@@ -871,6 +981,7 @@
 <script src="js/combo.js"></script>
 <script src="js/landing.js"></script>
 <script src="js/pause.js"></script>
+<script src="js/menus.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/fpv.js"></script>
 <script src="js/progression.js"></script>

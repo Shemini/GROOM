@@ -82,7 +82,7 @@ function fireWindSlash(wIdx, dmg){
   mesh.position.copy(camera.position).addScaledVector(forward, 1.0);
   mesh.position.y = feetY + 1.1;
   scene.add(mesh);
-  windSlashes.push({ mesh, mat, dir:forward.clone(), speed:w.windSpeed||26, dmg,
+  windSlashes.push({ source: damageCredit, mesh, mat, dir:forward.clone(), speed:w.windSpeed||26, dmg,
     travelled:0, range, hit:new Set() });
   soundShot({type:'chain', name:'WIND'});
 }
@@ -91,6 +91,7 @@ let windSlashes = [];
 function updateWindSlashes(delta){
   for(let i=windSlashes.length-1;i>=0;i--){
     const s = windSlashes[i];
+    damageCredit = s.source;
     const step = s.speed*delta;
     s.travelled += step;
     s.mesh.position.addScaledVector(s.dir, step);
@@ -143,7 +144,7 @@ function fireBubble(wIdx, dmgMult, isCrit, critMultVal){
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.copy(camera.position).addScaledVector(forward, 0.6);
   scene.add(mesh);
-  bubbles.push({
+  bubbles.push({ source: damageCredit,
     mesh, mat, geo, radius,
     vel: dir.multiplyScalar(w.bubbleSpeed||11),
     dmg: effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1),
@@ -157,6 +158,7 @@ function fireBubble(wIdx, dmgMult, isCrit, critMultVal){
 function updateBubbles(delta, elapsed){
   for(let i=bubbles.length-1;i>=0;i--){
     const b = bubbles[i];
+    damageCredit = b.source;
     b.age += delta;
     // Quick at first, then it slows to a drift and starts bobbing.
     const drag = Math.pow(0.12, delta);
@@ -229,6 +231,7 @@ function tryInfect(z, chance, elapsed){
   if(z.immune || z.infected) return;
   if(Math.random() > chance) return;
   z.infected = true;
+  z.infectSource = damageCredit;
   z.coughTimer = 1.2 + Math.random()*0.8;
 }
 
@@ -252,6 +255,8 @@ function updateInfections(delta, elapsed){
     }
 
     playEnemyClip('coughing', z.group.position, 0.55, z.def.id);
+    // Each cough, and anyone it infects, is credited to the wand that started the outbreak.
+    damageCredit = (z.infectSource === undefined) ? null : z.infectSource;
     damageZombie(z, coughDmg, {dot:true});   // part of the infection, shown in green
     if(z.dying) continue;
     for(const other of zombies){
@@ -279,7 +284,7 @@ function fireBait(wIdx, dmgMult, isCrit, critMultVal){
   const seconds = (w.baitSeconds||40)*mods.durationMult;
   const radius = (w.baitRadius||16)*mods.radiusMult;
   const evolved = !!player.weaponEvolved[wIdx];
-  projectiles.push({
+  projectiles.push({ source: damageCredit,
     mesh, spin:0, pos:start.clone(), vel:forward.clone().multiplyScalar(w.launchSpeed||13),
     gravity:true, radius:0.3, groundOnly:true, spawnTime:clock.getElapsedTime(), maxLife:5, landed:false,
     onImpact:(pos)=>{
@@ -376,7 +381,7 @@ function fireStream(wIdx, dmgMult, isCrit, critMultVal){
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.copy(camera.position).addScaledVector(forward, 0.7);
   scene.add(mesh);
-  streamParticles.push({
+  streamParticles.push({ source: damageCredit,
     mesh, mat, geo, vel: dir.multiplyScalar(w.streamSpeed||16),
     age:0, life:(w.streamLife||1.1)*mods.durationMult,
     baseRadius:(w.streamRadius||0.5)*mods.radiusMult,
@@ -390,6 +395,7 @@ function fireStream(wIdx, dmgMult, isCrit, critMultVal){
 function updateStream(delta, elapsed){
   for(let i=streamParticles.length-1;i>=0;i--){
     const p = streamParticles[i];
+    damageCredit = p.source;
     p.age += delta;
     const k = p.age/p.life;
     p.vel.multiplyScalar(Math.pow(0.35, delta));
@@ -410,11 +416,13 @@ function updateStream(delta, elapsed){
         // Damage is applied through the shared DoT gate rather than per particle, or a dense
         // stream would delete everything instantly.
         z.streamUntil = elapsed + 0.25;
+        z.streamSource = damageCredit;
         z.streamDps = Math.max(z.streamDps||0, p.dps);
         z.slowUntil = elapsed + 0.5;
         z.slowMult = p.slow;
         if(p.evolved && k <= 0.45){
           z.burnUntil = elapsed + p.burnDur;
+          z.burnSource = damageCredit;
           z.burnDps = Math.max(z.burnDps||0, p.burnDmg);
         }
       }

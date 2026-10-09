@@ -14,6 +14,11 @@ function animate(){
 
   if(gameState==='playing'){
     gameTime += delta;   // frozen whenever the game isn't in play
+    damageCredit = null; // each update credits its own effects; nothing carries over a frame
+    runStats.runTime += delta;
+    // "Combat time" only runs while there's someone to fight, so the gaps between waves
+    // don't drag your pace down — but leaving a wave alive to gather up does.
+    if(zombies.some(z=>!z.dying)) runStats.combatTime += delta;
     updateMovement(delta);
     if(mouseDown) tryShoot(elapsed);
     finishReloadIfDue(elapsed);

@@ -30,7 +30,8 @@ const PAUSE_CONTROLS = [
 function initPauseMenu(){
   const bind = (id, fn)=>{ const b = document.getElementById(id); if(b) b.addEventListener('click', e=>{ e.stopPropagation(); fn(); }); };
   bind('btnResume', ()=>requestLock());
-  bind('btnPauseSettings', openSettingsFromPause);
+  // The player's settings. (The tuning panel is still on B.)
+  bind('btnPauseSettings', ()=>openSettingsModal('pause'));
   bind('btnPauseControls', ()=>setPauseView(pauseView === 'controls' ? 'stats' : 'controls'));
   buildControlList();
 }

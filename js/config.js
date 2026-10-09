@@ -851,7 +851,7 @@ const MOUSE_DELTA_CAP = 120;
 const PIXEL_TARGET_COLUMNS = 440;
 
 const DEFAULT_SETTINGS = {
-  mouseSensitivity:0.0022,
+  mouseSensitivity:0.0022,   // the slider's midpoint; see SENSITIVITY_RANGE
   faceAnimSpeed:1.0,   // global multiplier for tuning the portrait's animation speed live
   brightness:0, contrast:0, hue:0, saturation:1, tintR:1, tintG:1, tintB:1, pixelSize:6, lutStrength:1,
   autoPixel:true,    // derive pixel size from screen width (see PIXEL_TARGET_COLUMNS)
@@ -1085,3 +1085,33 @@ if(DRAFT_MODE){
 // =================================================================
 const INITIAL_PLAYER = JSON.parse(JSON.stringify(player));
 const INITIAL_WAVE = JSON.parse(JSON.stringify(wave));
+
+// =================================================================
+// RUN STATS AND SCORE
+// =================================================================
+// Score per kill is the enemy's worth times a combo multiplier that's much steeper than the
+// gold one: killing fast and keeping the combo alive is what scores. The final score then
+// multiplies by your pace (kills per minute of combat), so letting a wave gather to wipe it
+// in one blast costs you: the clock runs the whole time they're alive.
+const SCORE_PER_KILL = 10;
+const SCORE_HEADSHOT_BONUS = 0.8;            // +80% for a headshot kill
+const SCORE_COMBO_MULT = [1, 1.5, 2, 3];     // by combo stage: serio, contento, eufórico, loco
+const SCORE_PACE_REFERENCE = 10;             // kills per minute that counts as x1.00
+
+// Which weapon gets the credit for damage being dealt right now. Set while a weapon fires,
+// and stamped onto anything it leaves behind (puddles, bubbles, burns...) so damage dealt
+// later still goes to the right weapon, even after you've switched.
+let damageCredit = null;
+function withCredit(source, fn){
+  return function(){
+    const prev = damageCredit; damageCredit = source;
+    try{ return fn.apply(this, arguments); } finally { damageCredit = prev; }
+  };
+}
+
+const runStats = { damageByWeapon:{}, combatTime:0, runTime:0 };
+function resetRunStats(){
+  runStats.damageByWeapon = {};
+  runStats.combatTime = 0;
+  runStats.runTime = 0;
+}

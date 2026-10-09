@@ -4,10 +4,10 @@
 function initAudio(){
   if(audioCtx){ if(audioCtx.state==='suspended') audioCtx.resume(); return; }
   audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  masterGain = audioCtx.createGain(); masterGain.gain.value = muted?0:0.7;
+  masterGain = audioCtx.createGain(); masterGain.gain.value = muted?0:0.7*(typeof getMasterVolume==='function'?getMasterVolume():1);
   masterGain.connect(audioCtx.destination);
 }
-function toggleMute(){ muted=!muted; if(masterGain) masterGain.gain.value=muted?0:0.7; }
+function toggleMute(){ muted=!muted; if(typeof applyMasterVolume==='function') applyMasterVolume(); else if(masterGain) masterGain.gain.value=muted?0:0.7; }
 function computePan(worldPos){
   if(!camera) return 0;
   const rel = new THREE.Vector3().subVectors(worldPos, camera.position);
