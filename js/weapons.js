@@ -78,6 +78,7 @@ function applyEvolutionRotationStep(wIdx, evoLevel){
   const mods = player.weaponMods[wIdx];
   switch(key){
     case 'damage':          mods.dmgMult *= 1.15; break;
+    case 'bigDamage':       mods.dmgMult *= 1.25; break;
     case 'fireRate':        mods.fireRateMult *= 1.12; break;
     case 'ammo':            mods.ammoMult *= 1.20; break;
     case 'radius':          mods.radiusMult *= 1.15; break;

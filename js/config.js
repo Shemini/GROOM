@@ -781,10 +781,11 @@ const CRIT_MULTIPLIER = 1.5;
 
 const BASE_LEVEL_TABLES = {
   // Index 0 (fists) has no table: it never levels.
-  1: [ {stat:'damage',amount:0.15,label:'+15% damage'}, {stat:'damage',amount:0.15,label:'+15% damage'},
-       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.15,label:'+15% damage'} ],
-  2: [ {stat:'damage',amount:0.18,label:'+18% damage'}, {stat:'fireRate',amount:0.10,label:'+10% fire rate'},
-       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.18,label:'+18% damage'} ],
+  // Pistol and rifle can't hit crowds, so they scale harder on damage than anything else.
+  1: [ {stat:'damage',amount:0.25,label:'+25% damage'}, {stat:'damage',amount:0.25,label:'+25% damage'},
+       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.25,label:'+25% damage'} ],
+  2: [ {stat:'damage',amount:0.25,label:'+25% damage'}, {stat:'fireRate',amount:0.10,label:'+10% fire rate'},
+       {stat:'ammo',amount:0.25,label:'+25% ammo capacity'}, {stat:'damage',amount:0.25,label:'+25% damage'} ],
   3: [ {stat:'fireRate',amount:0.10,label:'+10% fire rate'}, {stat:'bounce',amount:1,label:'+1 ricochet'},
        {stat:'ammo',amount:0.30,label:'+30% ammo capacity'}, {stat:'damage',amount:0.15,label:'+15% damage'} ],
   4: [ {stat:'damage',amount:0.10,label:'+10% bubble damage'}, {stat:'duration',amount:0.20,label:'+20% bubble life'},
@@ -806,8 +807,9 @@ const BASE_LEVEL_TABLES = {
 };
 
 const EVOLUTIONS = {
-  1:  { name:'PISTOLAS GEMELAS', rotation:['damage','fireRate','ammo'] },   // dual wield
-  2:  { name:'RIFLE PERFORANTE',  rotation:['damage','pierceCount','ammo'] },
+  // bigDamage is +25% (plain damage is +15%): single-target guns need to keep up late.
+  1:  { name:'PISTOLAS GEMELAS', rotation:['bigDamage','fireRate','bigDamage','ammo'] },   // dual wield
+  2:  { name:'RIFLE PERFORANTE',  rotation:['bigDamage','pierceCount','bigDamage','ammo'] },
   3:  { name:'METRALLETA AUTOMÁTICA', rotation:['damage','bounce','fireRate','ammo'] },
   4:  { name:'PACIENTE CERO',     rotation:['infectChance','coughDamage','coughSpread'] },
   5:  { name:'JAMÓN EXPLOSIVO',   rotation:['radius','damage','duration'] },
@@ -1014,12 +1016,18 @@ const GUITARRISTA_FOLDER_CANCIONES = 'Canciones';
 
 // Boss music. When the R rises, the guitarist breaks off whatever he's playing and switches
 // to these; when it falls, he goes back to his normal set. To add songs:
-//   1. put the .ogg files in   Audio/Guitarrista/CancionesBoss/
+//   1. put the .ogg files in   Audio/Guitarrista/Boss/
 //   2. list each one below as  { file:'Name_Without_Extension', title:'Shown title' },
 // While this list is empty he simply keeps playing his normal songs through the fight.
-const GUITARRISTA_FOLDER_BOSS = 'CancionesBoss';
+// A file named with underscores instead of spaces (Erre_que_Erre.ogg) is found too.
+const GUITARRISTA_FOLDER_BOSS = 'Boss';
 const GUITARRISTA_BOSS_TRACKS = [
-  // { file:'Ejemplo_Cancion_Boss', title:'Ejemplo' },
+  { file:'Ritmo Desgarrado',          title:'Ritmo Desgarrado' },
+  { file:'Arrepentimiento Repentino', title:'Arrepentimiento Repentino' },
+  { file:'Erre que Erre',             title:'Erre que Erre' },
+  { file:'Redneck Rivalry',           title:'Redneck Rivalry' },
+  { file:'Rim Fandango',              title:'Rim Fandango' },
+  { file:'Ramón Rabioso',             title:'Ramón Rabioso' },
 ];
 const GUITARRISTA_QUEJAS_COUNT = 5;          // numbered complaint files (the sting below is separate)
 const GUITARRISTA_BREAK_CLIP = 'Guitarrista_Quejas_Quiebrodeguitarra';

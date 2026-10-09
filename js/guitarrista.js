@@ -68,14 +68,23 @@ function startNextTrack(){
     folder = GUITARRISTA_FOLDER_CANCIONES;
   }
   musicCurrentTitle = track.title || track.file;
-  // Filenames may contain accents or spaces (e.g. 'Sombras_de_Jaén'), which have to be
-  // percent-encoded to survive the round trip to the server reliably.
-  musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/${folder}/${encodeURIComponent(track.file)}.${AUDIO_EXT}`;
-  console.log('Guitarrista: playing "' + musicCurrentTitle + '" -> ' + musicEl.src);
-  musicEl.play().catch(()=>{
-    console.warn('Guitarrista: could not play track ' + track.file);
-    musicCurrentTitle = '';
-  });
+  // Filenames may contain accents or spaces (e.g. 'Sombras de Jaén'), which have to be
+  // percent-encoded to survive the round trip to the server reliably. If the file isn't there
+  // under its declared name, the same name with underscores for spaces is tried next.
+  const names = [track.file];
+  if(track.file.includes(' ')) names.push(track.file.replace(/ /g, '_'));
+  else if(track.file.includes('_')) names.push(track.file.replace(/_/g, ' '));
+  const tryName = (i)=>{
+    musicEl.src = `./Audio/${GUITARRISTA_ACTOR}/${folder}/${encodeURIComponent(names[i])}.${AUDIO_EXT}`;
+    console.log('Guitarrista: playing "' + musicCurrentTitle + '" -> ' + musicEl.src);
+    musicEl.play().catch(err=>{
+      if(err && err.name === 'NotAllowedError'){ musicCurrentTitle = ''; return; }   // autoplay, not a missing file
+      if(i+1 < names.length) return tryName(i+1);
+      console.warn('Guitarrista: could not play track ' + names.join(' / '));
+      musicCurrentTitle = '';
+    });
+  };
+  tryName(0);
   updateMusicHUD();
 }
 

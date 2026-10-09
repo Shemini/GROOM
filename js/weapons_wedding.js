@@ -282,9 +282,10 @@ function updateInfections(delta, elapsed){
 }
 
 // ---------- JAMÓN IBÉRICO (bait) ----------
-// A shared distraction budget: `baitSeconds` of ham split between whoever is eating. Rather
-// than recomputing every frame, the deadline is recalculated only when a new guest arrives —
-// which is the only moment the division changes.
+// A shared budget of ham-seconds (`baitSeconds`, raised by duration upgrades) that every guest
+// eating from the plate drains at once: one guest eats it slowly, a crowd clears it fast. On
+// top of that the plate always lasts at least BAIT_MIN_SECONDS and never more than
+// BAIT_MAX_SECONDS from landing, counted in game time.
 let baits = [];
 function fireBait(wIdx, dmgMult, isCrit, critMultVal){
   const w = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx];
@@ -322,7 +323,7 @@ function spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult){
   soundSplat();
   baits.push({
     plate, ring, pos:{x:pos.x, y:pos.y, z:pos.z}, radius,
-    secondsLeft: seconds, eaters:new Set(), deadline:clock.getElapsedTime()+seconds,
+    budget: seconds, age:0, eaters:new Set(),
     evolved, wIdx, dmgMult,
   });
 }
@@ -330,7 +331,6 @@ function spawnBait(pos, radius, seconds, evolved, wIdx, dmgMult){
 function updateBaits(delta, elapsed){
   for(let i=baits.length-1;i>=0;i--){
     const b = baits[i];
-    let arrived = false;
     for(const z of zombies){
       if(z.dying) continue;
       const d = Math.hypot(z.group.position.x-b.pos.x, z.group.position.z-b.pos.z);
@@ -341,28 +341,25 @@ function updateBaits(delta, elapsed){
           // the reason to use a weapon that deals no damage of its own.
           z.damageTakenMult = ALL_WEAPONS[b.wIdx].cholesterolMult || 1.35;
         }
-        if(!b.eaters.has(z) && d <= 2.2){ b.eaters.add(z); arrived = true; }
+        if(!b.eaters.has(z) && d <= 2.2) b.eaters.add(z);
       } else if(z.luredBy === b && d > b.radius*1.15){
         z.luredBy = null; z.damageTakenMult = 1;
         b.eaters.delete(z);
       }
     }
 
-    // Only recompute when the split actually changes — i.e. when someone new starts eating.
-    if(arrived){
-      const remaining = Math.max(0, b.deadline - elapsed);
-      const eaters = Math.max(1, b.eaters.size);
-      // Divided as before, then clamped: a big crowd no longer makes the plate vanish in
-      // half a second, and a lone guest doesn't sit eating for the best part of a minute.
-      const share = remaining/eaters;
-      b.deadline = elapsed + Math.min(BAIT_MAX_SECONDS, Math.max(BAIT_MIN_SECONDS, share));
-    }
+    // The budget drains continuously at one ham-second per guest eating (at least one, so an
+    // ignored plate still runs down). Previously each new arrival reset a 5 s minimum, so a
+    // steady trickle of guests kept the plate alive indefinitely.
+    for(const z of b.eaters){ if(z.dying || !zombies.includes(z)) b.eaters.delete(z); }
+    b.age += delta;
+    b.budget -= delta * Math.max(1, b.eaters.size);
+    const done = b.age >= BAIT_MAX_SECONDS || (b.budget <= 0 && b.age >= BAIT_MIN_SECONDS);
 
     b.plate.rotation.z += delta*0.6;   // lying flat, so spin is about its own normal
-    const lifeFrac = Math.max(0, (b.deadline-elapsed)/Math.max(0.001, b.radius));
     b.ring.material.opacity = 0.10 + 0.08*Math.sin(elapsed*3);
 
-    if(elapsed >= b.deadline){
+    if(done){
       for(const z of zombies){ if(z.luredBy===b){ z.luredBy=null; z.damageTakenMult=1; } }
       if(b.evolved){
         const mods = player.weaponMods[b.wIdx];
