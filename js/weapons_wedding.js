@@ -14,7 +14,8 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   // Evolving the fists turns them into the sword: longer reach, a real arc, and a stamina
   // cost. Held as an override rather than a separate weapon, so nothing has to be swapped in.
   const evo = (player.weaponEvolved[wIdx] && w.evolvedMelee) ? w.evolvedMelee : null;
-  const reach = ((evo && evo.meleeRange) || w.meleeRange || 2.6) * mods.radiusMult;
+  const baseReach = (evo && evo.meleeRange) || w.meleeRange || 2.6;
+  const reach = (evo && evo.fixedReach) ? baseReach : baseReach * mods.radiusMult;
   const halfArc = THREE.MathUtils.degToRad(((evo && evo.meleeArc) || w.meleeArc || 70)/2);
   const forward = new THREE.Vector3();
   camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
@@ -22,18 +23,17 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   const dmg = effectiveDamage(wIdx)*dmgMult*(isCrit?critMultVal:1);
   let hitAny = false;
 
-  // Spend stamina for the shove. With none left the blade still bites, but nothing is pushed
-  // back — which is the moment the weapon stops holding a crowd off you.
-  const cost = (evo && evo.staminaCost !== undefined) ? evo.staminaCost : (w.staminaCost || 0);
-  let canShove = true;
+  // Spend stamina. Whether an empty bar stops the swing is decided before firing (see
+  // meleeHasStamina); if swinging while exhausted is allowed, it simply costs nothing.
+  const cost = meleeStaminaCost(wIdx);
   if(cost > 0){
-    if(playerStamina >= cost){ playerStamina -= cost; }
-    else { playerStamina = 0; playerExhausted = true; canShove = false; }
-    // Hold regeneration for the swing's cooldown. Recovery (2/s) comfortably outpaced the
-    // drain (0.3 per swing at two swings a second), so the bar never actually went down —
-    // stamina now only comes back while you're not swinging.
+    playerStamina = Math.max(0, playerStamina - cost);
+    if(playerStamina <= 0) playerExhausted = true;
+    // Regeneration waits out the swing's cooldown, so stamina only comes back between bursts.
     player.staminaRegenBlockedUntil = gameTime + getShotCooldown(wIdx);
   }
+  const hitOpts = evo ? { stagger:true, knockFrom:camera.position, knockDist:evo.knockDist, staggerTime:evo.staggerTime }
+                      : { stagger:true, knockFrom:camera.position };
 
   // Gather everything inside the arc, nearest first.
   const inArc = [];
@@ -55,7 +55,7 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   const singleTarget = evo ? !!evo.singleTarget : !!w.singleTarget;
   const targets = singleTarget ? inArc.slice(0,1) : inArc;
   for(const t of targets){
-    damageZombie(t.z, dmg, {crit:isCrit, stagger:canShove, knockFrom:canShove?camera.position:null});
+    damageZombie(t.z, dmg, Object.assign({crit:isCrit}, hitOpts));
     hitAny = true;
   }
   // The arc marker is a sweep indicator: it only makes sense once the swing actually hits
@@ -69,6 +69,20 @@ function fireMelee(wIdx, dmgMult, isCrit, critMultVal){
   if(player.weaponEvolved[wIdx] && w.windDmg && player.health >= player.maxHealth - 0.01){
     fireWindSlash(wIdx, dmg*(mods.windDamage||w.windDmg||0.45));
   }
+}
+
+function meleeStaminaCost(wIdx){
+  const w = ALL_WEAPONS[wIdx];
+  const evo = (player.weaponEvolved[wIdx] && w.evolvedMelee) ? w.evolvedMelee : null;
+  return (evo && evo.staminaCost !== undefined) ? evo.staminaCost : (w.staminaCost || 0);
+}
+// Out of stamina, the sword won't swing until the bar has recovered to the same point that
+// lets you sprint again — unless SWORD_SWING_WHEN_EXHAUSTED says otherwise.
+function meleeHasStamina(wIdx){
+  const cost = meleeStaminaCost(wIdx);
+  if(cost <= 0 || SWORD_SWING_WHEN_EXHAUSTED) return true;
+  if(playerStamina < cost) playerExhausted = true;
+  return !playerExhausted;
 }
 
 function fireWindSlash(wIdx, dmg){

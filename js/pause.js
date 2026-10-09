@@ -171,7 +171,11 @@ function weaponStatLine(wIdx, key){
           case 'bubble':  return ['BUBBLE', (w.bubbleRadius||0.5)*mods.radiusMult];
           case 'bait':    return ['LURE', (w.baitRadius||16)*mods.radiusMult];
           case 'stream':  return ['WIDTH', (w.streamRadius||0.5)*mods.radiusMult];
-          case 'melee':   return ['REACH', (w.meleeRange||2.6)*mods.radiusMult];
+          case 'melee': {
+            const evo = (player.weaponEvolved[wIdx] && w.evolvedMelee) ? w.evolvedMelee : null;
+            if(evo && evo.fixedReach) return ['REACH', evo.meleeRange];
+            return ['REACH', ((evo && evo.meleeRange) || w.meleeRange || 2.6)*mods.radiusMult];
+          }
         }
         return null;
       })();

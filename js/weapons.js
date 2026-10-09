@@ -106,9 +106,9 @@ function applyEvolution(wIdx){
   const mods = player.weaponMods[wIdx];
   const w = ALL_WEAPONS[wIdx];
   switch(wIdx){
-    // Fists -> cake sword. Roughly doubles the hit and lengthens the reach; the wider arc,
-    // multi-target sweep and stamina cost come from ALL_WEAPONS[0].evolvedMelee.
-    case 0:  mods.dmgMult*=2.1; mods.radiusMult*=1.23; break;                    // espada de tarta
+    // Fists -> cake sword. Hits a bit softer than the fists did, since it hits everything in
+    // the arc; reach, arc, stamina cost and the light shove come from ALL_WEAPONS[0].evolvedMelee.
+    case 0:  mods.dmgMult*=SWORD_DAMAGE_VS_FISTS; break;                         // espada de tarta
     // Two guns instead of one: the rate jump is the point of the evolution, so it's larger
     // than a normal level-up step. Magazine grows to match, or it would be reloading constantly.
     case 1:  mods.fireRateMult*=1.9; mods.dmgMult*=1.1; mods.ammoMult*=1.6; break;  // pistolas gemelas
@@ -189,6 +189,12 @@ function tryShoot(elapsed){
   if(elapsed-player.lastShotTime < getShotCooldown(wIdx)) return;
   if(!ammo && !weapon.noAmmo) return;   // defensive: a weapon with no ammo record can't fire
   if(weapon.noAmmo){
+    // The sword runs on stamina: out of breath, it doesn't swing until the bar recovers.
+    if(!meleeHasStamina(wIdx)){
+      if(!player.dryFired){ player.dryFired = true; weaponDryFireSound(); }
+      return;
+    }
+    player.dryFired = false;
     // Melee never runs dry, so skip the magazine bookkeeping entirely.
     player.lastShotTime = elapsed;
     const dm = 1+statValue('damage'), cr = rollCrit(), crit = cr.isCrit, cm = cr.mult;

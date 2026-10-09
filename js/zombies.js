@@ -392,6 +392,7 @@ function updateZombies(delta, elapsed){
     if(!z.attacking && inMeleeRange && !z.def.kamikaze){
       z.attacking = true;
       z.attackHitsDone = 0;
+      scheduleTimedAttackVoice(z);
       z.animKey = null; // force the animation driver to restart the attack cycle from frame 0
     }
 
@@ -497,17 +498,17 @@ function updateZombieAnimations(delta){
       // Frame 0 is given its full duration. Starting the timer at zero meant the very next
       // update advanced straight past it, so every animation lost its opening frame and every
       // frame event fired one step early.
-      z.animTimer = anim.duration/anim.frames;
+      z.animTimer = enemyFrameDur(z, anim, targetKey, 0);
       setEnemyFrame(z, anim, 0);
       // Frame 0 can itself be the trigger frame, so check it on entry rather than only when
       // advancing — otherwise an event scheduled on frame 1 would never fire.
       fireFrameEvents(z, targetKey, 0);
     }
 
-    const frameDur = anim.duration/anim.frames;
     z.animTimer -= delta;
     while(z.animTimer<=0){
-      z.animTimer += frameDur;
+      // Timed for the frame about to be shown.
+      z.animTimer += enemyFrameDur(z, anim, targetKey, z.animFrame + 1);
       if(targetKey === ANIM_DEATH){
         if(z.animFrame < anim.frames-1) z.animFrame++;
         else {
@@ -570,7 +571,13 @@ function fireFrameEvents(z, key, frame){
         } else {
           takeDamage(z.dmg);
         }
-        if(attackSoundLimiter(clock.getElapsedTime())) playEnemyClip('attack', z.group.position, 0.6, z.def.id);
+        const vt = def.voiceTiming && def.voiceTiming.attack;
+        if(vt && z.attackVoiceTimed){
+          // The shout was scheduled when the swing began; the blow itself is its own sound.
+          playEnemyBuffer(z.def.id+'/Attack/'+vt.impact, z.group.position, 0.7);
+        } else if(attackSoundLimiter(clock.getElapsedTime())){
+          playEnemyClip('attack', z.group.position, 0.6, z.def.id);
+        }
       }
     }
   }
@@ -582,6 +589,12 @@ function fireFrameEvents(z, key, frame){
     if(def.footstepFrames.indexOf(frame + 1) !== -1){
       playEnemyFootstep(z.group.position, def.footstepVolume);
     }
+  }
+
+  const vtd = def.voiceTiming && def.voiceTiming.dying;
+  if(key === ANIM_DEATH && vtd && !z.deathBoomPlayed && frame >= vtd.endFrame - 1){
+    z.deathBoomPlayed = true;
+    playEnemyBuffer(def.id+'/Dying/'+vtd.explosion, z.group.position, 0.85);
   }
 
   if(key === ANIM_DEATH && def.deathExplosion && !z.explosionDone){
@@ -704,15 +717,16 @@ function damageZombie(z, amount, opts){
   if(!(opts && opts.dot)) triggerZombieFlash(z);
   spawnDamageNumber(z.group.position.clone().add(new THREE.Vector3(0,(z.height||1.7)*0.9,0)), Math.round(amount*(z.damageTakenMult||1)), !!opts.crit);
   if(opts.stagger){
-    z.staggerTimer = STAGGER_DURATION;
-    if(opts.knockFrom){
+    z.staggerTimer = opts.staggerTime !== undefined ? opts.staggerTime : STAGGER_DURATION;
+    const knock = opts.knockDist !== undefined ? opts.knockDist : KNOCKBACK_DIST;
+    if(opts.knockFrom && knock > 0){
       const dx=z.group.position.x-opts.knockFrom.x, dz=z.group.position.z-opts.knockFrom.z;
       const d=Math.hypot(dx,dz);
       if(d>0.001){
         const nx=dx/d, nz=dz/d;
         const radius = z.collisionRadius||ZOMBIE_RADIUS;
-        if(canMoveToRadius(z.group.position.x,z.group.position.z,z.group.position.x+nx*KNOCKBACK_DIST,z.group.position.z+nz*KNOCKBACK_DIST,z.feetY+0.9,radius)){
-          z.group.position.x += nx*KNOCKBACK_DIST; z.group.position.z += nz*KNOCKBACK_DIST;
+        if(canMoveToRadius(z.group.position.x,z.group.position.z,z.group.position.x+nx*knock,z.group.position.z+nz*knock,z.feetY+0.9,radius)){
+          z.group.position.x += nx*knock; z.group.position.z += nz*knock;
         }
       }
     }
@@ -736,8 +750,12 @@ function killZombie(z, headshot){
   if(z.noReward){ wave.killedThisWave++; return; }
   z.deathAnimDone = false;
   soundDeath(computePan(z.group.position));
-  if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
-    playEnemyClip('dying', z.group.position, 0.55, z.def.id);
+  // Types with a timed death always cry out — it leads into their explosion, so it isn't
+  // left to chance like an ordinary death groan.
+  if(!startTimedDeathVoice(z)){
+    if(Math.random()<0.6 && dyingSoundLimiter(clock.getElapsedTime())){
+      playEnemyClip('dying', z.group.position, 0.55, z.def.id);
+    }
   }
   // The combo advances before the payout is worked out, so the kill that raises a stage is
   // itself paid at the new rate.
@@ -1375,4 +1393,51 @@ function updateRMines(delta){
 function clearRMines(){
   rMines.forEach(m=>{ scene.remove(m.mesh); m.mesh.geometry.dispose(); m.mesh.material.dispose(); });
   rMines = [];
+}
+
+// =================================================================
+// TIMED VOICES
+// =================================================================
+
+// How long one frame of an animation shows. Normally an even share of the animation; a
+// timed death stretches its opening frames so the cry finishes on the frame it should.
+function enemyFrameDur(z, anim, key, frameIdx){
+  if(key === ANIM_DEATH && z.deathLeadFrames && frameIdx < z.deathLeadFrames) return z.deathLeadFrameDur;
+  return anim.duration/anim.frames;
+}
+
+// The shout for a swing, lined up so its last audible moment falls just after the blow:
+// shorter shouts start a moment into the swing, longer ones start part-way through the clip.
+// The swing itself is never slowed — its timing decides when the player gets hit.
+function scheduleTimedAttackVoice(z){
+  z.attackVoiceTimed = false;
+  const vt = z.def.voiceTiming && z.def.voiceTiming.attack;
+  if(!vt || !attackSoundLimiter(clock.getElapsedTime())) return;
+  const clip = pickTimedEnemyClip(z.def.id, 'attack');
+  if(!clip) return;   // not loaded: the hit frame falls back to the ordinary attack clip
+  const anim = z.def.anims.attack;
+  const impactAt = ((z.def.attackDamageFrame || 1) - 1) * anim.duration/anim.frames;
+  const voiceLen = clip.span.end - clip.span.start;
+  const startAt = impactAt + vt.overlap - voiceLen;      // seconds after the swing begins
+  const delay = Math.max(0, startAt), skip = Math.max(0, -startAt);
+  playEnemyBuffer(clip.name, z.group.position, 0.6, delay, clip.span.start + skip);
+  z.attackVoiceTimed = true;
+}
+
+// The cry starts with the death, and frames before `endFrame` are slowed so that frame
+// arrives exactly as the cry finishes. Returns false if it couldn't (not a timed type, or
+// the clips aren't loaded), so the caller can play the ordinary groan instead.
+function startTimedDeathVoice(z){
+  const vt = z.def.voiceTiming && z.def.voiceTiming.dying;
+  if(!vt) return false;
+  const clip = pickTimedEnemyClip(z.def.id, 'dying');
+  if(!clip) return false;
+  const voiceLen = clip.span.end - clip.span.start;
+  const lead = Math.max(1, vt.endFrame - 1);
+  const normal = z.def.anims.death.duration / z.def.anims.death.frames;
+  z.deathLeadFrames = lead;
+  // Never faster than the animation was drawn, only slower.
+  z.deathLeadFrameDur = Math.max(normal, voiceLen / lead);
+  playEnemyBuffer(clip.name, z.group.position, 0.6, 0, clip.span.start);
+  return true;
 }

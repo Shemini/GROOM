@@ -78,6 +78,47 @@ const dyingSoundLimiter = createRateLimiter(3);
 const calloutSoundLimiter = createRateLimiter(3);
 const attackSoundLimiter = createRateLimiter(6);
 
+// How many numbered files a type has in a category: its own count if it declares one,
+// otherwise the shared default.
+function enemyClipCount(who, categoryKey){
+  const def = ENEMY_TYPES[who], cat = AUDIO_CATEGORIES[categoryKey];
+  return (def && def.audioCounts && def.audioCounts[categoryKey]) || (cat ? cat.count : 1);
+}
+
+// Where the sound actually is inside a clip, ignoring silence at either end. Recordings carry
+// different amounts of lead-in, and timing them by their raw length would line the silence
+// up with the animation instead of the voice. Measured once per buffer.
+const voiceSpanCache = new WeakMap();
+function voiceSpan(buf){
+  if(voiceSpanCache.has(buf)) return voiceSpanCache.get(buf);
+  const d = buf.getChannelData(0), rate = buf.sampleRate, thr = VOICE_SILENCE_LEVEL;
+  let a = 0, b = d.length - 1;
+  while(a < d.length && Math.abs(d[a]) < thr) a++;
+  while(b > a && Math.abs(d[b]) < thr) b--;
+  const span = a >= d.length ? { start:0, end:buf.duration } : { start:a/rate, end:(b+1)/rate };
+  voiceSpanCache.set(buf, span);
+  return span;
+}
+
+// Picks a clip for a timed category and returns its buffer, or null if it isn't loaded (in
+// which case the caller falls back to the ordinary untimed clip).
+function pickTimedEnemyClip(who, categoryKey){
+  const cat = AUDIO_CATEGORIES[categoryKey];
+  if(!cat || typeof wsndBuffers === 'undefined') return null;
+  const idx = pickRareLastIndex(enemyClipCount(who, categoryKey), cat.rareProb);
+  const name = who + '/' + cat.folder + '/' + who + '_' + cat.folder + '_' + idx;
+  const buf = wsndBuffers[name];
+  return buf ? { name, buf, span: voiceSpan(buf) } : null;
+}
+
+// An enemy clip from a decoded buffer, at the enemy-voice loudness and falloff, optionally
+// delayed and/or started part-way in.
+function playEnemyBuffer(name, pos, volume, delay, offset){
+  const lvl = voiceLevel(pos, Math.min(1, volume*ENEMY_VOICE_BOOST), ENEMY_VOICE_FALLOFF, 'linear');
+  if(lvl.volume <= 0.001) return null;
+  return wsndPlay(name, { volume:lvl.volume, pan:lvl.pan, delay:delay||0, offset:offset||0 });
+}
+
 function playEnemyClip(categoryKey, pos, volume, actor){
   const cat = AUDIO_CATEGORIES[categoryKey];
   if(!cat || !audioCtx) return;
@@ -85,7 +126,7 @@ function playEnemyClip(categoryKey, pos, volume, actor){
   const who = actor || ENEMY_AUDIO_TYPE;
   const lvl = voiceLevel(pos, Math.min(1, (volume===undefined?0.6:volume)*ENEMY_VOICE_BOOST), ENEMY_VOICE_FALLOFF, 'linear');
   if(lvl.volume <= 0.001) return;
-  const idx = pickRareLastIndex(cat.count, cat.rareProb);
+  const idx = pickRareLastIndex(enemyClipCount(who, categoryKey), cat.rareProb);
   const url = `./Audio/${who}/${cat.folder}/${who}_${cat.folder}_${idx}.${AUDIO_EXT}`;
   if(audioMissingCache.has(url)) return;
   try{

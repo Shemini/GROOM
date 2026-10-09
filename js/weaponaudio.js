@@ -51,7 +51,25 @@ function bossVoiceNames(){
   if(typeof BOSS_RUMBLE_FILE !== 'undefined' && BOSS_RUMBLE_FILE) names.push(BOSS_RUMBLE_FILE);
   return names;
 }
+// Clips named by path ('TrajeB/Dying/TrajeB_Dying_1') live under Audio/ at that path.
+function timedEnemyClipNames(){
+  const names = [];
+  for(const id in ENEMY_TYPES){
+    const vt = ENEMY_TYPES[id].voiceTiming;
+    if(!vt) continue;
+    const add = (key, extra)=>{
+      const cat = AUDIO_CATEGORIES[key];
+      for(let i=1;i<=enemyClipCount(id, key);i++) names.push(id+'/'+cat.folder+'/'+id+'_'+cat.folder+'_'+i);
+      if(extra) names.push(id+'/'+cat.folder+'/'+extra);
+    };
+    if(vt.attack) add('attack', vt.attack.impact);
+    if(vt.dying) add('dying', vt.dying.explosion);
+  }
+  return names;
+}
+
 function wsndUrlFor(name){
+  if(name.indexOf('/') !== -1) return './Audio/' + name.split('/').map(encodeURIComponent).join('/') + '.ogg';
   const dir = (FOOTSTEP_SOUNDS.indexOf(name) !== -1) ? FOOTSTEP_DIR
             : (bossVoiceNames().indexOf(name) !== -1) ? BOSS_VOICE_DIR
             : WEAPON_AUDIO_DIR;
@@ -59,7 +77,7 @@ function wsndUrlFor(name){
 }
 
 function wsndAllNames(){
-  const names = new Set([...THROW_SOUNDS, ...BUBBLE_POP_SOUNDS, ...FOOTSTEP_SOUNDS, ...bossVoiceNames(),
+  const names = new Set([...THROW_SOUNDS, ...BUBBLE_POP_SOUNDS, ...FOOTSTEP_SOUNDS, ...bossVoiceNames(), ...timedEnemyClipNames(),
     SOUND_BULLET_IMPACT, SOUND_SHOOT_FAIL, SOUND_FUSE]);
   for(const k in WEAPON_SOUNDS){
     const s = WEAPON_SOUNDS[k];
@@ -127,7 +145,15 @@ function wsndPlay(name, opts){
   const panner = audioCtx.createStereoPanner();
   panner.pan.value = opts.pan || 0;
   src.connect(gain).connect(panner).connect(masterGain);
-  src.start(audioCtx.currentTime + (opts.delay || 0));
+  const when = audioCtx.currentTime + (opts.delay || 0);
+  const offset = Math.max(0, Math.min(opts.offset || 0, buf.duration - 0.01));
+  // Starting part-way into a clip can land mid-waveform and click; a 25ms fade hides it.
+  if(offset > 0){
+    const v = gain.gain.value;
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(v, when + 0.025);
+  }
+  src.start(when, offset);
   return { src, gain };
 }
 
@@ -204,7 +230,8 @@ function weaponFireSound(wIdx){
 
 // Espada: the swing resolves instantly, so the result is known before the sound is chosen.
 function weaponMeleeSound(wIdx, didHit){
-  const def = WEAPON_SOUNDS[wIdx];
+  // The evolved fists are the old sword weapon, so they swing with its sounds.
+  const def = (wIdx === FISTS_INDEX && player.weaponEvolved[wIdx]) ? WEAPON_SOUNDS[11] : WEAPON_SOUNDS[wIdx];
   if(!def) return;
   if(def.meleeMiss){
     wsndPlay(didHit ? def.meleeHit : wsndPick(def.meleeMiss), { volume:0.8 });

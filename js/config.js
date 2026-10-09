@@ -21,6 +21,15 @@ const PLAYER_STAMINA_RESUME = 2;
 // Below this, the panting cue plays — a warning that a sword swing is about to lose its shove
 // and that sprinting is about to be unavailable.
 const PLAYER_STAMINA_LOW = 2.5;
+
+// Cake sword (the evolved fists).
+const SWORD_DAMAGE_VS_FISTS = 0.85;  // a hit is this fraction of the fists' at the moment they evolve
+const SWORD_STAMINA_FRACTION = 0.12; // of the stamina bar, per swing
+const SWORD_KNOCK_DIST = 0.06;       // metres; the guns' shove is 0.3
+const SWORD_STAGGER_TIME = 0.08;     // seconds; the default stagger is 0.35
+// false: an empty bar stops the swings until it recovers to PLAYER_STAMINA_RESUME.
+// true: you can keep swinging with no stamina (you just stop spending it).
+const SWORD_SWING_WHEN_EXHAUSTED = false;
 const GRAVITY = 22;
 // Nav grid cell size in metres. Finer = more faithful to real doorways and pillars (a zombie
 // is only ~0.4m wide, so 2m cells were very coarse). Build cost is no longer the constraint
@@ -233,6 +242,10 @@ const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members ap
 // doesn't choose a card that can never be undone.
 const LEVELUP_ARM_DELAY = 0.5;
 
+// Anything quieter than this (about -35 dB) counts as silence when lining a voice up with
+// an animation.
+const VOICE_SILENCE_LEVEL = 0.018;
+
 const COMBO_KILLS_PER_STAGE = 10;
 // Small helpers the perks share. Here rather than in each file, so every system asks the
 // same question the same way.
@@ -368,6 +381,17 @@ const ENEMY_TYPES = {
     slowField:{ radius:15, innerRadius:4, minMult:0.75 },
     // On death, damages every OTHER enemy nearby for a share of his own maximum health.
     deathExplosion:{ radius:4.5, healthFraction:0.10, frame:13 },
+    // Voice lines timed to the animation rather than fired off on an event (see
+    // scheduleTimedAttackVoice / startTimedDeathVoice in zombies.js).
+    voiceTiming:{
+      // The shout finishes just after the blow lands, overlapping the impact sound.
+      attack:{ impact:'TrajeB_Attack_Impact', overlap:0.15 },
+      // The cry finishes as frame 9 appears, and the explosion goes off there. Frames 1-8 are
+      // slowed to fit the cry rather than cutting it: the clips are 1-1.6s of voice and the
+      // animation would otherwise reach frame 9 after 0.63s.
+      dying:{ endFrame:9, explosion:'TrajeB_Dying_Explosion' },
+    },
+    audioCounts:{ passive:6 },   // he has six idle groans, not TrajeA's eight
   },
 
   // --- Borrowing TrajeA's sheet until each has its own; `tint` keeps them distinguishable. ---
@@ -1095,14 +1119,17 @@ if(DRAFT_MODE){
   // --- the fists become a real build path, evolving into the cake sword ---
   delete ALL_WEAPONS[FISTS_INDEX].noLevel;
   // What the fists become once evolved. No wind slash: the sword itself is already the payoff.
-  ALL_WEAPONS[FISTS_INDEX].evolvedMelee = { meleeRange:3.2, meleeArc:85, singleTarget:false, staminaCost:0.3 };
+  // Fixed reach (no radius scaling), a 12% stamina bite per swing and only a nudge on hit:
+  // it's a crowd tool, so it trades hitting power and shove for the sweep.
+  ALL_WEAPONS[FISTS_INDEX].evolvedMelee = { meleeRange:3.2, meleeArc:85, singleTarget:false, fixedReach:true,
+    staminaCost:SWORD_STAMINA_FRACTION*PLAYER_STAMINA_MAX, knockDist:SWORD_KNOCK_DIST, staggerTime:SWORD_STAGGER_TIME };
   BASE_LEVEL_TABLES[FISTS_INDEX] = [
     {stat:'damage',  amount:0.18, label:'+18% damage'},
     {stat:'fireRate',amount:0.10, label:'+10% swing speed'},
     {stat:'damage',  amount:0.18, label:'+18% damage'},
     {stat:'radius',  amount:0.12, label:'+12% reach'},
   ];
-  EVOLUTIONS[FISTS_INDEX] = { name:'ESPADA DE TARTA', rotation:['damage','fireRate','radius'] };
+  EVOLUTIONS[FISTS_INDEX] = { name:'ESPADA DE TARTA', rotation:['damage','fireRate'] };
 
   // --- start with nothing but your hands; everything else is drafted ---
   player.slots = [FISTS_INDEX, null, null, null];
