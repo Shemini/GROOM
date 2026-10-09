@@ -163,6 +163,13 @@
   #healthMax{font-family:'Press Start 2P',monospace;font-size:17px;color:var(--txt-muted);}
   #healthPips{display:flex;gap:3px;height:13px;}
   #healthPips .pip{flex:1;background:var(--cell-dark);}
+  #healthCol{position:relative;}
+  #shieldStrip{position:absolute;left:0;right:0;bottom:-7px;height:4px;display:none;
+    background:rgba(0,0,0,.45);}
+  #shieldStrip.on{display:block;}
+  #shieldStrip i{display:block;height:100%;width:0;background:#b9c6d2;box-shadow:0 0 4px rgba(185,198,210,.6);}
+  /* An evolved stat in the pause menu: its evolution's name, under the stat's own. */
+  .pStat .pEvo{font-size:9px;letter-spacing:1px;color:var(--gold);margin-top:3px;}
   #stamCol{width:56px;display:flex;flex-direction:column;align-items:center;gap:8px;}
   #stamTrack{flex:1;width:26px;background:var(--cell-dark);box-shadow:inset 0 0 0 2px var(--txt-off);
     display:flex;flex-direction:column-reverse;padding:3px;gap:3px;}
@@ -662,6 +669,8 @@
             <span id="healthMax">/ 100</span>
           </div>
           <div id="healthPips"></div>
+          <!-- Pecholata's coraza: a steel strip over the health pips, sized against max health. -->
+          <div id="shieldStrip"><i></i></div>
         </div>
         <div id="stamCol">
           <span class="chip sm" data-i18n="hud.stam">STAM</span>

@@ -187,4 +187,13 @@ function drawFace(bobY){
   const col = idx % FACE_COLS, row = Math.floor(idx / FACE_COLS);
   const fw = faceImage.width / FACE_COLS, fh = faceImage.height / FACE_ROWS;
   faceCtx.drawImage(faceImage, col*fw, row*fh, fw, fh, 0, bobY, cw, ch);
+  // Demonio: Loco's face, flushed red. Painted only over the face itself (source-atop), so
+  // the transparent surround stays transparent.
+  if(typeof combo !== 'undefined' && COMBO_STAGES[combo.stage] && COMBO_STAGES[combo.stage].demon){
+    faceCtx.save();
+    faceCtx.globalCompositeOperation = 'source-atop';
+    faceCtx.fillStyle = DEMON_FACE_TINT;
+    faceCtx.fillRect(0, 0, cw, ch);
+    faceCtx.restore();
+  }
 }

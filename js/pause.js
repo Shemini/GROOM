@@ -118,7 +118,8 @@ function buildStatList(){
     for(let i=0;i<s.maxLevel;i++) pips += '<i class="'+(i<lvl?'on':'')+'"></i>';
     const icon = s.icon ? '<img src="'+STATS_DIR+encodeURIComponent(s.icon)+'.png" alt="">' : '<span></span>';
     html += '<div class="pStat'+(lvl===0?' zero':'')+'">'+icon+
-      '<div><div class="pName">'+statName(s)+'</div><div class="pPips">'+pips+'</div></div>'+
+      '<div><div class="pName">'+statName(s)+'</div><div class="pPips">'+pips+'</div>'+
+        (statEvolved(s.key) ? '<div class="pEvo">★ '+statEvolutionName(s.key)+'</div>' : '')+'</div>'+
       '<div class="pVal">'+(lvl===0 ? '—' : formatStatValue(s))+'</div></div>';
   });
   el2.innerHTML = html;

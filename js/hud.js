@@ -195,6 +195,18 @@ function updateStoneHUD(){
     }
   }
 
+  // --- Pecholata's coraza ---
+  const strip = document.getElementById('shieldStrip');
+  if(strip){
+    const sMax = (typeof shieldMax === 'function') ? shieldMax() : 0;
+    strip.classList.toggle('on', sMax > 0);
+    if(sMax > 0){
+      const w = Math.max(0, Math.min(1, player.shield/player.maxHealth))*100;
+      const fill = strip.firstChild;
+      if(fill && fill.style.width !== w.toFixed(1)+'%') fill.style.width = w.toFixed(1)+'%';
+    }
+  }
+
   // --- stamina ---
   if(hudRefs.stamTrack){
     const sFrac = playerStamina/PLAYER_STAMINA_MAX;

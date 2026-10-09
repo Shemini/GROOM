@@ -174,6 +174,15 @@ function breathRateMult(){
   return 1 - (1 - BUBBLE_BREATH_MIN_RATE)*k;
 }
 
+// A crit, and with Ojo de Halcón a crit can roll again for a second helping of the
+// multiplier — the same odds, the same size, applied twice.
+function rollCrit(){
+  const chance = statValue('critChance');
+  if(Math.random() >= chance) return { isCrit:false, mult:CRIT_MULTIPLIER };
+  const twice = statEvolved('critChance') && Math.random() < chance;
+  return { isCrit:true, mult: twice ? CRIT_MULTIPLIER*CRIT_MULTIPLIER : CRIT_MULTIPLIER, double: twice };
+}
+
 function tryShoot(elapsed){
   const wIdx = player.currentWeapon, weapon = ALL_WEAPONS[wIdx], mods = player.weaponMods[wIdx], ammo = player.ammoByWeapon[wIdx];
   if(player.reloading) return;
@@ -182,7 +191,7 @@ function tryShoot(elapsed){
   if(weapon.noAmmo){
     // Melee never runs dry, so skip the magazine bookkeeping entirely.
     player.lastShotTime = elapsed;
-    const dm = 1+statValue('damage'), crit = Math.random()<statValue('critChance'), cm = CRIT_MULTIPLIER;
+    const dm = 1+statValue('damage'), cr = rollCrit(), crit = cr.isCrit, cm = cr.mult;
     fpvOnFire(wIdx, withCredit(wIdx, ()=>fireMelee(wIdx, dm, crit, cm)));
     return;
   }
@@ -193,13 +202,16 @@ function tryShoot(elapsed){
     return;
   }
   player.dryFired = false;
-  player.lastShotTime = elapsed; ammo.mag--;
+  player.lastShotTime = elapsed;
+  // Cartuchos Catalanes: now and then a shot doesn't touch the magazine at all.
+  if(!(statEvolved('ammoCapacity') && Math.random() < CARTUCHOS_FREE_CHANCE)) ammo.mag--;
   guitarristaHitThisShot = false; // one Guitarrista hit per trigger pull, not per pellet
   if(wIdx===1 && player.weaponEvolved[1]){ const st=player.burstState[1]; st.phase = st.phase===0?1:0; }
 
   const dmgMult = 1+statValue('damage');
-  const isCrit = Math.random()<statValue('critChance');
-  const critMultVal = CRIT_MULTIPLIER;
+  const cr = rollCrit();
+  const isCrit = cr.isCrit;
+  const critMultVal = cr.mult;
 
   // Handed to the first-person view rather than called directly: thrown weapons hold the
   // projectile back until the sprite reaches the top of its arc, so the shot leaves the hand
@@ -222,9 +234,15 @@ function tryShoot(elapsed){
       default:        fireHitscan(wIdx,dmgMult,isCrit,critMultVal); break;
     }
   };
+  // Disparador Precoz: sometimes the shot goes off twice. The second is free, and leaves with
+  // the first (a thrown weapon throws two at the top of the arc). Not the ham, where a second
+  // plate would split the crowd it's meant to gather.
+  const twice = statEvolved('fireRate') && weapon.type !== 'bait' && Math.random() < DISPARADOR_PRECOZ_CHANCE;
+  const shot = twice ? ()=>{ launch(); launch(); } : launch;
   // Credited to this weapon even when it fires later, mid-throw.
-  fpvOnFire(wIdx, withCredit(wIdx, launch));
+  fpvOnFire(wIdx, withCredit(wIdx, shot));
   weaponFireSound(wIdx); flashMuzzle(); updateHUD();
+  if(twice) setTimeout(()=>{ if(gameState==='playing') weaponFireSound(wIdx); }, 55);
 }
 
 function fireHitscan(wIdx, dmgMult, isCrit, critMultVal){
@@ -920,6 +938,9 @@ function startReload(){
   const ammo = player.ammoByWeapon[wIdx];
   if(!ammo || player.reloading || ammo.reserve<=0 || ammo.mag>=effectiveMag(wIdx)) return;
   player.reloading = true;
+  // Dedillos Rápidos only pays out for a reload forced by an empty magazine; topping up a
+  // half-full one doesn't count, or you'd just tap R constantly for the bonus.
+  player.reloadFromEmpty = (ammo.mag <= 0);
   const baseTime = Math.max(0.5, 1.6*(1-statValue('reloadSpeed')));
   // The first-person view needs the start time as well as the end, or it can't work out how
   // far through the reload it is — without this the drop animation barely moved, because the
@@ -938,6 +959,8 @@ function finishReloadIfDue(elapsed){
     const transfer = Math.min(capacity-ammo.mag, ammo.reserve);
     ammo.mag += transfer; ammo.reserve -= transfer;
     player.reloading=false;
+    if(statEvolved('reloadSpeed') && player.reloadFromEmpty) player.quickHandsUntil = gameTime + DEDILLOS_TIME;
+    player.reloadFromEmpty = false;
     soundReloadDone(); updateHUD();
   }
 }

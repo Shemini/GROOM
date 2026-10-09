@@ -25,9 +25,19 @@ function comboDamageDealtMult(){ return 1 + combo.stage*COMBO_DAMAGE_BONUS; }
 function comboRewardMult(){ return 1 + combo.stage*COMBO_REWARD_BONUS; }
 function comboDamageTakenMult(){ return 1 + combo.stage*COMBO_DAMAGE_TAKEN_PENALTY; }
 
+// Demonio, the last stage, only exists for a player who's made the Pacto con Satán.
+function comboMaxStage(){
+  return COMBO_STAGES.length - 1 - (statEvolved('enemyIntensity') ? 0 : 1);
+}
+
+// Pura Inquina: an extra damage multiplier by stage, on top of the combo's own.
+function comboPerkDamageMult(){
+  return statEvolved('damage') ? (PURA_INQUINA_MULT[combo.stage] || 1) : 1;
+}
+
 function comboOnKill(){
   combo.count++;
-  if(combo.count >= COMBO_KILLS_PER_STAGE && combo.stage < COMBO_STAGES.length-1){
+  if(combo.count >= COMBO_KILLS_PER_STAGE && combo.stage < comboMaxStage()){
     combo.stage++;
     combo.count = 0;
     comboOnStageChanged(true);

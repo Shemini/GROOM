@@ -234,11 +234,18 @@ const SWARM_SPREAD = 2.4;   // metres around a pack's anchor that its members ap
 const LEVELUP_ARM_DELAY = 0.5;
 
 const COMBO_KILLS_PER_STAGE = 10;
+// Small helpers the perks share. Here rather than in each file, so every system asks the
+// same question the same way.
+function statEvolved(key){ return !!(player.statEvolved && player.statEvolved[key]); }
+let playerSprinting = false;   // set by the movement code each frame
+const DEMON_FACE_TINT = 'rgba(205,18,24,0.5)';
 const COMBO_STAGES = [
   { label:'SERIO',     mood:'serious', timer:10.0 },
   { label:'CONTENTO',  mood:'happy',   timer:7.5  },
   { label:'EUFÓRICO',  mood:'excited', timer:5.0  },
   { label:'LOCO',      mood:'mad',     timer:2.5  },   // 'mad' as in crazy, not angry
+  // Only reachable with Pacto con Satán (see comboMaxStage). Loco's face, tinted red.
+  { label:'DEMONIO',   mood:'mad',     timer:2.0, demon:true },
 ];
 const COMBO_DAMAGE_BONUS = 0.15;           // per stage, additive -> +45% at Mad
 const COMBO_REWARD_BONUS = 0.15;           // gold and XP, same scale
@@ -698,6 +705,39 @@ const STATION_INDICES = [2,3];                 // wall-buy stock: the cousin's r
 // Stat icons live in Stats/ alongside the weapon icons; `icon` is the filename without the
 // extension. Names are Spanish to match the art.
 const STATS_DIR = './Stats/';
+// =================================================================
+// STAT EVOLUTIONS
+// A stat at its top level can be evolved once, from the level-up screen, the same way a
+// weapon can. Each adds a perk rather than more of the same number. Names and descriptions
+// are in i18n.js under se.<key> and sed.<key>; the numbers live here.
+// =================================================================
+const STAT_EVOLUTIONS = {
+  damage:        { icon:'DañoIcon' },              // Pura Inquina
+  fireRate:      { icon:'CadenciaIcon' },          // Disparador Precoz
+  moveSpeed:     { icon:'VelocidadMovimientoIcon' },// Petardo en el Culo
+  maxHealth:     { icon:'VitalidadIcon' },         // Vitamina B12
+  reloadSpeed:   { icon:'VelocidadRecargaIcon' },  // Dedillos Rápidos
+  ammoCapacity:  { icon:'CapacidadMunicionIcon' }, // Cartuchos Catalanes
+  armor:         { icon:'CodiciaIcon' },           // Pecholata
+  xpMult:        { icon:'InteligenciaIcon' },      // Sabas
+  critChance:    { icon:'PrecisionIcon' },         // Ojo de Halcón
+  enemyIntensity:{ icon:'SedSangreIcon' },         // Pacto con Satán
+};
+// Pura Inquina: a damage multiplier per combo stage, ON TOP of the combo's own bonus (which
+// already gives x1 / x1.15 / x1.30 / x1.45). Stacked, Loco ends up at about x2.2 and Demonio
+// at x3.2 in total.
+const PURA_INQUINA_MULT = [1, 1.15, 1.3, 1.5, 2];
+const DISPARADOR_PRECOZ_CHANCE = 0.20;   // chance a shot fires twice (the second is free)
+const PETARDO_SPRINT_DAMAGE = 0.8;       // damage taken while sprinting
+const B12_REGEN_PER_MINUTE = 0.10;       // fraction of max health regained per minute
+const DEDILLOS_DAMAGE = 1.25;            // after reloading an EMPTY magazine...
+const DEDILLOS_TIME = 3;                 // ...for this many seconds
+const CARTUCHOS_FREE_CHANCE = 0.15;      // chance a shot costs no ammo
+const PECHOLATA_FRACTION = 0.25;         // shield, as a fraction of max health; refills each wave
+const SABAS_DOUBLE_CHANCE = 0.20;        // chance a level-up is two levels
+// Ojo de Halcón has no number of its own: a crit rolls the crit chance again, and if it
+// succeeds the crit multiplier applies a second time.
+
 const STATS = [
   { key:'damage',        name:'DAÑO',                   icon:'DañoIcon',                desc:'Daño de las armas',                     perLevel:0.10, maxLevel:5 },
   { key:'fireRate',      name:'CADENCIA',               icon:'CadenciaIcon',            desc:'Velocidad de disparo',                  perLevel:0.08, maxLevel:5 },
@@ -885,6 +925,10 @@ const player = {
   weaponLevel: { 1:1 }, weaponEvolved: { 1:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods(), 1: createDefaultMods() },
   burstState: {}, doubleUntil: 0, instakillUntil: 0,
   points: 0,   // score: unlike money, never spent, so it stands as a record of the run
+  statEvolved: {},       // stat key -> true once evolved
+  shield: 0,             // Pecholata's coraza
+  quickHandsUntil: 0,    // Dedillos Rápidos' damage window, in game time
+  reloadFromEmpty: false,
 };
 
 const wave = {
@@ -1095,7 +1139,7 @@ const INITIAL_WAVE = JSON.parse(JSON.stringify(wave));
 // in one blast costs you: the clock runs the whole time they're alive.
 const SCORE_PER_KILL = 10;
 const SCORE_HEADSHOT_BONUS = 0.8;            // +80% for a headshot kill
-const SCORE_COMBO_MULT = [1, 1.5, 2, 3];     // by combo stage: serio, contento, eufórico, loco
+const SCORE_COMBO_MULT = [1, 1.5, 2, 3, 4];  // by combo stage: serio, contento, eufórico, loco, demonio
 const SCORE_PACE_REFERENCE = 10;             // kills per minute that counts as x1.00
 
 // Which weapon gets the credit for damage being dealt right now. Set while a weapon fires,

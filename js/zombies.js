@@ -686,10 +686,15 @@ function damageZombie(z, amount, opts){
   const vermut = (player.instakillUntil && gameTime < player.instakillUntil) ? VERMUT_DAMAGE_MULT : 1;
   // Applied here rather than at each weapon, so damage-over-time and chained effects benefit
   // from the combo too instead of only direct hits.
-  const dealt = amount * (z.damageTakenMult||1) * vermut * comboDamageDealtMult();
+  const credit = (opts.source !== undefined) ? opts.source : damageCredit;
+  // The player's own perks only boost the player's own damage, not enemies blowing each other up.
+  const byPlayer = credit !== -1;
+  const perks = byPlayer
+    ? comboPerkDamageMult() * (gameTime < (player.quickHandsUntil||0) ? DEDILLOS_DAMAGE : 1)
+    : 1;
+  const dealt = amount * (z.damageTakenMult||1) * vermut * comboDamageDealtMult() * perks;
   // Credited to a weapon for the end-of-run stats. Only what the enemy actually had left
   // counts, so a 500-damage blast on a nearly dead guest doesn't inflate the total.
-  const credit = (opts.source !== undefined) ? opts.source : damageCredit;
   if(typeof credit === 'number' && credit >= 0){
     runStats.damageByWeapon[credit] = (runStats.damageByWeapon[credit]||0) + Math.max(0, Math.min(dealt, z.hp));
   }

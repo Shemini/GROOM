@@ -388,6 +388,7 @@ function updateMovement(delta){
   // burn stamina.
   const wantSprint = (keys['ShiftLeft']||keys['ShiftRight']) && move.lengthSq()>0;
   const sprinting = wantSprint && !playerExhausted && playerStamina>0;
+  playerSprinting = sprinting && move.lengthSq() > 0;   // for Petardo en el Culo
   if(sprinting){
     playerStamina -= PLAYER_STAMINA_DRAIN*delta;
     if(playerStamina<=0){ playerStamina = 0; playerExhausted = true; }

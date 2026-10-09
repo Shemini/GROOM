@@ -33,6 +33,7 @@ function animate(){
     updateFPV(delta, elapsed);
     updateStatusEffects(delta, elapsed);
     updateCombo(delta);
+    updateStatPerks(delta);
     updateWave(delta, elapsed);
     updateInteractables(delta, elapsed);
     updateSoap(delta, elapsed);

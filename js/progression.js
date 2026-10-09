@@ -6,7 +6,15 @@ function takeDamage(amount){
   // Higher combo, harder hits: the reward for pushing is paid for with real risk.
   // Armour is flat damage reduction, capped so it can never make the player untouchable.
   const armour = Math.min(0.8, statValue('armor'));
-  player.health -= amount * comboDamageTakenMult() * (1 - armour);
+  let hit = amount * comboDamageTakenMult() * (1 - armour);
+  // Petardo en el Culo: harder to hit properly while running flat out.
+  if(statEvolved('moveSpeed') && playerSprinting) hit *= PETARDO_SPRINT_DAMAGE;
+  // Pecholata: the coraza takes it first, and only what gets through reaches health.
+  if(player.shield > 0){
+    const soaked = Math.min(player.shield, hit);
+    player.shield -= soaked; hit -= soaked;
+  }
+  player.health -= hit;
   soundHurt();
   faceOnHit();
   damageFlashEl.style.opacity=0.55;
@@ -25,6 +33,11 @@ function addXP(amount){
   while(player.xp>=player.xpToNext){
     player.xp -= player.xpToNext; player.level++;
     player.xpToNext = xpForLevel(player.level); player.pendingLevelUps++;
+    // Sabas: sometimes a level comes with a free one stacked on top.
+    if(statEvolved('xpMult') && Math.random() < SABAS_DOUBLE_CHANCE){
+      player.level++; player.xpToNext = xpForLevel(player.level); player.pendingLevelUps++;
+      showWaveBanner(t('bn.sabas'), t('bn.sabasSub'));
+    }
   }
   updateHUD(); maybeShowLevelUp();
 }
@@ -34,7 +47,11 @@ function addXP(amount){
 // =================================================================
 function buildUpgradePool(){
   const pool=[];
-  STATS.forEach(s=>{ if(statLevel(s.key)<s.maxLevel) pool.push({ctype:'stat', stat:s}); });
+  STATS.forEach(s=>{
+    if(statLevel(s.key)<s.maxLevel) pool.push({ctype:'stat', stat:s});
+    // Maxed out: its evolution takes its place, once.
+    else if(STAT_EVOLUTIONS[s.key] && !statEvolved(s.key)) pool.push({ctype:'statEvolve', stat:s});
+  });
   player.slots.forEach(wIdx=>{
     if(wIdx===null) return;
     const w = ALL_WEAPONS[wIdx];
@@ -125,6 +142,20 @@ function renderLevelUpCards(picks){
         '<div class="art">'+(src?'<img src="'+src+'" alt="">':'<div class="swatch"></div>')+'</div>'+
         '<div class="name">'+info.name+'</div>'+
         '<div class="desc">'+info.desc+'</div>'+
+        '<div class="dots">'+dots+'</div>';
+
+    } else if(item.ctype==='statEvolve'){
+      // Framed like a weapon evolution, so the two read as the same kind of milestone.
+      const stat=item.stat;
+      card.className='lvlCard evolveCard';
+      card.dataset.ctype='statEvolve'; card.dataset.key=stat.key;
+      const icon = (STAT_EVOLUTIONS[stat.key] && STAT_EVOLUTIONS[stat.key].icon) || stat.icon;
+      let dots=''; for(let d=0;d<stat.maxLevel;d++) dots+='<div class="dot filled"></div>';
+      card.innerHTML =
+        '<div class="cardHead"><span class="kindChip">'+t('lvl.kindEvolve')+'</span>'+hotkey+'</div>'+
+        '<div class="art">'+(icon?'<img src="'+STATS_DIR+encodeURIComponent(icon)+'.png" alt="">':'<div class="swatch"></div>')+'</div>'+
+        '<div class="name">'+statEvolutionName(stat.key)+'</div>'+
+        '<div class="desc">'+statEvolutionDesc(stat.key)+'</div>'+
         '<div class="dots">'+dots+'</div>';
 
     } else if(item.ctype==='newWeapon'){
@@ -238,6 +269,7 @@ function chooseLevelUpCard(sel){
   if(sel.ctype==='stat') applyStatLevel(sel.key);
   else if(sel.ctype==='weapon') applyWeaponLevel(sel.widx);
   else if(sel.ctype==='newWeapon') draftWeapon(sel.widx);
+  else if(sel.ctype==='statEvolve') applyStatEvolution(sel.key);
   else applyEvolution(sel.widx);
   if(player.pendingLevelUps>0){
     player.pendingLevelUps--; soundLevelUp();
@@ -262,6 +294,7 @@ function startWave(){
   scheduleDrops();
   comboSetFrozen(false);
   showWaveBanner(t('bn.wave',{n:wave.number}), t('bn.waveSub'));
+  refillShield();
   if(typeof bossOnWaveStart === 'function') bossOnWaveStart();
   soundWaveStart();
 }
@@ -332,6 +365,8 @@ function updateHUD(){
     const parts = [];
     if(remaining>0) parts.push(t('hud.double',{s:Math.ceil(remaining)}));
     if(kill>0) parts.push(t('hud.vermut',{m:VERMUT_DAMAGE_MULT, s:Math.ceil(kill)}));
+    const quick = (player.quickHandsUntil||0) - gameTime;
+    if(quick>0) parts.push(t('hud.quick',{m:DEDILLOS_DAMAGE, s:Math.ceil(quick)}));
     if(parts.length){ doubleBadgeEl.textContent = parts.join('   |   '); doubleBadgeEl.classList.remove('hidden'); }
     else doubleBadgeEl.classList.add('hidden');
   }
@@ -366,6 +401,7 @@ function chooseLevelUpCardSim(item){
   if(item.ctype==='stat') applyStatLevel(item.stat.key);
   else if(item.ctype==='weapon') applyWeaponLevel(item.weaponIdx);
   else if(item.ctype==='newWeapon') draftWeapon(item.weaponIdx);
+  else if(item.ctype==='statEvolve') applyStatEvolution(item.stat.key);
   else applyEvolution(item.weaponIdx);
 }
 
@@ -469,4 +505,25 @@ function restartRun(){
   updateHUD();
   gameState = 'menu';   // the pointer-lock handler starts the first wave, as it does at launch
   requestLock();
+}
+
+// =================================================================
+// STAT EVOLUTIONS
+// =================================================================
+function applyStatEvolution(key){
+  if(!STAT_EVOLUTIONS[key] || statEvolved(key)) return;
+  player.statEvolved[key] = true;
+  if(key === 'armor') refillShield();          // the coraza arrives full
+  showWaveBanner(statEvolutionName(key), t('bn.statEvolved'));
+  updateHUD();
+}
+
+function shieldMax(){ return statEvolved('armor') ? player.maxHealth*PECHOLATA_FRACTION : 0; }
+function refillShield(){ player.shield = shieldMax(); }
+
+// Vitamina B12: a slow, steady trickle back up. Game time only, so a paused game heals nothing.
+function updateStatPerks(delta){
+  if(statEvolved('maxHealth') && player.health > 0 && player.health < player.maxHealth){
+    player.health = Math.min(player.maxHealth, player.health + player.maxHealth*B12_REGEN_PER_MINUTE/60*delta);
+  }
 }

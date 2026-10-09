@@ -25,7 +25,7 @@ const I18N = {
     'hud.nowPlaying':'SONANDO', 'hud.empty':'VACÍO',
     'hud.level':'NV {n}', 'hud.wave':'OLEADA {n}', 'hud.money':'$ {n}',
     'hud.paused':'EN PAUSA', 'hud.lvSuffix':' NV{n}',
-    'hud.double':'2x $/XP — {s}s', 'hud.vermut':'VERMUT x{m} — {s}s',
+    'hud.double':'2x $/XP — {s}s', 'hud.vermut':'VERMUT x{m} — {s}s', 'hud.quick':'DEDILLOS x{m} — {s}s',
 
     // --- level up ---
     'lvl.title':'NUEVO NIVEL', 'lvl.funds':'FONDOS ${n}',
@@ -68,6 +68,7 @@ const I18N = {
     'bn.combo':'+{n}% daño y botín',
     'bn.guitar':'GUITARRISTA', 'bn.guitarLeaves':'Se marcha ofendido',
     'bn.drafted':'Arma conseguida — para toda la partida',
+    'bn.statEvolved':'Atributo evolucionado', 'bn.sabas':'¡DOBLE NIVEL!', 'bn.sabasSub':'Sabas lo sabe todo',
     'boss.name':'LA R',
     'bn.bossRise':'¡SE LEVANTA LA R!', 'bn.bossRiseSub':'Nadie la pronuncia bien',
     'bn.bossFall':'LA R HA CAÍDO', 'bn.bossFallSub':'...por ahora',
@@ -97,7 +98,7 @@ const I18N = {
     'set.lang':'Idioma', 'set.langName':'ESPAÑOL', 'set.back':'VOLVER',
 
     // --- combo stages ---
-    'combo.0':'SERIO', 'combo.1':'CONTENTO', 'combo.2':'EUFÓRICO', 'combo.3':'LOCO',
+    'combo.0':'SERIO', 'combo.1':'CONTENTO', 'combo.2':'EUFÓRICO', 'combo.3':'LOCO', 'combo.4':'DEMONIO',
 
     // --- weapons (by index) ---
     'w.0':'PUÑOS', 'w.1':'PISTOLA DE PLOMOS', 'w.2':'ESCOPETILLA DE PLOMOS',
@@ -117,6 +118,17 @@ const I18N = {
     'sd.reloadSpeed':'Tiempo de recarga', 'sd.ammoCapacity':'Cargador y reserva (solo el tope)',
     'sd.armor':'Reduce el daño recibido', 'sd.xpMult':'XP por muerte',
     'sd.critChance':'Probabilidad de crítico', 'sd.enemyIntensity':'Más y más duros — mayor recompensa',
+    // Stat evolutions
+    'se.damage':'PURA INQUINA', 'sed.damage':'El combo multiplica aún más tu daño: hasta x2 extra en Demonio',
+    'se.fireRate':'DISPARADOR PRECOZ', 'sed.fireRate':'20% de probabilidad de disparar dos veces',
+    'se.moveSpeed':'PETARDO EN EL CULO', 'sed.moveSpeed':'Recibes un 20% menos de daño mientras esprintas',
+    'se.maxHealth':'VITAMINA B12', 'sed.maxHealth':'Recuperas un 10% de salud por minuto',
+    'se.reloadSpeed':'DEDILLOS RÁPIDOS', 'sed.reloadSpeed':'+25% de daño durante 3s tras recargar con el cargador vacío',
+    'se.ammoCapacity':'CARTUCHOS CATALANES', 'sed.ammoCapacity':'15% de los disparos no gastan munición',
+    'se.armor':'PECHOLATA', 'sed.armor':'Una coraza que absorbe golpes y se recarga cada oleada',
+    'se.xpMult':'SABAS', 'sed.xpMult':'20% de probabilidad de subir dos niveles a la vez',
+    'se.critChance':'OJO DE HALCÓN', 'sed.critChance':'Los críticos pueden volver a ser críticos',
+    'se.enemyIntensity':'PACTO CON SATÁN', 'sed.enemyIntensity':'Desbloquea un quinto nivel de combo: DEMONIO',
 
     // --- level-up step labels, built from the stat and amount ---
     'lv.damage':'+{n}% daño', 'lv.fireRate':'+{n}% cadencia', 'lv.ammo':'+{n}% munición',
@@ -152,7 +164,7 @@ const I18N = {
     'hud.nowPlaying':'NOW PLAYING', 'hud.empty':'EMPTY',
     'hud.level':'LV {n}', 'hud.wave':'WAVE {n}', 'hud.money':'$ {n}',
     'hud.paused':'PAUSED', 'hud.lvSuffix':' LV{n}',
-    'hud.double':'2x $/XP — {s}s', 'hud.vermut':'VERMOUTH x{m} — {s}s',
+    'hud.double':'2x $/XP — {s}s', 'hud.vermut':'VERMOUTH x{m} — {s}s', 'hud.quick':'QUICK FINGERS x{m} — {s}s',
 
     'lvl.title':'LEVEL UP', 'lvl.funds':'FUNDS ${n}',
     'lvl.instruction':'CHOOSE ONE UPGRADE', 'lvl.keys':'1 · 2 · 3   R REROLL',
@@ -190,6 +202,7 @@ const I18N = {
     'bn.combo':'+{n}% damage & loot',
     'bn.guitar':'GUITARIST', 'bn.guitarLeaves':'Storms off, offended',
     'bn.drafted':'Weapon acquired — yours for the run',
+    'bn.statEvolved':'Stat evolved', 'bn.sabas':'DOUBLE LEVEL!', 'bn.sabasSub':'Sabas knows everything',
     'boss.name':'THE R',
     'bn.bossRise':'THE R RISES!', 'bn.bossRiseSub':'Nobody pronounces it right',
     'bn.bossFall':'THE R HAS FALLEN', 'bn.bossFallSub':'...for now',
@@ -216,7 +229,7 @@ const I18N = {
     'set.title':'SETTINGS', 'set.sens':'Mouse sensitivity', 'set.volume':'Volume',
     'set.lang':'Language', 'set.langName':'ENGLISH', 'set.back':'BACK',
 
-    'combo.0':'SERIOUS', 'combo.1':'HAPPY', 'combo.2':'ECSTATIC', 'combo.3':'CRAZY',
+    'combo.0':'SERIOUS', 'combo.1':'HAPPY', 'combo.2':'ECSTATIC', 'combo.3':'CRAZY', 'combo.4':'DEMON',
 
     'w.0':'FISTS', 'w.1':'PELLET PISTOL', 'w.2':'PELLET RIFLE',
     'w.3':'BB SUBMACHINE GUN', 'w.4':'BUBBLE WAND', 'w.5':'IBÉRICO HAM',
@@ -234,6 +247,16 @@ const I18N = {
     'sd.reloadSpeed':'Reload time', 'sd.ammoCapacity':'Magazine and reserve (cap only)',
     'sd.armor':'Reduces damage taken', 'sd.xpMult':'XP per kill',
     'sd.critChance':'Critical hit chance', 'sd.enemyIntensity':'More and tougher — bigger rewards',
+    'se.damage':'PURE SPITE', 'sed.damage':'Your combo multiplies damage further: up to x2 extra at Demon',
+    'se.fireRate':'PREMATURE TRIGGER', 'sed.fireRate':'20% chance to fire twice',
+    'se.moveSpeed':'FIRECRACKER IN THE BUM', 'sed.moveSpeed':'Take 20% less damage while sprinting',
+    'se.maxHealth':'VITAMIN B12', 'sed.maxHealth':'Regenerate 10% of your health per minute',
+    'se.reloadSpeed':'QUICK FINGERS', 'sed.reloadSpeed':'+25% damage for 3s after reloading an empty magazine',
+    'se.ammoCapacity':'CATALAN CARTRIDGES', 'sed.ammoCapacity':'15% of shots cost no ammo',
+    'se.armor':'TIN CHEST', 'sed.armor':'A shield that soaks up hits and refills every wave',
+    'se.xpMult':'SABAS', 'sed.xpMult':'20% chance to gain two levels at once',
+    'se.critChance':'HAWKEYE', 'sed.critChance':'Critical hits can crit again',
+    'se.enemyIntensity':'PACT WITH SATAN', 'sed.enemyIntensity':'Unlocks a fifth combo stage: DEMON',
 
     'lv.damage':'+{n}% damage', 'lv.fireRate':'+{n}% fire rate', 'lv.ammo':'+{n}% ammo',
     'lv.bounce':'+{n} ricochet', 'lv.dot':'+{n}% damage over time', 'lv.knockback':'+{n}% knockback',
@@ -296,6 +319,8 @@ function evolutionName(wIdx){
 }
 function statName(stat){ const k='s.'+stat.key, v=t(k); return v===k ? stat.name : v; }
 function statDesc(stat){ const k='sd.'+stat.key, v=t(k); return v===k ? stat.desc : v; }
+function statEvolutionName(key){ return t('se.'+key); }
+function statEvolutionDesc(key){ return t('sed.'+key); }
 function comboLabel(stage){ return t('combo.'+stage); }
 
 // Level-up step labels are built from the step itself (stat + amount) rather than stored as
