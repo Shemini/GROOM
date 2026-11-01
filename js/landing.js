@@ -2,21 +2,22 @@
 // =================================================================
 // TITLE / LANDING SCREEN
 //
-// Runs before the game does: cover art, then the logo, then the prompt, then the menu. PLAY
-// stays disabled until the level has finished loading in the background, so the player can
-// read the screen while the big environment file streams in.
+// Runs before the game does. At first only the looping cover animation and the prompt are on
+// screen. The first press brings in the logo with its sound — browsers won't play audio before
+// the player has interacted, so tying the logo to that press means the sting is never lost.
+// The prompt comes back once the logo has landed, and the next press opens the menu. PLAY
+// stays disabled until the level has finished loading in the background.
 //
 // The music is a two-part cue: GROOM.ogg stings as the logo lands, then TremoloMinor.ogg
 // takes over. The tremolo doesn't loop cleanly, so rather than looping it we fade the last
 // half-second out, wait, and start it again.
 // =================================================================
 
-const LANDING_LOGO_AT = 900;      // ms from mount — the sound cue fires here too
-const LANDING_PROMPT_AT = 3400;
+const LANDING_PROMPT_AGAIN = 2500; // ms after the logo arrives before the prompt returns
 const TREMOLO_FADE = 0.5;         // seconds of fade at the tail
 const TREMOLO_GAP = 2.0;          // seconds of silence before it comes round again
 
-let landingState = 'intro';       // intro | prompt | menu
+let landingState = 'waiting';     // waiting (prompt only) | title (logo arriving) | prompt | menu | gone
 let landingT0 = 0;
 let landingTimers = [];
 let titleMuted = false;
@@ -40,8 +41,8 @@ function initLanding(){
   sndGroom.addEventListener('error', ()=>console.warn('Audio/GROOM.ogg missing'));
   sndTremolo.addEventListener('error', ()=>console.warn('Audio/TremoloMinor.ogg missing'));
 
-  landingTimers.push(setTimeout(showLogo, LANDING_LOGO_AT));
-  landingTimers.push(setTimeout(showPrompt, LANDING_PROMPT_AT));
+  // Nothing is timed any more: the prompt is up from the start, and the logo waits for a press.
+  setPromptVisible(true);
 
   document.addEventListener('keydown', onLandingKey);
   document.getElementById('startOverlay').addEventListener('click', onLandingClick);
@@ -70,32 +71,43 @@ function showLogo(){
   playTitleCue();
 }
 
+function setPromptVisible(on){
+  const p = document.getElementById('titlePrompt');
+  if(!p) return;
+  p.classList.toggle('on', on);
+  p.style.opacity = on ? '' : 0;
+}
+
+// The logo has landed: the prompt returns, now asking for the menu.
 function showPrompt(){
-  if(landingState !== 'intro') return;
+  if(landingState !== 'title') return;
   landingState = 'prompt';
   const wrap = document.getElementById('titleLogoWrap');
   if(wrap) wrap.classList.add('shown');
-  const p = document.getElementById('titlePrompt');
-  if(p) p.classList.add('on');
+  setPromptVisible(true);
 }
 
 function openLandingMenu(){
   if(landingState === 'menu') return;
   landingState = 'menu';
-  const p = document.getElementById('titlePrompt');
-  if(p){ p.classList.remove('on'); p.style.opacity = 0; }
+  setPromptVisible(false);
   const m = document.getElementById('titleMenu');
   if(m) m.classList.add('on');
 }
 
-// Enter (or a click) is a skip: during the intro it jumps to the prompt, and from there it
-// opens the menu — so an impatient player is never made to sit through the sequence.
+// First press: the logo and its sound, inside the press itself so the browser allows the
+// audio. Pressing again — while the logo is still arriving or after the prompt is back — opens
+// the menu, so an impatient player is never made to wait.
 function landingAdvance(){
-  if(landingState === 'intro'){
-    landingTimers.forEach(clearTimeout); landingTimers = [];
+  if(landingState === 'waiting'){
+    landingState = 'title';
+    setPromptVisible(false);
     showLogo();
-    showPrompt();
-  } else if(landingState === 'prompt'){
+    landingTimers.push(setTimeout(showPrompt, LANDING_PROMPT_AGAIN));
+  } else if(landingState === 'title' || landingState === 'prompt'){
+    landingTimers.forEach(clearTimeout); landingTimers = [];
+    const wrap = document.getElementById('titleLogoWrap');
+    if(wrap) wrap.classList.add('shown');
     openLandingMenu();
   }
 }
@@ -123,9 +135,9 @@ function landingVisible(){
 }
 
 // ---------- audio ----------
-// Browsers refuse audio before the player has interacted, and the logo cue fires on a timer
-// rather than an input — so a refusal is expected on first load and simply queues the cue
-// until the player presses something.
+// The cue now fires from the player's first press, which browsers accept. A refusal can still
+// happen (an embedded page with autoplay locked down, say), and simply queues the cue for the
+// next press.
 function playTitleCue(){
   if(!sndGroom || titleMuted) return;
   // Already attempting, playing or finished: a second attempt is exactly what caused the
