@@ -31,6 +31,9 @@ const SWORD_STAGGER_TIME = 0.08;     // seconds; the default stagger is 0.35
 // true: you can keep swinging with no stamina (you just stop spending it).
 const SWORD_SWING_WHEN_EXHAUSTED = false;
 const GRAVITY = 22;
+// Jumping (Space). Take-off speed sets the height: v²/2g, so 6.3 m/s is a hop of about 0.9 m —
+// enough to clear a bench or a low wall, not enough to reach a roof.
+const JUMP_VELOCITY = 6.3;
 // Nav grid cell size in metres. Finer = more faithful to real doorways and pillars (a zombie
 // is only ~0.4m wide, so 2m cells were very coarse). Build cost is no longer the constraint
 // thanks to the collision acceleration structure; see FLOW_FIELD_FINE_RADIUS in world.js.
@@ -84,9 +87,6 @@ const BUBBLE_SPLASH_FRACTION = 0.55;     // damage to everyone but the guest act
 // Timers shorten sharply with each stage: Mad is meant to be barely holdable, which is what
 // makes its payout defensible.
 // =================================================================
-// Shorter than the original 6s: a long lull between waves makes combos nearly impossible to
-// carry, and the wait wasn't doing anything for pacing either.
-const WAVE_GAP = 2.5;
 // =================================================================
 // DRAFT MODE  —  set to false to restore the original shop/box progression.
 //
@@ -104,11 +104,60 @@ const DRAFT_GUARANTEED_OFFERS = 2;
 const DRAFT_WEAPON_POOL = [1,2,3,4,5,6,7,8,9,10];   // draftable weapons (11 is gone: see below)
 let DRAFT_STATION_AMMO_ONLY = false, DRAFT_DISABLE_BOX = false;
 
-// Enemy health: base and per-wave growth, both lowered to soften the difficulty curve.
-// Enemy speed growth per wave, and its ceiling. Halved: the old curve had them closing in
-// faster than the player could reposition well before the waves got interesting.
-const ENEMY_SPEED_PER_WAVE = 0.03;   // was 0.06
-const ENEMY_SPEED_CAP = 0.75;        // was 1.5
+// =================================================================
+// CONTINUOUS SPAWNING — no waves. Everything runs off the run clock (game time, so pausing
+// and level-up screens stop it).
+//
+// Difficulty: enemies get tougher with a "difficulty level" that climbs with time. It plays
+// the part the wave number used to: level 1 at the start, +1.25 a minute (so minute 8 is about
+// what wave 11 used to be).
+// =================================================================
+const DIFFICULTY_PER_MINUTE = 1.25;
+// The director spends a spawn budget, measured in "cost" (each enemy type has one; a TrajeA is
+// 1). Budget comes in at SPAWN_RATE cost per second, and is only spent while the enemies alive
+// add up to less than SPAWN_CAP. Cheap (weak) enemies are picked more often: a type's chance is
+// proportional to 1/cost.
+const SPAWN_RATE_BASE = 0.55;        // cost per second at the start (a TrajeA every ~1.8 s)
+const SPAWN_RATE_PER_MINUTE = 0.16;  // ...plus this per minute (2.15/s at minute 10)
+const SPAWN_CAP_BASE = 8;            // cost alive at once at the start
+const SPAWN_CAP_PER_MINUTE = 3;      // ...plus this per minute
+const SPAWN_CAP_MAX = 60;            // hard ceiling, for the frame rate's sake
+const SPAWN_BUDGET_MAX = 6;          // budget banked while capped, so a lull isn't followed by a flood
+// Sed de sangre makes the crowd bigger as well as tougher: this much more rate and cap per point.
+const SPAWN_INTENSITY_BONUS = 0.10;
+// Pickups: each kill has this chance of dropping one (was ~1-2 per wave).
+const DROP_CHANCE_PER_KILL = 0.06;
+
+// Events, in minutes of run time.
+const HORDE_EVERY_MIN = 4;           // a horde at minutes 4, 8, 12...
+const HORDE_DURATION = 30;           // seconds
+const HORDE_RATE_MULT = 3.0;         // spawn rate during a horde
+const HORDE_CAP_MULT = 1.5;          // and how many can be alive
+const HORDE_MAX_COST = 1.2;          // only types this cheap or cheaper take part (the weak ones)
+const MINIBOSS_FIRST_MIN = 2;        // the first boss guest at minute 2...
+const MINIBOSS_EVERY_MIN = 4;        // ...then every 4 minutes (6, 10, 14...)
+const MINIBOSS_SCALE = 1.5;
+const MINIBOSS_HP = 10;
+const MINIBOSS_SPEED = 1.25;         // children keep their normal speed
+const MINIBOSS_XP = 20;              // times an ordinary kill's XP
+const MINIBOSS_BAR_RANGE = 70;       // metres: further than this its floating bar is hidden
+const BOSS_SUMMON_MIN = 10;          // the R rises at minute 10
+const BOSS_RETURN_MIN = 10;          // and, once beaten, again this many minutes after it falls
+// Pecholata's coraza used to refill every wave; with no waves it refills on this timer.
+const SHIELD_REFILL_SECONDS = 60;
+// TEST KEYS: H starts a horde, G sends a boss guest, T skips a minute ahead.
+const DIRECTOR_DEBUG_KEYS = true;
+
+// Spawning around where you WERE: candidates are taken within SPAWN_MAX_DIST of your position
+// this many seconds ago, and never closer than SPAWN_MIN_DIST to where you are now. Walking
+// into a corridor, the enemies keep coming from behind you for a while instead of appearing
+// in front and sandwiching you.
+const SPAWN_ANCHOR_DELAY = 15;       // seconds
+const SPAWN_ANCHOR_SAMPLE = 0.5;     // seconds between remembered positions
+
+// Enemy speed growth per difficulty level, and its ceiling.
+const ENEMY_SPEED_PER_WAVE = 0.03;
+const ENEMY_SPEED_CAP = 0.75;
 
 // Status tints, laid over whatever colour the enemy type already uses. With more than one
 // effect running the sprite cycles between them rather than blending, which would muddy into
@@ -145,19 +194,19 @@ const GLYPH_FONT_TIMEOUT_MS = 5000;
 const SENTENCE_FONT_PX = 200;     // resolution of each sentence letter's texture
 
 // =================================================================
-// THE R (boss) — currently in TEST MODE: present from the first wave, reciting once a wave.
+// THE R (boss) — rises at minute BOSS_SUMMON_MIN (see CONTINUOUS SPAWNING). It recites its
+// sentences in order, one at a time: the next only comes once every R the last one sent is
+// dead. Each sentence is an equal share of its health.
 // =================================================================
 const BOSS_ENABLED = true;
-const BOSS_FROM_WAVE = 2;            // TEST: first rises at the start of this wave
-const BOSS_FIRST_DELAY = 6;          // seconds into a wave before it speaks
+const BOSS_FIRST_DELAY = 6;          // seconds after it's on its feet before the first sentence
+const BOSS_SENTENCE_GAP = 4;         // seconds between clearing a sentence's Rs and the next one
 // It isn't always there: it gets up off the ground at the start of a wave, and falls back
 // down when beaten. Both are slow, heavy and loud.
 const BOSS_RISE_TIME = 9.0;          // seconds to stand up
 const BOSS_FALL_TIME = 6.5;          // seconds to topple back down when defeated
-const BOSS_RESPAWN_ROUNDS = 2;       // TEST: rounds after a defeat before it rises again
-// Health: a fixed number of rounds, each worth an equal share. Within a round, every R it
-// sends is worth an equal slice of that share — 20 Rs in a round makes each 1% of the total.
-const BOSS_ROUNDS = 5;
+// Health: one share per sentence. Within a sentence, every R it sends is worth an equal slice
+// of that share — 20 Rs in a sentence of five makes each 1% of the total.
 const BOSS_SHAKE = 0.07;             // camera shake at the peak of the rise or fall, metres
 // TEST KEYS while tuning: J recites (or makes it rise if it's down); K takes a whole round.
 const BOSS_DEBUG_KEYS = true;
@@ -165,11 +214,18 @@ const BOSS_RUMBLE_VOLUME = 0.85;
 // A recorded rumble in Audio/Boss/, without extension, replaces the synthesised one. null =
 // synthesise it. (Left null so the game doesn't request a file that doesn't exist yet.)
 const BOSS_RUMBLE_FILE = null;
-// Each sentence can carry a recording, in Audio/Boss/. While the voice plays, the letters
-// stream out of the R at the speed of the speech, so the words leave its face as they're said.
+// Recited in this order, so list them from fewest Rs to most: the last one is the final round.
+// Each can carry a recording in Audio/Boss/ (`voice`, file name without .ogg). While the voice
+// plays, the letters stream out of the R at the speed of the speech. Without one, the line
+// flies out at a fixed pace. Only the trilled Rs count (see BOSS_ONLY_STRONG_R); the number
+// after each line is how many that is.
+// PLACEHOLDERS except El perro de San Roque: replace them with your own lines.
 const BOSS_SENTENCES = [
+  { text:'Rápido corre el ratón' },                                                   // 4
   { text:'El perro de San Roque no tiene rabo porque Ramón Ramírez se lo ha arrancado',
-    voice:'ElPerroDeSanRoque' },
+    voice:'ElPerroDeSanRoque' },                                                      // 8
+  { text:'Erre con erre cigarro, erre con erre barril' },                             // 12
+  { text:'Erre con erre guitarra, erre con erre barril, rápido ruedan los carros cargados de azúcar del ferrocarril' }, // 20
 ];
 const BOSS_VOICE_DIR = './Audio/Boss/';
 const BOSS_VOICE_VOLUME = 1.0;        // constant: no falloff, it's meant to fill the sky
@@ -214,10 +270,16 @@ const SENTENCE_FONT = { family:'Press Start 2P', weight:'400', style:'normal' };
 const SENTENCE_TEXT_COLOR = '#efe6cf';
 const SENTENCE_TEXT_SHADOW = '#1a120d';
 const SENTENCE_HALO_COLOR = '#fff6e0'; // the glow behind the highlighted Rs
-// R enemies come only from the boss. Set true to also mix them into ordinary waves.
+// R enemies come only from the boss. Set true to also mix them into the ordinary spawns.
 const R_IN_NORMAL_WAVES = false;
 // Elites: one per highlighted R, in that R's colour.
 const R_ELITE_SCALE = 1.15, R_ELITE_HP = 3, R_ELITE_DAMAGE = 2;
+const R_ELITE_DROP_CHANCE = 0.15;    // chance an elite leaves a pickup
+// How much of the spawn budget a boss R takes when it lands (see SPAWN_RATE_BASE): while the
+// R's minions are out, fewer ordinary guests are sent.
+const R_SPAWN_COST_UPPER = 1.0;      // a capital (adult)
+const R_SPAWN_COST_LOWER = 0.35;     // each lowercase child
+const R_SPAWN_COST_ELITE = 2.5;      // multiplier for the elite
 // What each highlighted R in a sentence sends down. A capital sends adults one at a time; a
 // lowercase r sends packs of children. One of them is always the elite.
 const BOSS_DROPS_UPPER = 3;          // single adults
@@ -320,7 +382,7 @@ const ANIM_WALK_TOWARD = 'walkToward', ANIM_WALK_AWAY = 'walkAway', ANIM_ATTACK 
 // =================================================================
 const BASE_MONEY_REWARD = 10;      // plus a small random spread, see killZombie()
 const BASE_MONEY_HEADSHOT_BONUS = 8;
-const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie()
+const BASE_XP_REWARD = 14;         // plus a per-difficulty-level increment, see killZombie()
 
 // Optional per-type fields beyond the basics:
 //   tint          multiplies the sprite's colours — lets several enemies share one sheet
@@ -329,6 +391,9 @@ const BASE_XP_REWARD = 14;         // plus a per-wave increment, see killZombie(
 //   rangedAttack  { aoeRadius, fallTime, particles } — throws instead of striking; the damage
 //                 lands where the player WAS, so it can be dodged
 //   swarmSize     [min,max] spawned together as a group rather than one at a time
+//   unlockMin     minute of the run it starts appearing
+//   spawnCost     share of the spawn budget it takes (per member, for a swarm); 0 = never
+//                 picked by the director
 //   wander        sideways drift on its approach, in radians of heading noise
 const ENEMY_TYPES = {
   TrajeA: {
@@ -350,8 +415,11 @@ const ENEMY_TYPES = {
     // Frame numbers below are 1-based, matching how the frames are counted in the art.
     attackDamageFrame:5,     // damage lands on this frame of the attack animation
     attackSpeedMult:1.0,     // movement speed while the attack animation is playing
-    minWave:1,
-    spawnWeight:1.0,         // relative share of each wave's spawns
+    // Spawning: unlockMin is the minute it starts appearing; spawnCost is what it takes from the
+    // director's budget. Its chance of being picked is proportional to 1/spawnCost, so cheap
+    // (weak) enemies are the common ones.
+    unlockMin:0,
+    spawnCost:1.0,
     slowField:null,
     deathExplosion:null,
   },
@@ -374,8 +442,8 @@ const ENEMY_TYPES = {
     hpMult:4.0, speedMult:1.0, damageMult:2.0, rewardMult:3.0,
     attackDamageFrame:11,    // his swing is long, so the hit lands well into it
     attackSpeedMult:0.5,     // he lumbers while winding up
-    minWave:4,               // "after round 3"
-    spawnWeight:0.22,        // markedly rarer than TrajeA
+    unlockMin:5,
+    spawnCost:4.0,           // the tank: four times a TrajeA, so about a quarter as common
     // Drags the player down while close: full speed beyond `radius`, easing to `minMult` at
     // `innerRadius` and no worse below that.
     slowField:{ radius:15, innerRadius:4, minMult:0.75 },
@@ -418,8 +486,8 @@ const ENEMY_TYPES = {
     attackDamageFrame:11,       // lands ~62% in, so the wind-up is readable before the throw
     attackSpeedMult:0.0,        // plants her feet to throw
     rangedAttack:{ aoeRadius:1.9, fallTime:0.45, particles:34 },
-    minWave:2,
-    spawnWeight:0.55,
+    unlockMin:1,
+    spawnCost:1.1,
     slowField:null,
     deathExplosion:null,
   },
@@ -443,8 +511,8 @@ const ENEMY_TYPES = {
     hpMult:0.9, speedMult:0.9, damageMult:1.25, rewardMult:1.2,
     attackDamageFrame:11,       // ~62% in, matching MujerA's readable wind-up
     attackSpeedMult:1.0,
-    minWave:3,
-    spawnWeight:0.45,
+    unlockMin:2,
+    spawnCost:1.5,
     slowField:null,
     deathExplosion:null,
   },
@@ -471,8 +539,10 @@ const ENEMY_TYPES = {
     attackSpeedMult:1.0,
     swarmSize:[3,6],
     wander:0.55,
-    minWave:5,
-    spawnWeight:0.30,
+    unlockMin:3,
+    // Per child; a pack of 3-6 costs 1.35-2.7. Two child types share the role, so between
+    // them they turn up about as often as a TrajeA — but four or five at a time.
+    spawnCost:0.45,
     slowField:null,
     deathExplosion:null,
   },
@@ -499,8 +569,10 @@ const ENEMY_TYPES = {
     attackSpeedMult:1.0,
     swarmSize:[3,6],
     wander:0.55,
-    minWave:5,
-    spawnWeight:0.30,
+    unlockMin:3,
+    // Per child; a pack of 3-6 costs 1.35-2.7. Two child types share the role, so between
+    // them they turn up about as often as a TrajeA — but four or five at a time.
+    spawnCost:0.45,
     slowField:null,
     deathExplosion:null,
   },
@@ -581,8 +653,9 @@ function buildRTypes(){
         rangedMine: f.ranged === 'mine',
         hops: !!f.hops, kamikaze: !!f.kamikaze, spawner: !!f.spawner && upper, adultOnly: !!f.adultOnly,
         deathExplosion: f.deathExplosion || null, slowField:null,
-        // Only the boss's sentences bring these in.
-        minWave:1, spawnWeight: R_IN_NORMAL_WAVES ? 0.15 : 0,
+        // Only the boss's sentences bring these in (spawnCost 0 keeps them out of the
+        // director's ordinary picks). What they take from the budget is R_SPAWN_COST_*.
+        unlockMin:0, spawnCost: R_IN_NORMAL_WAVES ? 1.5 : 0,
       };
     }
   }
@@ -763,18 +836,33 @@ const SABAS_DOUBLE_CHANCE = 0.20;        // chance a level-up is two levels
 // succeeds the crit multiplier applies a second time.
 
 const STATS = [
-  { key:'damage',        name:'DAÑO',                   icon:'DañoIcon',                desc:'Daño de las armas',                     perLevel:0.10, maxLevel:5 },
-  { key:'fireRate',      name:'CADENCIA',               icon:'CadenciaIcon',            desc:'Velocidad de disparo',                  perLevel:0.08, maxLevel:5 },
-  { key:'moveSpeed',     name:'VELOCIDAD',              icon:'VelocidadMovimientoIcon', desc:'Velocidad de movimiento',               perLevel:0.06, maxLevel:5 },
-  { key:'maxHealth',     name:'VITALIDAD',              icon:'VitalidadIcon',           desc:'Salud máxima (cura al elegirla)',       perLevel:20,   maxLevel:5 },
-  { key:'reloadSpeed',   name:'RECARGA',                icon:'VelocidadRecargaIcon',    desc:'Tiempo de recarga',                     perLevel:0.06, maxLevel:5 },
-  { key:'ammoCapacity',  name:'MUNICIÓN',               icon:'CapacidadMunicionIcon',   desc:'Cargador y reserva (solo el tope)',     perLevel:0.15, maxLevel:5 },
+  { key:'damage',        name:'DAÑO',                   icon:'DañoIcon',                desc:'Daño de las armas',                     perLevel:0.10 },
+  { key:'fireRate',      name:'CADENCIA',               icon:'CadenciaIcon',            desc:'Velocidad de disparo',                  perLevel:0.08 },
+  { key:'moveSpeed',     name:'VELOCIDAD',              icon:'VelocidadMovimientoIcon', desc:'Velocidad de movimiento',               perLevel:0.06 },
+  { key:'maxHealth',     name:'VITALIDAD',              icon:'VitalidadIcon',           desc:'Salud máxima (cura al elegirla)',       perLevel:20 },
+  { key:'reloadSpeed',   name:'RECARGA',                icon:'VelocidadRecargaIcon',    desc:'Tiempo de recarga',                     perLevel:0.06 },
+  { key:'ammoCapacity',  name:'MUNICIÓN',               icon:'CapacidadMunicionIcon',   desc:'Cargador y reserva (solo el tope)',     perLevel:0.15 },
   // Flat damage reduction. Still using the Codicia art until it has its own.
-  { key:'armor',         name:'ARMADURA',               icon:'CodiciaIcon',             desc:'Reduce el daño recibido',               perLevel:0.06, maxLevel:5 },
-  { key:'xpMult',        name:'INTELIGENCIA',           icon:'InteligenciaIcon',        desc:'XP por muerte',                         perLevel:0.12, maxLevel:5 },
-  { key:'critChance',    name:'PRECISIÓN',              icon:'PrecisionIcon',           desc:'Probabilidad de crítico',               perLevel:0.05, maxLevel:5 },
-  { key:'enemyIntensity',name:'SED DE SANGRE',          icon:'SedSangreIcon',           desc:'Más y más duros — mayor recompensa',    perLevel:1,    maxLevel:5 },
+  { key:'armor',         name:'ARMADURA',               icon:'CodiciaIcon',             desc:'Reduce el daño recibido',               perLevel:0.06 },
+  { key:'xpMult',        name:'INTELIGENCIA',           icon:'InteligenciaIcon',        desc:'XP por muerte',                         perLevel:0.12 },
+  { key:'critChance',    name:'PRECISIÓN',              icon:'PrecisionIcon',           desc:'Probabilidad de crítico',               perLevel:0.05 },
+  { key:'enemyIntensity',name:'SED DE SANGRE',          icon:'SedSangreIcon',           desc:'Más y más duros — mayor recompensa',    perLevel:1 },
 ];
+// Skill rarity. Every stat card rolls one; it multiplies what that pick adds. Weights are
+// relative chances. A colour of null means no frame.
+const SKILL_RARITIES = [
+  { key:'normal',    mult:1.00, weight:55, color:null },
+  { key:'uncommon',  mult:1.25, weight:25, color:'#3fbf4a' },
+  { key:'rare',      mult:1.50, weight:12, color:'#3a7bea' },
+  { key:'epic',      mult:1.75, weight:6,  color:'#a24be0' },
+  { key:'legendary', mult:2.00, weight:2,  color:'#e0302f' },
+];
+// Skills have no level cap, but a run only gets this many different ones: once you've picked
+// four, the others stop being offered.
+const SKILL_SLOT_LIMIT = 4;
+// Times a skill must be picked before its evolution (STAT_EVOLUTIONS) is offered.
+const STAT_EVOLVE_AT = 5;
+
 // Critical hits are a flat multiplier now: the old BRUTALITY stat only paid off once
 // PRECISIÓN had been taken, which made it a trap pick most of the time.
 const CRIT_MULTIPLIER = 1.5;
@@ -890,6 +978,12 @@ let gameTime = 0;
 let playerStamina = 10;      // set from PLAYER_STAMINA_MAX at init
 let playerExhausted = false;
 let playerStart = null;
+let playerJumping = false;    // true from take-off until landing
+let playerJumpQueued = false; // Space pressed; consumed by the next movement update
+// Where a run starts, and which way you face: PLAYER_SPAWN_TURN_DEG to the right of the
+// guitarist, so he's in view just off-centre.
+const PLAYER_SPAWN = { x: 80.94, z: 53.08 };
+const PLAYER_SPAWN_TURN_DEG = 10;
 
 let audioCtx = null, masterGain = null, muted = false;
 let isLocked = false;
@@ -947,7 +1041,9 @@ const player = {
   ammoByWeapon: { 0: {mag:1, reserve:0}, 1: {mag:12, reserve:72} },  // slot 0 is melee: a placeholder record keeps every ammo lookup valid
   currentWeapon: STARTER_INDEX,
   reloading: false, reloadUntil: 0, lastReloadStart: 0, lastShotTime: -999,
-  stats: {}, level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,
+  stats: {},            // stat key -> times picked
+  statValues: {},       // stat key -> accumulated value (rarity makes each pick worth a different amount)
+  level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,
   weaponLevel: { 1:1 }, weaponEvolved: { 1:false }, weaponEvoLevel: {}, weaponMods: { 0: createDefaultMods(), 1: createDefaultMods() },
   burstState: {}, doubleUntil: 0, instakillUntil: 0,
   points: 0,   // score: unlike money, never spent, so it stands as a record of the run
@@ -957,10 +1053,6 @@ const player = {
   reloadFromEmpty: false,
 };
 
-const wave = {
-  number: 1, toSpawn: 0, spawned: 0, spawnInterval: 1.2, spawnTimer: 0,
-  betweenWaves: true, betweenTimer: 3, dropSchedule: [], killedThisWave: 0,
-};
 
 const el = id => document.getElementById(id);
 const waveNumEl = el('waveNum'), moneyNumEl = el('moneyNum'), levelNumEl = el('levelNum');
@@ -1159,11 +1251,10 @@ if(DRAFT_MODE){
 // =================================================================
 // STARTING SNAPSHOT
 // Taken once at load, after every patch above has been applied, so restarting a run can put
-// the player and the wave back exactly as they began — no reload, and no risk of a field
+// the player back exactly as they began — no reload, and no risk of a field
 // being missed because it was added later and nobody remembered to reset it.
 // =================================================================
 const INITIAL_PLAYER = JSON.parse(JSON.stringify(player));
-const INITIAL_WAVE = JSON.parse(JSON.stringify(wave));
 
 // =================================================================
 // RUN STATS AND SCORE

@@ -359,11 +359,32 @@ function placePlayerAtStart(){
     }
   });
 
-  const startXZ = bestPoint || center;
+  // A fixed spawn when one is set (and it has floor under it); the old "nearest point to the
+  // level's centre" otherwise.
+  let startXZ = bestPoint || center;
+  if(typeof PLAYER_SPAWN !== 'undefined' && PLAYER_SPAWN &&
+     getFloorY(PLAYER_SPAWN.x, PLAYER_SPAWN.z, box.max.y+5) !== null){
+    startXZ = new THREE.Vector3(PLAYER_SPAWN.x, 0, PLAYER_SPAWN.z);
+  }
   const floorY = getFloorY(startXZ.x, startXZ.z, box.max.y+5);
   camera.position.set(startXZ.x, (floorY!==null?floorY:startXZ.y)+EYE_HEIGHT, startXZ.z);
   feetY = camera.position.y - EYE_HEIGHT;
   playerStart = { x: startXZ.x, z: startXZ.z };
+  facePlayerAtStart();
+}
+
+// Turn to face the guitarist, then PLAYER_SPAWN_TURN_DEG further to the right, so he's in
+// view just left of centre. Level, not looking up or down.
+function facePlayerAtStart(){
+  const target = (typeof GUITARRISTA_HOME !== 'undefined' && GUITARRISTA_HOME) ? GUITARRISTA_HOME : null;
+  if(!target) return;
+  const dx = target.x - camera.position.x, dz = target.z - camera.position.z;
+  if(dx*dx + dz*dz < 1e-6) return;
+  // The camera looks down -Z at yaw 0, so the yaw that faces (dx,dz) is atan2(-dx,-dz).
+  // Turning right is a negative yaw step.
+  const yawToTarget = Math.atan2(-dx, -dz);
+  euler.set(0, yawToTarget - THREE.MathUtils.degToRad(PLAYER_SPAWN_TURN_DEG || 0), 0, 'YXZ');
+  camera.quaternion.setFromEuler(euler);
 }
 
 function updateMovement(delta){
@@ -412,7 +433,18 @@ function updateMovement(delta){
   // the player's feet.
   let floorY = getFloorY(nx, nz, feetY+2.2);
   if(floorY===null) floorY = navFloorAt(nx, nz);
-  if(floorY!==null && (feetY-floorY) <= STEP_SMOOTH_MAX){
+
+  // Jump: only from the ground. Leaves the snapping branch below alone until it lands, or the
+  // step-smoothing would pull the player straight back down on the first frame.
+  if(playerJumpQueued){
+    playerJumpQueued = false;
+    if(!playerJumping && playerAirborne === 0 && playerVelY === 0){
+      playerJumping = true;
+      playerVelY = JUMP_VELOCITY;
+    }
+  }
+
+  if(!playerJumping && floorY!==null && (feetY-floorY) <= STEP_SMOOTH_MAX){
     // grounded, or a normal step/slope — smooth snap, no falling physics needed
     const rate = (floorY > feetY) ? Math.min(1, delta*40) : Math.min(1, delta*12);
     feetY += (floorY-feetY)*rate;
@@ -422,14 +454,18 @@ function updateMovement(delta){
     // airborne (walked off a ledge, or no floor found below at all) — actually fall
     playerVelY -= GRAVITY*delta;
     feetY += playerVelY*delta;
-    if(floorY!==null && feetY<=floorY){ feetY = floorY; playerVelY = 0; playerAirborne = 0; }
+    if(floorY!==null && feetY<=floorY && playerVelY<=0){
+      const wasJump = playerJumping;
+      feetY = floorY; playerVelY = 0; playerAirborne = 0; playerJumping = false;
+      if(wasJump) playPlayerLanding();
+    }
     else {
       playerAirborne += delta;
       if(playerAirborne > 2.5){
         const rescue = nearestNavFloor(nx, nz);
         if(rescue){
           nx = rescue.x; nz = rescue.z;
-          feetY = rescue.y; playerVelY = 0; playerAirborne = 0;
+          feetY = rescue.y; playerVelY = 0; playerAirborne = 0; playerJumping = false;
           console.warn('Player fell out of the world and was returned to the nav mesh.');
         }
       }

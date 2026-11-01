@@ -20,10 +20,11 @@ let boss = null;                 // { mesh, home, height, speakUntil }
 let bossSentences = [];          // letters in flight
 let bossMinions = [];            // Rs falling from the sky toward a spawn point
 let bossNextSentenceAt = -1;     // game time of the next scheduled recital
-// Recitals launched but whose letters are still being drawn. Building the letters is
-// asynchronous, and without this there's a gap where the recital is neither scheduled nor
-// in flight — long enough for a wave to end and lose that round's Rs entirely.
+// Recitals launched but whose letters are still being drawn (building them is asynchronous).
 let bossRecitalsBuilding = 0;
+
+// One health share per sentence.
+function bossRoundCount(){ return Math.max(1, BOSS_SENTENCES.length); }
 
 // ---------- construction ----------
 
@@ -89,9 +90,10 @@ function initBoss(){
     mesh, home, height, speakUntil: -1, swayPhase: Math.random()*6.28,
     state: 'absent',            // absent | rising | active | falling
     stateAt: 0,                 // game time the current state began
-    nextRiseWave: BOSS_FROM_WAVE,
-    roundsDone: 0,              // completed rounds, each worth 1/BOSS_ROUNDS of its health
-    round: null,                // { id, expected, killed } for the round in progress
+    nextSummonAt: BOSS_SUMMON_MIN*60,   // game time it next rises
+    roundsDone: 0,              // sentences cleared, each worth 1/bossRoundCount() of its health
+    sentenceIdx: 0,             // which of BOSS_SENTENCES comes next
+    round: null,                // { id, expected, killed, launched } for the sentence in progress
     roundCounter: 0,
     barLag: 1,                  // the pale trail behind the health fill
   };
@@ -104,7 +106,11 @@ function bossBeginRise(){
   boss.state = 'rising';
   boss.stateAt = gameTime;
   boss.roundsDone = 0;
+  boss.sentenceIdx = 0;
   boss.barLag = 1;
+  startBossRound();
+  // It speaks once it's on its feet, not while it's still getting up.
+  bossNextSentenceAt = gameTime + BOSS_RISE_TIME + BOSS_FIRST_DELAY;
   boss.mesh.visible = true;
   boss.mesh.rotation.x = BOSS_LYING;
   startBossRumble(BOSS_RISE_TIME, false);
@@ -118,7 +124,7 @@ function bossBeginFall(){
   boss.stateAt = gameTime;
   boss.round = null;
   bossNextSentenceAt = -1;
-  boss.nextRiseWave = wave.number + BOSS_RESPAWN_ROUNDS;
+  boss.nextSummonAt = gameTime + BOSS_FALL_TIME + BOSS_RETURN_MIN*60;
   startBossRumble(BOSS_FALL_TIME, true);
   if(typeof guitarristaEndBossMusic === 'function') guitarristaEndBossMusic();
   showWaveBanner(t('bn.bossFall'), t('bn.bossFallSub'));
@@ -249,8 +255,11 @@ function strongRIndices(text){
 function launchBossSentence(text){
   if(!boss) initBoss();
   if(!boss || boss.state !== 'active') return;
-  const entry = text ? { text } : BOSS_SENTENCES[Math.floor(Math.random()*BOSS_SENTENCES.length)];
+  // In order: each sentence is a round, and the last one is the finale.
+  const entry = text ? { text } : (BOSS_SENTENCES[boss.sentenceIdx] || BOSS_SENTENCES[BOSS_SENTENCES.length-1]);
   text = entry.text;
+  if(!boss.round) startBossRound();
+  boss.round.launched = true;
   // If there's a recording, it sets the pace: the R shudders for as long as it speaks, and the
   // letters leave its face at the speed of the speech.
   const voiceDur = playBossVoice(entry.voice);
@@ -461,7 +470,15 @@ function updateMinions(delta){
 
 function landMinion(M){
   const z = spawnOneEnemy(M.def, M.to.clone(), { noCount:true });
-  if(z){ z.fromBoss = true; z.bossRoundId = M.roundId; if(M.elite) applyEliteR(z); }
+  if(z){
+    z.fromBoss = true; z.bossRoundId = M.roundId;
+    if(M.elite) applyEliteR(z);
+    // It takes its share of the spawn budget, and counts against the cap while alive, so a
+    // sentence's Rs crowd out some of the ordinary guests instead of piling on top of them.
+    const cost = (M.def.upper ? R_SPAWN_COST_UPPER : R_SPAWN_COST_LOWER) * (M.elite ? R_SPAWN_COST_ELITE : 1);
+    z.spawnCost = cost;
+    if(typeof director !== 'undefined') director.budget = Math.max(-SPAWN_BUDGET_MAX, director.budget - cost);
+  }
   if(typeof spawnParticles === 'function'){
     spawnParticles(M.to.clone().setY(M.to.y + 0.1), {
       count: 18, dir: new THREE.Vector3(0,1,0), spread: 1.4,
@@ -548,68 +565,59 @@ function syncBossVoicePause(playing){
 }
 
 // ---------- health and rounds ----------
-// The bar is split into BOSS_ROUNDS equal shares. In a round, every R the boss sends is
-// worth an equal slice of that round's share, so the bar always empties by exactly one share
-// per round however many Rs it took.
+// The bar is split into one equal share per sentence. Within a sentence, every R the boss
+// sends is worth an equal slice of that share, so the bar always empties by exactly one share
+// per sentence however many Rs it took.
 function bossHealth(){
   if(!boss) return 1;
   let done = boss.roundsDone;
   const r = boss.round;
   if(r && r.expected > 0) done += Math.min(1, r.killed / r.expected);
-  return Math.max(0, 1 - done/BOSS_ROUNDS);
+  return Math.max(0, 1 - done/bossRoundCount());
 }
 
 function startBossRound(){
   boss.roundCounter++;
-  boss.round = { id: boss.roundCounter, expected: 0, killed: 0 };
+  boss.round = { id: boss.roundCounter, expected: 0, killed: 0, launched: false };
 }
 
-// Called by killZombie for every enemy; only the Rs this round sent count against it.
+// Called by killZombie for every enemy; only the Rs this sentence sent count against it.
 function bossOnEnemyKilled(z){
   if(!boss || !boss.round || z.bossRoundId !== boss.round.id) return;
   boss.round.killed++;
-  if(bossHealth() <= 1e-6 && boss.state === 'active') bossBeginFall();
+  checkBossRoundDone();
 }
 
-// A wave can't end while the boss still has Rs to send or in the air — otherwise a fast
-// player could clear the wave before the recital and skip that round's share of damage.
-function bossBlocksWaveEnd(){
-  if(!boss || (boss.state !== 'rising' && boss.state !== 'active')) return false;
-  return bossNextSentenceAt >= 0 || bossRecitalsBuilding > 0 ||
-         bossSentences.length > 0 || bossMinions.length > 0;
-}
-
-function bossOnWaveClear(){
-  if(!boss || !boss.round) return;
+// A sentence is done once every R it sent is dead. Then the next one comes, after a breath —
+// or, after the last, the R falls.
+function checkBossRoundDone(){
+  if(!boss || boss.state !== 'active' || !boss.round || !boss.round.launched) return;
   const r = boss.round;
-  if(r.expected > 0) boss.roundsDone += Math.min(1, r.killed / r.expected);
+  const allKilled = r.expected > 0 ? r.killed >= r.expected
+    // Nothing could be sent at all (no art loaded, say): done once the line has flown past.
+    : (bossRecitalsBuilding === 0 && bossSentences.length === 0 && bossMinions.length === 0);
+  if(!allKilled) return;
+  boss.roundsDone = Math.min(bossRoundCount(), boss.roundsDone + 1);
+  boss.sentenceIdx++;
   boss.round = null;
+  if(boss.roundsDone >= bossRoundCount()){ bossBeginFall(); return; }
+  startBossRound();
+  bossNextSentenceAt = gameTime + BOSS_SENTENCE_GAP;
 }
 
-// ---------- scheduling ----------
-
-function bossOnWaveStart(){
-  if(!BOSS_ENABLED) return;
-  if(!boss) initBoss();
-  if(!boss) return;
-  if(boss.state === 'absent' && wave.number >= boss.nextRiseWave){
-    bossBeginRise();
-    startBossRound();
-    // It speaks once it's on its feet, not while it's still getting up.
-    bossNextSentenceAt = gameTime + BOSS_RISE_TIME + BOSS_FIRST_DELAY;
-  } else if(boss.state === 'active'){
-    startBossRound();
-    bossNextSentenceAt = gameTime + BOSS_FIRST_DELAY;
-  }
+function bossSummonDue(){
+  return boss && boss.state === 'absent' && gameTime >= boss.nextSummonAt;
 }
 
 function updateBoss(delta, t){
   if(!BOSS_ENABLED) return;
   if(!boss) initBoss();
   if(!boss) return;
+  if(bossSummonDue() && typeof director !== 'undefined' && director.started) bossBeginRise();
   updateBossLifecycle();
   updateBossBody(delta, gameTime);
   updateBossRumble();
+  checkBossRoundDone();
   if(boss.state === 'active' && bossNextSentenceAt >= 0 && gameTime >= bossNextSentenceAt){
     bossNextSentenceAt = -1;
     launchBossSentence();
@@ -624,13 +632,18 @@ function updateBoss(delta, t){
 function bossDebugRecite(){
   if(!boss) initBoss();
   if(!boss) return;
-  if(boss.state === 'absent'){ bossBeginRise(); startBossRound(); bossNextSentenceAt = gameTime + BOSS_RISE_TIME + 1; return; }
-  if(boss.state === 'active'){ if(!boss.round) startBossRound(); launchBossSentence(); }
+  if(boss.state === 'absent'){ bossBeginRise(); bossNextSentenceAt = gameTime + BOSS_RISE_TIME + 1; return; }
+  // Says the current sentence now, unless it's already been said.
+  if(boss.state === 'active' && (!boss.round || !boss.round.launched)){ bossNextSentenceAt = -1; launchBossSentence(); }
 }
+// Skips the sentence in progress, as if all its Rs had been killed.
 function bossDebugTakeRound(){
   if(!boss || boss.state !== 'active') return;
-  boss.roundsDone = Math.min(BOSS_ROUNDS, boss.roundsDone + 1);
-  if(bossHealth() <= 1e-6) bossBeginFall();
+  if(!boss.round) startBossRound();
+  boss.round.launched = true;
+  boss.round.killed = Math.max(boss.round.killed, boss.round.expected);
+  if(boss.round.expected === 0) boss.round.expected = boss.round.killed = 1;
+  checkBossRoundDone();
 }
 
 // ---------- health bar ----------
@@ -742,8 +755,8 @@ function resetBoss(){
     boss.speakUntil = -1;
     boss.state = 'absent';
     boss.mesh.visible = false;
-    boss.nextRiseWave = BOSS_FROM_WAVE;
-    boss.roundsDone = 0; boss.round = null; boss.roundCounter = 0;
+    boss.nextSummonAt = BOSS_SUMMON_MIN*60;
+    boss.roundsDone = 0; boss.round = null; boss.roundCounter = 0; boss.sentenceIdx = 0;
     boss.impactDone = false;
   }
   setBossBarVisible(false);

@@ -2,17 +2,29 @@
 // STAT / WEAPON HELPERS
 // =================================================================
 function statLevel(key){ return player.stats[key] || 0; }
+// The sum of every pick so far, each worth perLevel times its card's rarity. No cap: a skill
+// keeps growing as long as it's picked.
 function statValue(key){
-  const def = STATS.find(s=>s.key===key);
-  if(!def) return 0;
-  return Math.min(statLevel(key), def.maxLevel) * def.perLevel;
+  return (player.statValues && player.statValues[key]) || 0;
 }
+// A percentage that keeps one decimal only when it needs it (12.5%, but 10%).
+function fmtPct(v){ const n = Math.round(v*1000)/10; return (Number.isInteger(n) ? n : n.toFixed(1)) + '%'; }
+function fmtNum(v){ const n = Math.round(v*100)/100; return String(n); }
 function formatStatValue(stat){
   const total = statValue(stat.key);
   if(stat.key==='maxHealth') return '+' + Math.round(total);
-  if(stat.key==='critChance') return Math.round(total*100) + '%';
-  if(stat.key==='reloadSpeed') return '-' + Math.round(total*100) + '%';
-  return '+' + Math.round(total*100) + '%';
+  if(stat.key==='critChance') return fmtPct(total);
+  if(stat.key==='reloadSpeed') return '-' + fmtPct(total);
+  if(stat.key==='enemyIntensity') return '+' + fmtNum(total);
+  return '+' + fmtPct(total);
+}
+// What one pick of `amount` adds, as shown on a level-up card.
+function formatStatDelta(stat, amount){
+  if(stat.key==='maxHealth') return '+' + Math.round(amount) + ' ' + t('fx.health');
+  if(stat.key==='reloadSpeed') return '-' + fmtPct(amount) + ' ' + t('fx.reloadTime');
+  if(stat.key==='enemyIntensity') return '+' + fmtNum(amount) + ' ' + t('fx.intensity');
+  if(stat.key==='critChance') return '+' + fmtPct(amount) + ' ' + t('fx.crit');
+  return '+' + fmtPct(amount);
 }
 function xpForLevel(level){ return Math.round((70 + level*35 + level*level*2) * (DRAFT_MODE ? DRAFT_XP_MULT : 1)); }
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }

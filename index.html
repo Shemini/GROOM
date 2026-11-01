@@ -43,7 +43,7 @@
 
   #topBar{position:absolute;top:14px;left:0;right:0;display:flex;justify-content:center;gap:30px;align-items:baseline;}
   #levelNum{font-size:13px;letter-spacing:3px;color:var(--stam);}
-  #waveNum{font-size:16px;letter-spacing:4px;color:var(--danger);}
+  #waveNum{font-size:16px;letter-spacing:4px;color:var(--txt-1);}
   #moneyNum{font-size:13px;letter-spacing:3px;color:var(--gold);}
 
   /* The in-game stat panel is gone for now — it outgrew its corner once the icons went in.
@@ -63,6 +63,34 @@
     font-size:34px;letter-spacing:4px;color:var(--danger);
     text-shadow:0 0 20px rgba(200,64,44,0.6);opacity:0;transition:opacity .4s;text-align:center;}
   #waveBanner .sub{font-size:12px;letter-spacing:2px;color:var(--txt-2);display:block;margin-top:10px;}
+
+  /* COMBO HYPE — top-right corner of the play area. Position, scale and shake are driven per
+     frame by js/combo.js; the stage class sets the colour. */
+  #comboHype{position:absolute;top:58px;right:46px;text-align:right;opacity:0;
+    transform-origin:100% 0;will-change:transform,opacity;transition:opacity .25s;}
+  #comboHype.on{opacity:1;}
+  #comboHypeText{font-family:'Press Start 2P',monospace;font-size:44px;line-height:1;letter-spacing:2px;
+    color:#ffcf5c;-webkit-text-stroke:2px #1a120d;
+    text-shadow:4px 4px 0 #1a120d, 0 0 18px rgba(255,190,70,.55);}
+  #comboHypeSub{font-family:'Press Start 2P',monospace;font-size:13px;letter-spacing:2px;margin-top:12px;
+    color:#fff0c0;text-shadow:2px 2px 0 #1a120d;}
+  #comboHype.st1 #comboHypeText{color:#ffd76a;text-shadow:4px 4px 0 #1a120d, 0 0 16px rgba(255,205,90,.5);}
+  #comboHype.st2 #comboHypeText{color:#ff9a2e;text-shadow:4px 4px 0 #1a120d, 0 0 22px rgba(255,140,30,.65);}
+  #comboHype.st3 #comboHypeText{color:#ff3b2a;text-shadow:4px 4px 0 #1a120d, 0 0 28px rgba(255,50,30,.8);}
+  #comboHype.st4 #comboHypeText{color:#d9101a;text-shadow:4px 4px 0 #000, 0 0 34px rgba(220,0,20,.95), 0 0 6px #ff6a3d;}
+  /* About to drop a stage: it flickers, which is the only warning now that there's no timer. */
+  #comboHype.fading #comboHypeText{animation:hypeFlicker .22s steps(2) infinite;}
+  @keyframes hypeFlicker{50%{opacity:.35;}}
+
+  /* BOSS GUEST health bars, placed over each one's head by js/director.js. Same language as
+     the stamina track: dark recess, square segments — in red. */
+  #miniBossBars{position:fixed;inset:0;pointer-events:none;z-index:14;}
+  .mbBar{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .mbName{font-family:'Press Start 2P',monospace;font-size:10px;letter-spacing:2px;color:#ffb0a0;
+    text-shadow:2px 2px 0 #1a120d;white-space:nowrap;}
+  .mbTrack{display:flex;gap:3px;padding:3px;background:#1d1409;box-shadow:inset 0 0 0 2px #4a3d2b, 0 0 0 2px #0d0904;}
+  .mbTrack i{display:block;width:11px;height:9px;background:#2e1f12;}
+  .mbTrack i.on{background:#d8342a;box-shadow:inset 0 -2px 0 #8f1c16;}
 
   #damageFlash{position:fixed;inset:0;pointer-events:none;z-index:14;
     background:radial-gradient(ellipse at center, rgba(200,30,44,0) 40%, rgba(200,30,44,0.55) 100%);
@@ -177,17 +205,6 @@
 
   /* TALLY */
   #cellTally{flex:1;padding:10px 14px;justify-content:space-between;}
-  /* Combo readout — deliberately explicit while the numbers are being balanced. */
-  #comboBox{border-top:2px solid var(--cell-line);padding-top:6px;}
-  #comboHead{display:flex;justify-content:space-between;align-items:baseline;}
-  #comboLabel{font-size:12px;letter-spacing:2px;color:var(--txt-2);}
-  #comboBonus{font-size:11px;color:var(--gold);}
-  #comboMeterOuter{height:8px;background:var(--cell-dark);margin:4px 0 3px;
-    box-shadow:inset 0 0 0 2px var(--txt-off);}
-  #comboMeterInner{height:100%;width:0%;background:var(--gold);}
-  #comboStats{display:flex;justify-content:space-between;font-size:10px;color:var(--txt-muted);}
-  #comboTimer.frozen{color:var(--stam);}
-  #comboTimer.urgent{color:var(--danger);}
   .tallyRow{display:flex;align-items:baseline;gap:10px;}
   #tallyKills{font-family:'Press Start 2P',monospace;font-size:24px;color:var(--txt-2);}
   #tallyScore{font-family:'Press Start 2P',monospace;font-size:18px;color:var(--txt-1);}
@@ -568,6 +585,23 @@
   .lvlCard.evolveCard{box-shadow:inset 0 0 0 4px var(--gold), inset 0 0 0 8px var(--cell-dark),
     0 0 0 2px var(--cell-line);}
   .lvlCard.evolveCard .dot{background:var(--danger);}
+  /* SKILL RARITY: a frame in the rarity's colour (kept on hover), a tag beside the name and the
+     pick's actual effect in that colour. Normal has no frame. */
+  .lvlCard .rarTag{display:inline-block;vertical-align:middle;margin-left:10px;padding:3px 6px 2px;
+    font-size:10px;letter-spacing:2px;color:#0f0b05;background:var(--rar,#ccc);}
+  .lvlCard .effect{font-family:'Press Start 2P',monospace;font-size:15px;line-height:1.3;color:var(--rar,var(--gold));
+    text-shadow:2px 2px 0 #0d0904;margin:-4px 0 0;}
+  .lvlCard .lvlTxt{font-size:11px;letter-spacing:2px;color:var(--gold);}
+  .lvlCard.rar-uncommon{--rar:#3fbf4a;}
+  .lvlCard.rar-rare{--rar:#3a7bea;}
+  .lvlCard.rar-epic{--rar:#a24be0;}
+  .lvlCard.rar-legendary{--rar:#e0302f;}
+  .lvlCard.rar-uncommon, .lvlCard.rar-rare, .lvlCard.rar-epic, .lvlCard.rar-legendary,
+  .lvlCard.rar-uncommon:hover, .lvlCard.rar-rare:hover, .lvlCard.rar-epic:hover, .lvlCard.rar-legendary:hover{
+    box-shadow:inset 0 0 0 4px var(--rar), inset 0 0 0 7px rgba(0,0,0,.45), 0 0 0 2px var(--cell-line), 0 0 18px var(--rar);}
+  .lvlCard.rar-legendary{animation:legendGlow 1.4s ease-in-out infinite;}
+  @keyframes legendGlow{50%{box-shadow:inset 0 0 0 4px var(--rar), inset 0 0 0 7px rgba(0,0,0,.45), 0 0 0 2px var(--cell-line), 0 0 34px var(--rar);}}
+  .pStat .pMore{font-size:9px;color:var(--gold);margin-left:4px;font-weight:normal;}
 
   #lvlRerollRow{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:22px;}
   #rerollBtn{font-family:'Silkscreen',monospace;font-size:14px;letter-spacing:4px;
@@ -624,12 +658,14 @@
   <div id="xpBarOuter"><div id="xpBarInner"></div></div>
   <div id="topBar">
     <div id="levelNum">LV 1</div>
-    <div id="waveNum">WAVE 1</div>
+    <div id="waveNum">0:00</div>
     <div id="moneyNum">$ 0</div>
   </div>
   <div id="doubleBadge" class="hidden"></div>
   <div id="waveBanner"></div>
   <div id="interactPrompt"></div>
+  <!-- Combo: only while it's above SERIO. Shakes, and grows more violent with every kill. -->
+  <div id="comboHype"><div id="comboHypeText"></div><div id="comboHypeSub"></div></div>
 
   <!-- Stone status bar. Authored at 2100px and scaled to fit by js/hud.js. -->
   <div id="hudBar">
@@ -681,11 +717,6 @@
       <div id="cellTally" class="cell">
         <div class="tallyRow"><span id="tallyKills">0</span><span class="chip sm" data-i18n="hud.down">DOWN</span></div>
         <div class="tallyRow"><span id="tallyScore">0</span><span class="chip sm" data-i18n="hud.pts">PTS</span></div>
-        <div id="comboBox">
-          <div id="comboHead"><span id="comboLabel">SERIO</span><span id="comboBonus">+0%</span></div>
-          <div id="comboMeterOuter"><div id="comboMeterInner"></div></div>
-          <div id="comboStats"><span id="comboCount">0/10</span><span id="comboTimer">—</span></div>
-        </div>
       </div>
 
       <div id="cellMinimap" class="cell">
@@ -844,7 +875,7 @@
 
     <div id="pauseHeader">
       <span class="chip lvlChip" data-i18n="pause.title">PAUSED</span>
-      <span id="pauseSummary">LV 1 · WAVE 1</span>
+      <span id="pauseSummary">LV 1 · 0:00</span>
     </div>
 
     <div id="pauseBody">
@@ -970,7 +1001,7 @@
   <button id="dbgMoney">+$1000</button>
   <button id="dbgLevel">FORCE LEVEL UP</button>
   <button id="dbgHeal">FULL HEAL</button>
-  <button id="dbgWave">SKIP WAVE</button>
+  <button id="dbgWave">CLEAR ENEMIES</button>
 </div>
 
 
@@ -984,6 +1015,7 @@
 <script src="js/weapons_wedding.js"></script>
 <script src="js/shop.js"></script>
 <script src="js/zombies.js"></script>
+<script src="js/director.js"></script>
 <script src="js/boss.js"></script>
 <script src="js/guitarrista.js"></script>
 <script src="js/face.js"></script>

@@ -50,8 +50,6 @@ function initHUD(){
     stamTrack: el('stamTrack'),
     tallyKills: el('tallyKills'), tallyScore: el('tallyScore'),
     nowPlaying: el('nowPlaying'), trackTitle: el('trackTitle'),
-    comboLabel: el('comboLabel'), comboBonus: el('comboBonus'),
-    comboMeter: el('comboMeterInner'), comboCount: el('comboCount'), comboTimer: el('comboTimer'),
     minimapViewport: el('minimapViewport'),
   };
 
@@ -224,34 +222,7 @@ function updateStoneHUD(){
   hudSet('kills', hudRefs.tallyKills, String(player.kills));
   hudSet('score', hudRefs.tallyScore, (player.points||0).toLocaleString());
 
-  // --- combo ---
-  if(typeof combo !== 'undefined'){
-    const def = COMBO_STAGES[combo.stage] || COMBO_STAGES[0];
-    hudSet('comboLabel', hudRefs.comboLabel, comboLabel(combo.stage));
-    hudSet('comboBonus', hudRefs.comboBonus, '+'+Math.round(combo.stage*COMBO_DAMAGE_BONUS*100)+'%');
-    hudSet('comboCount', hudRefs.comboCount, combo.count+'/'+COMBO_KILLS_PER_STAGE);
-    if(hudRefs.comboMeter){
-      const pct = Math.round((combo.count/COMBO_KILLS_PER_STAGE)*100);
-      if(hudLast.comboPct !== pct){ hudLast.comboPct = pct; hudRefs.comboMeter.style.width = pct+'%'; }
-    }
-    if(hudRefs.comboTimer){
-      // Deliberately not called `t`: that's the translation function, and a local of the same
-      // name shadowed it here. The call below then invoked this DOM element instead, throwing
-      // every frame — but only between waves, the one time the frozen label is shown.
-      const timerEl = hudRefs.comboTimer;
-      const frozen = combo.frozen;
-      const label = frozen ? t('hud.paused') : (combo.timer>0 ? combo.timer.toFixed(1)+'s' : '—');
-      hudSet('comboTimer', timerEl, label);
-      // The colour states matter more than the number while balancing: at a glance you can
-      // see whether a stage is about to drop.
-      const urgent = !frozen && combo.timer>0 && combo.timer < def.timer*0.35;
-      if(hudLast.comboFrozen !== frozen || hudLast.comboUrgent !== urgent){
-        hudLast.comboFrozen = frozen; hudLast.comboUrgent = urgent;
-        timerEl.classList.toggle('frozen', frozen);
-        timerEl.classList.toggle('urgent', urgent);
-      }
-    }
-  }
+  // (The combo isn't in the bar any more: it's the shaking text in the corner, js/combo.js.)
 
   // --- now playing ---
   const title = (typeof musicCurrentTitle === 'string') ? musicCurrentTitle : '';

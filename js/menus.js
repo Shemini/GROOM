@@ -28,7 +28,7 @@ function showRunSummary(){
   const fmt = n => Math.round(n).toLocaleString();
   const kpm = runKillsPerMinute(), pace = runPaceMult();
 
-  document.getElementById('runSummary').textContent = t('go.summary', { w:wave.number, l:player.level });
+  document.getElementById('runSummary').textContent = t('go.summary', { w:formatRunClock(runStats.runTime), l:player.level });
   document.getElementById('runScoreMath').innerHTML =
     t('go.points') + ' <b>' + fmt(player.points || 0) + '</b> &nbsp;×&nbsp; ' +
     t('go.pace') + ' <b>×' + pace.toFixed(2) + '</b> &nbsp;(' + kpm.toFixed(1) + ' ' + t('go.kpmShort') + ')';
@@ -36,7 +36,6 @@ function showRunSummary(){
   const stats = [
     [t('go.kills'), fmt(player.kills)],
     [t('go.kpm'), kpm.toFixed(1)],
-    [t('go.wave'), wave.number],
     [t('go.level'), player.level],
     [t('go.time'), formatRunTime(runStats.runTime)],
   ];

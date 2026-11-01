@@ -16,8 +16,8 @@ function animate(){
     gameTime += delta;   // frozen whenever the game isn't in play
     damageCredit = null; // each update credits its own effects; nothing carries over a frame
     runStats.runTime += delta;
-    // "Combat time" only runs while there's someone to fight, so the gaps between waves
-    // don't drag your pace down — but leaving a wave alive to gather up does.
+    // "Combat time" only runs while there's someone to fight, so a quiet moment doesn't drag
+    // your pace down — but leaving a crowd alive to gather up does.
     if(zombies.some(z=>!z.dying)) runStats.combatTime += delta;
     updateMovement(delta);
     if(mouseDown) tryShoot(elapsed);
@@ -34,7 +34,7 @@ function animate(){
     updateStatusEffects(delta, elapsed);
     updateCombo(delta);
     updateStatPerks(delta);
-    updateWave(delta, elapsed);
+    updateDirector(delta);
     updateInteractables(delta, elapsed);
     updateSoap(delta, elapsed);
     updateWeaponAudio();

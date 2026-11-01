@@ -360,3 +360,10 @@ function playPlayerFootstep(){
   if(!audioCtx) return;
   wsndPlay(randomFootstep(), { volume: FOOTSTEP_PLAYER_VOLUME });
 }
+// Landing from a jump: two steps close together, a little louder than walking, reads as both
+// feet coming down.
+function playPlayerLanding(){
+  if(!audioCtx) return;
+  wsndPlay(randomFootstep(), { volume: Math.min(1, FOOTSTEP_PLAYER_VOLUME*1.4) });
+  wsndPlay(randomFootstep(), { volume: FOOTSTEP_PLAYER_VOLUME, delay: 0.05 });
+}

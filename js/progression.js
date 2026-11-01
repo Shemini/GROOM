@@ -47,10 +47,15 @@ function addXP(amount){
 // =================================================================
 function buildUpgradePool(){
   const pool=[];
+  // Skills have no cap, but a run only gets SKILL_SLOT_LIMIT different ones: once that many
+  // have been picked, only those keep coming up.
+  const full = ownedSkillCount() >= SKILL_SLOT_LIMIT;
   STATS.forEach(s=>{
-    if(statLevel(s.key)<s.maxLevel) pool.push({ctype:'stat', stat:s});
-    // Maxed out: its evolution takes its place, once.
-    else if(STAT_EVOLUTIONS[s.key] && !statEvolved(s.key)) pool.push({ctype:'statEvolve', stat:s});
+    const lvl = statLevel(s.key);
+    if(full && lvl === 0) return;
+    pool.push({ctype:'stat', stat:s, rarity: rollSkillRarity()});
+    // Picked often enough: its evolution is offered too, once, alongside further levels.
+    if(lvl >= STAT_EVOLVE_AT && STAT_EVOLUTIONS[s.key] && !statEvolved(s.key)) pool.push({ctype:'statEvolve', stat:s});
   });
   player.slots.forEach(wIdx=>{
     if(wIdx===null) return;
@@ -76,6 +81,16 @@ function buildUpgradePool(){
   }
   return pool;
 }
+function ownedSkillCount(){ return STATS.filter(s=>statLevel(s.key) > 0).length; }
+
+// One roll per card, by SKILL_RARITIES' weights.
+function rollSkillRarity(){
+  const total = SKILL_RARITIES.reduce((a,r)=>a+r.weight, 0);
+  let x = Math.random()*total;
+  for(const r of SKILL_RARITIES){ x -= r.weight; if(x <= 0) return r; }
+  return SKILL_RARITIES[0];
+}
+
 function pickThreeStats(){
   const pool = buildUpgradePool();
   shuffle(pool);
@@ -116,17 +131,28 @@ function renderLevelUpCards(picks){
 
     if(item.ctype==='stat'){
       const stat=item.stat, lvl=statLevel(stat.key);
-      card.dataset.ctype='stat'; card.dataset.key=stat.key;
-      let dots=''; for(let d=0;d<stat.maxLevel;d++) dots+='<div class="dot '+(d<lvl?'filled':'')+'"></div>';
+      const rar = item.rarity || SKILL_RARITIES[0];
+      card.dataset.ctype='stat'; card.dataset.key=stat.key; card.dataset.rarity=rar.key;
+      card.classList.add('rar-'+rar.key);
+      // Pips count toward the evolution; past it, the level is written out instead.
+      let dots='';
+      if(lvl < STAT_EVOLVE_AT){ for(let d=0;d<STAT_EVOLVE_AT;d++) dots+='<div class="dot '+(d<lvl?'filled':'')+'"></div>'; }
+      else dots = '<span class="lvlTxt">'+t('lvl.skillLevel',{n:lvl})+' → '+(lvl+1)+'</span>';
       // The design called for a hatch swatch here; the real stat icons exist now, so they're
       // used instead and the swatch is only a fallback for a stat without art.
       const art = stat.icon
         ? '<img src="'+STATS_DIR+encodeURIComponent(stat.icon)+'.png" alt="">'
         : '<div class="swatch"></div>';
+      // A skill not taken yet uses up one of the run's slots: say how many are left.
+      const chip = lvl === 0
+        ? t('lvl.kindNewSkill',{n: SKILL_SLOT_LIMIT - ownedSkillCount()})
+        : t('lvl.kindStat');
+      const rarTag = rar.key === 'normal' ? '' : '<span class="rarTag">'+t('rar.'+rar.key)+'</span>';
       card.innerHTML =
-        '<div class="cardHead"><span class="kindChip">'+t('lvl.kindStat')+'</span>'+hotkey+'</div>'+
+        '<div class="cardHead"><span class="kindChip">'+chip+'</span>'+hotkey+'</div>'+
         '<div class="art">'+art+'</div>'+
-        '<div class="name">'+statName(stat)+'</div>'+
+        '<div class="name">'+statName(stat)+rarTag+'</div>'+
+        '<div class="effect">'+formatStatDelta(stat, stat.perLevel*rar.mult)+'</div>'+
         '<div class="desc">'+statDesc(stat)+'</div>'+
         '<div class="dots">'+dots+'</div>';
 
@@ -150,7 +176,7 @@ function renderLevelUpCards(picks){
       card.className='lvlCard evolveCard';
       card.dataset.ctype='statEvolve'; card.dataset.key=stat.key;
       const icon = (STAT_EVOLUTIONS[stat.key] && STAT_EVOLUTIONS[stat.key].icon) || stat.icon;
-      let dots=''; for(let d=0;d<stat.maxLevel;d++) dots+='<div class="dot filled"></div>';
+      let dots=''; for(let d=0;d<STAT_EVOLVE_AT;d++) dots+='<div class="dot filled"></div>';
       card.innerHTML =
         '<div class="cardHead"><span class="kindChip">'+t('lvl.kindEvolve')+'</span>'+hotkey+'</div>'+
         '<div class="art">'+(icon?'<img src="'+STATS_DIR+encodeURIComponent(icon)+'.png" alt="">':'<div class="swatch"></div>')+'</div>'+
@@ -260,13 +286,20 @@ function maybeShowLevelUp(){
     levelUpEl.classList.remove('hidden');
   }
 }
-function applyStatLevel(key){
+// `mult` is the card's rarity multiplier: it scales what this one pick adds.
+function applyStatLevel(key, mult){
+  const def = STATS.find(s=>s.key===key);
+  if(!def) return;
+  const amount = def.perLevel*(mult || 1);
   player.stats[key] = (player.stats[key]||0)+1;
-  if(key==='maxHealth'){ player.maxHealth+=20; player.health+=20; }
+  if(!player.statValues) player.statValues = {};
+  player.statValues[key] = (player.statValues[key]||0) + amount;
+  if(key==='maxHealth'){ player.maxHealth+=amount; player.health+=amount; }
   updateHUD();
 }
+function rarityMult(key){ const r = SKILL_RARITIES.find(x=>x.key===key); return r ? r.mult : 1; }
 function chooseLevelUpCard(sel){
-  if(sel.ctype==='stat') applyStatLevel(sel.key);
+  if(sel.ctype==='stat') applyStatLevel(sel.key, rarityMult(sel.rarity));
   else if(sel.ctype==='weapon') applyWeaponLevel(sel.widx);
   else if(sel.ctype==='newWeapon') draftWeapon(sel.widx);
   else if(sel.ctype==='statEvolve') applyStatEvolution(sel.key);
@@ -283,51 +316,14 @@ function chooseLevelUpCard(sel){
 }
 
 // =================================================================
-// WAVES
+// BANNERS
+// (Waves are gone: spawning and the timed events live in js/director.js.)
 // =================================================================
-function startWave(){
-  wave.betweenWaves=false;
-  const intensity = statValue('enemyIntensity');
-  wave.toSpawn = Math.round((5+wave.number*2)*(1+intensity*0.10));
-  wave.spawned=0; wave.spawnTimer=0;
-  wave.spawnInterval = Math.max(0.25, 0.8-wave.number*0.04);   // quicker, so a combo has a chance to build
-  scheduleDrops();
-  comboSetFrozen(false);
-  showWaveBanner(t('bn.wave',{n:wave.number}), t('bn.waveSub'));
-  refillShield();
-  if(typeof bossOnWaveStart === 'function') bossOnWaveStart();
-  soundWaveStart();
-}
 function showWaveBanner(main, sub){
   waveBannerEl.innerHTML = main+'<span class="sub">'+sub+'</span>';
   waveBannerEl.style.opacity=1;
-  setTimeout(()=>{ waveBannerEl.style.opacity=0; },2400);
-}
-function updateWave(delta, elapsed){
-  if(wave.betweenWaves){
-    // Nothing to kill, so the combo is held rather than decaying through dead time. Without
-    // this the gap between waves would quietly eat a stage every single time.
-    comboSetFrozen(true);
-    wave.betweenTimer -= delta;
-    if(wave.betweenTimer<=0){ wave.number++; wave.betweenTimer=WAVE_GAP; startWave(); }
-    return;
-  }
-  if(wave.spawned<wave.toSpawn){
-    // Released as soon as the first enemy is actually out there to be killed.
-    comboSetFrozen(wave.spawned === 0);
-    wave.spawnTimer -= delta;
-    if(wave.spawnTimer<=0){ spawnZombie(); wave.spawnTimer=wave.spawnInterval; }
-  } else if(zombies.length===0 && !(typeof bossBlocksWaveEnd === 'function' && bossBlocksWaveEnd())){
-    if(typeof bossOnWaveClear === 'function') bossOnWaveClear();
-    const bonus = 100+wave.number*25;
-    addMoney(bonus);
-    showWaveBanner(t('bn.clear',{n:wave.number}), t('bn.clearSub',{b:bonus}));
-    soundWaveClear();
-    guitarristaOnWaveClear();
-    wave.betweenWaves=true; wave.betweenTimer=WAVE_GAP;
-  } else {
-    comboSetFrozen(false);
-  }
+  clearTimeout(showWaveBanner._t);
+  showWaveBanner._t = setTimeout(()=>{ waveBannerEl.style.opacity=0; },2400);
 }
 
 // =================================================================
@@ -354,7 +350,8 @@ function updateHUD(){
   // js/hud.js; everything below is the overlay furniture that sits outside the bar.
   if(typeof updateStoneHUD === 'function') updateStoneHUD();
 
-  if(waveNumEl) waveNumEl.textContent = t('hud.wave',{n:wave.number});
+  // The run clock, where the wave number used to be.
+  if(waveNumEl) waveNumEl.textContent = formatRunClock(gameTime);
   if(moneyNumEl) moneyNumEl.textContent = t('hud.money',{n:player.money});
   if(levelNumEl) levelNumEl.textContent = t('hud.level',{n:player.level});
   if(xpBarInnerEl) xpBarInnerEl.style.width = Math.min(100,(player.xp/player.xpToNext)*100)+'%';
@@ -398,7 +395,7 @@ function draftWeapon(wIdx){
 
 // Test helper: applies a pick without touching the level-up screen.
 function chooseLevelUpCardSim(item){
-  if(item.ctype==='stat') applyStatLevel(item.stat.key);
+  if(item.ctype==='stat') applyStatLevel(item.stat.key, item.rarity ? item.rarity.mult : 1);
   else if(item.ctype==='weapon') applyWeaponLevel(item.weaponIdx);
   else if(item.ctype==='newWeapon') draftWeapon(item.weaponIdx);
   else if(item.ctype==='statEvolve') applyStatEvolution(item.stat.key);
@@ -451,8 +448,8 @@ function restartRun(){
   Object.assign(player, JSON.parse(JSON.stringify(INITIAL_PLAYER)));
   player.xpToNext = xpForLevel(player.level);
 
-  // --- wave progress ---
-  Object.assign(wave, JSON.parse(JSON.stringify(INITIAL_WAVE)));
+  // --- spawning and events ---
+  if(typeof resetDirector === 'function') resetDirector();
 
   // --- anything spawned into the scene ---
   // Fuses first: once the list is cleared there'd be nothing left to silence them by.
@@ -477,6 +474,7 @@ function restartRun(){
   playerExhausted = false;
   playerVelY = 0;
   playerAirborne = 0;
+  playerJumping = false; playerJumpQueued = false;
   if(typeof comboReset === 'function') comboReset();
   if(typeof weaponCancelReload === 'function') weaponCancelReload();
   boxState = 'idle';
@@ -503,7 +501,7 @@ function restartRun(){
   if(waveBannerEl) waveBannerEl.style.opacity = 0;
 
   updateHUD();
-  gameState = 'menu';   // the pointer-lock handler starts the first wave, as it does at launch
+  gameState = 'menu';   // the pointer-lock handler starts the spawning, as it does at launch
   requestLock();
 }
 

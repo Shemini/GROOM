@@ -67,17 +67,27 @@ function isSpawnPointHidden(x,z){
   return raycaster.intersectObjects(environmentMeshes,false).length>0;
 }
 
+// Allowed spawn area: within SPAWN_MAX_DIST of where the player was SPAWN_ANCHOR_DELAY
+// seconds ago, and never within SPAWN_MIN_DIST of where they are now. Moving into a corridor,
+// the anchor lags behind, so new enemies keep arriving from the way you came rather than
+// appearing ahead of you.
+function spawnPointAllowed(x, z, anchor){
+  const camPos = camera.position;
+  if(Math.hypot(x-camPos.x, z-camPos.z) < SPAWN_MIN_DIST) return false;
+  return Math.hypot(x-anchor.x, z-anchor.z) <= SPAWN_MAX_DIST;
+}
+
 function findSpawnPosition(){
   const camPos = camera.position;
+  const anchor = (typeof spawnAnchor === 'function') ? spawnAnchor() : { x: camPos.x, z: camPos.z };
 
-  // Preferred path: pick from the hand-authored spawn zones, restricted to the allowed
-  // distance band around the player and, where possible, out of their line of sight.
+  // Preferred path: pick from the hand-authored spawn zones, restricted to the allowed area
+  // and, where possible, out of the player's line of sight.
   if(spawnPoints && spawnPoints.length>0){
     const candidates = [];
     for(let i=0;i<spawnPoints.length;i++){
       const p = spawnPoints[i];
-      const d = Math.hypot(p.x-camPos.x, p.z-camPos.z);
-      if(d>=SPAWN_MIN_DIST && d<=SPAWN_MAX_DIST && !isPositionBlocked(p.x,p.z)) candidates.push(p);
+      if(spawnPointAllowed(p.x, p.z, anchor) && !isPositionBlocked(p.x,p.z)) candidates.push(p);
     }
     if(candidates.length>0){
       let fallback = null;
@@ -96,11 +106,12 @@ function findSpawnPosition(){
     // No zone point in range (player far from any alleyway) — fall through to rings below.
   }
 
-  // Fallback: sample rings around the player, honouring the same distance band.
+  // Fallback: sample around the anchor, honouring the same rules.
   for(let i=0;i<32;i++){
     const angle = Math.random()*Math.PI*2;
-    const r = SPAWN_MIN_DIST+Math.random()*(SPAWN_MAX_DIST-SPAWN_MIN_DIST);
-    const x = camPos.x+Math.cos(angle)*r, z = camPos.z+Math.sin(angle)*r;
+    const r = Math.sqrt(Math.random())*SPAWN_MAX_DIST;
+    const x = anchor.x+Math.cos(angle)*r, z = anchor.z+Math.sin(angle)*r;
+    if(!spawnPointAllowed(x, z, anchor)) continue;
     const fy = getFloorY(x,z, levelMaxY);
     if(fy===null) continue;
     if(isSpawnPointHidden(x,z)) return new THREE.Vector3(x,fy,z);
@@ -112,33 +123,20 @@ function findSpawnPosition(){
   return new THREE.Vector3(x, fy!==null?fy:camPos.y-EYE_HEIGHT, z);
 }
 
-// Which types may appear this wave, weighted by their spawnWeight. A type whose texture
-// failed to load is skipped so a missing file degrades to "that enemy never shows up" rather
-// than breaking spawning entirely.
-function pickEnemyType(){
-  const eligible = [];
-  let total = 0;
-  for(const id in ENEMY_TYPES){
-    const def = ENEMY_TYPES[id];
-    if(wave.number < def.minWave) continue;
-    if(!enemyTextures[id]) continue;
-    eligible.push(def); total += def.spawnWeight;
-  }
-  if(eligible.length===0) return ENEMY_TYPES[DEFAULT_ENEMY_TYPE];
-  let r = Math.random()*total;
-  for(const def of eligible){ r -= def.spawnWeight; if(r<=0) return def; }
-  return eligible[eligible.length-1];
-}
+// Spawns one enemy, or a pack for types that arrive in groups. The director (director.js)
+// decides what and how many.
+// Counts the "fell out of the world" warnings so the console isn't flooded. It was used below
+// without ever being declared, which would have thrown the first time an enemy was rescued.
+let fellThroughWarnings = 0;
 
-// Spawns one enemy, or a whole group for types that arrive in packs.
-function spawnZombie(){
-  const def = pickEnemyType();
+function spawnZombie(def, count){
+  def = def || ENEMY_TYPES[DEFAULT_ENEMY_TYPE];
   if(!enemyTextures[def.id]) return;
   if(def.swarmSize){
     // One anchor for the whole pack, then each member scattered a short way from it — a swarm
     // should arrive as a group, not as a handful of strays from opposite ends of the map.
     const [lo,hi] = def.swarmSize;
-    const n = lo + Math.floor(Math.random()*(hi-lo+1));
+    const n = count || (lo + Math.floor(Math.random()*(hi-lo+1)));
     const anchor = findSpawnPosition();
     for(let i=0;i<n;i++) spawnOneEnemy(def, clusterPointNear(anchor, SWARM_SPREAD));
     return;
@@ -179,13 +177,17 @@ function spawnOneEnemy(def, forcedPos, opts){
   blob.position.set(0, 0.02, 0);
 
   const intensity = statValue('enemyIntensity');
-  const hpBase = (ENEMY_HP_BASE+wave.number*ENEMY_HP_PER_WAVE)*(1+intensity*0.06)*def.hpMult;
-  const speed = (1.5+Math.min(wave.number*ENEMY_SPEED_PER_WAVE,ENEMY_SPEED_CAP)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT*def.speedMult;
+  // Difficulty climbs with the run clock (difficultyLevel, director.js), in the units the wave
+  // number used to be.
+  const lvl = difficultyLevel();
+  const hpBase = (ENEMY_HP_BASE+lvl*ENEMY_HP_PER_WAVE)*(1+intensity*0.06)*def.hpMult;
+  const speed = (1.5+Math.min(lvl*ENEMY_SPEED_PER_WAVE,ENEMY_SPEED_CAP)+Math.random()*0.35)*(1+intensity*0.06)*ZOMBIE_SPEED_MULT*def.speedMult;
   const firstAnim = def.anims.walkToward;
   const z = {
     def,
     group, billboard, blob, hp:hpBase, maxHp:hpBase, speed,
-    dmg:(8+Math.min(wave.number,10))*def.damageMult,
+    dmg:(8+Math.min(lvl,10))*def.damageMult,
+    spawnCost: def.spawnCost || 0,   // what it counts for against the director's cap
     lastAttack:-999, groanTimer:1+Math.random()*3,
     losTimer:Math.random()*0.3, hasLOS:false, unstickUntil:-999, unstickSign:1,
     flashTimer:0, flashActive:false, staggerTimer:0, dot:null, stain:null, periodicTickTimer:0,
@@ -204,9 +206,6 @@ function spawnOneEnemy(def, forcedPos, opts){
   };
   billboard.userData.zombieRef=z;
   zombies.push(z);
-  // Enemies brought in by the boss are extra: counting them would cut the wave's own
-  // spawns short, and the wave still can't end while they're alive anyway.
-  if(!(opts && opts.noCount)) wave.spawned++;
   return z;
 }
 
@@ -744,10 +743,13 @@ function killZombie(z, headshot){
   // the boss twice, draining its health faster than its rules allow.
   if(typeof bossOnEnemyKilled === 'function') bossOnEnemyKilled(z);
   stopKamikazeFuse(z);
-  // An elite always leaves something behind.
-  if(z.elite) spawnDropPickup(z.group.position.clone(), ['ammo','health','double','instakill'][Math.floor(Math.random()*4)]);
+  if(typeof removeMiniBossBar === 'function') removeMiniBossBar(z);
+  // A boss guest always leaves something behind; an elite R only sometimes.
+  const anyDrop = ()=>['ammo','health','double','instakill'][Math.floor(Math.random()*4)];
+  if(z.miniBoss) spawnDropPickup(z.group.position.clone(), anyDrop());
+  else if(z.elite && Math.random() < R_ELITE_DROP_CHANCE) spawnDropPickup(z.group.position.clone(), anyDrop());
   // A kamikaze that blew itself up still has to count as gone, but it isn't the player's kill.
-  if(z.noReward){ wave.killedThisWave++; return; }
+  if(z.noReward) return;
   z.deathAnimDone = false;
   soundDeath(computePan(z.group.position));
   // Types with a timed death always cry out — it leads into their explosion, so it isn't
@@ -762,36 +764,22 @@ function killZombie(z, headshot){
   comboOnKill();
   const rewardMult = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult * comboRewardMult();
   addMoney((BASE_MONEY_REWARD+Math.floor(Math.random()*8)+(headshot?BASE_MONEY_HEADSHOT_BONUS:0))*rewardMult);
-  addXP((BASE_XP_REWARD+wave.number*1.4)*rewardMult);
+  addXP((BASE_XP_REWARD+difficultyLevel()*1.4)*rewardMult*(z.miniBoss ? MINIBOSS_XP : 1));
   // Score is its own thing: the enemy's worth and the risk you took (Bloodlust), times a
   // combo multiplier far steeper than the gold one.
-  const scoreWorth = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult * (z.elite ? R_ELITE_HP : 1);
+  const scoreWorth = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult * (z.elite ? R_ELITE_HP : 1) * (z.miniBoss ? MINIBOSS_HP : 1);
   player.points += Math.round(SCORE_PER_KILL * scoreWorth * (headshot ? 1+SCORE_HEADSHOT_BONUS : 1) *
                               (SCORE_COMBO_MULT[combo.stage] || 1));
   player.kills++;
-  wave.killedThisWave++;
-  const dropIdx = wave.dropSchedule.findIndex(d=>d.killIndex===wave.killedThisWave);
-  if(dropIdx!==-1){
-    const drop = wave.dropSchedule[dropIdx];
-    wave.dropSchedule.splice(dropIdx,1);
-    spawnDropPickup(z.group.position.clone(), drop.type);
+  // Ordinary pickups: a flat chance per kill (boss guests and elites drop their own, above).
+  if(!z.miniBoss && !z.elite && Math.random() < DROP_CHANCE_PER_KILL){
+    spawnDropPickup(z.group.position.clone(), DROP_TYPES[Math.floor(Math.random()*DROP_TYPES.length)]);
   }
 }
 
 // =================================================================
 // ENEMY DROPS
 // =================================================================
-function scheduleDrops(){
-  wave.dropSchedule=[]; wave.killedThisWave=0;
-  const dropCount = 1+(Math.random()<0.5?1:0);
-  const used = new Set();
-  for(let i=0;i<dropCount;i++){
-    let idx, tries=0;
-    do { idx = 1+Math.floor(Math.random()*Math.max(1,wave.toSpawn)); tries++; } while(used.has(idx)&&tries<10);
-    used.add(idx);
-    wave.dropSchedule.push({ killIndex:idx, type: DROP_TYPES[Math.floor(Math.random()*DROP_TYPES.length)] });
-  }
-}
 function spawnDropPickup(pos, type){
   const def = DROP_DEFS[type] || DROP_DEFS.ammo;
   const lightColor = def.light;

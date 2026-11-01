@@ -63,7 +63,7 @@ function init(){
     const card = e.target.closest('.lvlCard'); if(!card) return;
     if(!levelUpArmed()) return;   // a shot fired as the screen appeared must not pick a card
     const ctype = card.dataset.ctype;
-    if(ctype==='stat') chooseLevelUpCard({ctype:'stat', key:card.dataset.key});
+    if(ctype==='stat') chooseLevelUpCard({ctype:'stat', key:card.dataset.key, rarity:card.dataset.rarity});
     else if(ctype==='weapon') chooseLevelUpCard({ctype:'weapon', widx:parseInt(card.dataset.widx,10)});
     else if(ctype==='newWeapon') chooseLevelUpCard({ctype:'newWeapon', widx:parseInt(card.dataset.widx,10)});
     else if(ctype==='statEvolve') chooseLevelUpCard({ctype:'statEvolve', key:card.dataset.key});
@@ -77,8 +77,7 @@ function init(){
   el('dbgLevel').addEventListener('click', ()=>{ player.pendingLevelUps++; maybeShowLevelUp(); });
   el('dbgHeal').addEventListener('click', ()=>{ player.health=player.maxHealth; updateHUD(); });
   el('dbgWave').addEventListener('click', ()=>{
-    for(let i=zombies.length-1;i>=0;i--){ scene.remove(zombies[i].group); zombies.splice(i,1); }
-    wave.spawned = wave.toSpawn;
+    for(let i=zombies.length-1;i>=0;i--){ if(zombies[i].hpBar) zombies[i].hpBar.remove(); scene.remove(zombies[i].group); zombies.splice(i,1); }
   });
 
   applyStaticTranslations();   // before anything is shown, so the first frame is already localised
@@ -130,7 +129,7 @@ function onPointerLockChange(){
   if(isLocked){
     startOverlay.classList.add('hidden');
     pauseOverlay.classList.add('hidden');
-    if(gameState==='menu'){ gameState='playing'; startWave(); }
+    if(gameState==='menu'){ gameState='playing'; directorStart(); }
     else if(gameState==='paused' || gameState==='settings'){ gameState='playing'; }
   } else if(gameState==='playing'){
     gameState = 'paused';
@@ -183,6 +182,10 @@ function handleKeyDown(e){
     if(e.code==='KeyJ' && typeof bossDebugRecite === 'function'){ bossDebugRecite(); return; }
     if(e.code==='KeyK' && typeof bossDebugTakeRound === 'function'){ bossDebugTakeRound(); return; }
   }
+  if(typeof directorDebugKey === 'function' && directorDebugKey(e.code)) return;
+  // Jump. Queued here and taken by the next movement update, so a tap is never missed between
+  // frames; preventDefault stops the page scrolling when the pointer isn't locked.
+  if(e.code==='Space' && gameState==='playing'){ e.preventDefault(); playerJumpQueued = true; }
   // Esc closes the settings panel first, wherever it was opened from.
   if(e.code==='Escape' && typeof settingsModalOpen === 'function' && settingsModalOpen()){ closeSettingsModal(); return; }
   // A second Esc leaves the pause screen, without waiting on the browser's relock cooldown.

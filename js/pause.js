@@ -16,6 +16,7 @@ let pauseView = 'stats';   // stats | controls
 const PAUSE_CONTROLS = [
   { keys:['W','A','S','D'],      what:'ctl.move' },
   { keys:['@key.shift'],         what:'ctl.sprint' },
+  { keys:['@key.space'],         what:'ctl.jump' },
   { keys:['@key.mouse'],         what:'ctl.look' },
   { keys:['@key.click'],         what:'ctl.fire' },
   { keys:['R'],                  what:'ctl.reload' },
@@ -92,7 +93,7 @@ function openPauseMenu(){
   holdResumeForCooldown();
   setPauseView('stats');
   const s = document.getElementById('pauseSummary');
-  if(s) s.textContent = t('pause.summary', {lv:player.level, w:wave.number, p:(player.points||0).toLocaleString()});
+  if(s) s.textContent = t('pause.summary', {lv:player.level, w:formatRunClock(gameTime), p:(player.points||0).toLocaleString()});
   buildControlList();   // rebuilt so it follows a language change made since last time
   buildStatList();
   buildWeaponList();
@@ -114,8 +115,10 @@ function buildStatList(){
   let html = '';
   STATS.forEach(s=>{
     const lvl = statLevel(s.key);
+    // Pips up to the evolution; beyond it, the count is written out.
     let pips = '';
-    for(let i=0;i<s.maxLevel;i++) pips += '<i class="'+(i<lvl?'on':'')+'"></i>';
+    for(let i=0;i<STAT_EVOLVE_AT;i++) pips += '<i class="'+(i<lvl?'on':'')+'"></i>';
+    if(lvl > STAT_EVOLVE_AT) pips += '<b class="pMore">+'+(lvl-STAT_EVOLVE_AT)+'</b>';
     const icon = s.icon ? '<img src="'+STATS_DIR+encodeURIComponent(s.icon)+'.png" alt="">' : '<span></span>';
     html += '<div class="pStat'+(lvl===0?' zero':'')+'">'+icon+
       '<div><div class="pName">'+statName(s)+'</div><div class="pPips">'+pips+'</div>'+
