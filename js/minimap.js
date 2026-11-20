@@ -156,6 +156,8 @@ function updateMinimap(){
     minimapCtx.fillRect(Math.round(x-s/2), Math.round(y-s/2), s, s);
   });
 
+  drawMysteryBoxMarkers(offX, offY, drawW, drawH, vOf);
+
   // The Guitarrista, if he's out there, so he can be found again after a dismissal.
   if(typeof guitarrista !== 'undefined' && guitarrista){
     const uv = worldToMinimapUV(guitarrista.group.position.x, guitarrista.group.position.z);
@@ -167,6 +169,58 @@ function updateMinimap(){
   }
 
   drawPlayerMarker(cw/2, ch/2);
+}
+
+// Mystery boxes: bigger than an enemy, in their own colour, and pinned to the rim like enemies
+// when they're off the visible part of the map. On arrival a box pops in large and blinks,
+// shrinking to its normal size; in its last MYSTERY_BOX_WARN seconds it blinks, faster and
+// faster, until it's gone.
+function drawMysteryBoxMarkers(offX, offY, drawW, drawH, vOf){
+  if(typeof mysteryBoxes === 'undefined' || !mysteryBoxes.length) return;
+  const cw = minimapCanvasEl.width, ch = minimapCanvasEl.height;
+  for(const b of mysteryBoxes){
+    const uv = worldToMinimapUV(b.pos.x, b.pos.z);
+    if(!uv) continue;
+    const age = gameTime - b.born, left = b.expires - gameTime;
+    let size = MINIMAP_BOX_SIZE, on = true;
+    if(age < MINIMAP_BOX_POP_TIME){
+      const k = age / MINIMAP_BOX_POP_TIME;                     // 0 -> 1
+      size = MINIMAP_BOX_POP_SIZE + (MINIMAP_BOX_SIZE - MINIMAP_BOX_POP_SIZE)*k*k;
+      on = Math.floor(age*8) % 2 === 0;                         // quick blink while it pops
+    } else if(left < MYSTERY_BOX_WARN){
+      // Blink rate climbs from 1.5 to MINIMAP_BOX_BLINK_MAX flashes a second as time runs out.
+      // The phase is the integral of that rate, so speeding up doesn't make it stutter.
+      const k = 1 - left/MYSTERY_BOX_WARN;                      // 0 -> 1
+      const t0 = MYSTERY_BOX_WARN - left;
+      const phase = 1.5*t0 + (MINIMAP_BOX_BLINK_MAX-1.5)*t0*k/2;
+      on = Math.floor(phase*2) % 2 === 0;
+    }
+    if(!on) continue;
+    const pad = size/2 + 1;
+    let x = offX + uv.u*drawW, y = offY + vOf(uv)*drawH;
+    const outside = (x < pad || x > cw-pad || y < pad || y > ch-pad);
+    if(outside){
+      const dx = x - cw/2, dy = y - ch/2;
+      const halfW = cw/2 - pad, halfH = ch/2 - pad;
+      const t = Math.min(
+        Math.abs(dx) > 0.001 ? halfW/Math.abs(dx) : Infinity,
+        Math.abs(dy) > 0.001 ? halfH/Math.abs(dy) : Infinity);
+      if(!isFinite(t)) continue;
+      x = cw/2 + dx*t; y = ch/2 + dy*t;
+    }
+    const s = Math.round(size);
+    const px = Math.round(x - s/2), py = Math.round(y - s/2);
+    minimapCtx.fillStyle = MINIMAP_BOX_OUTLINE;
+    minimapCtx.fillRect(px-1, py-1, s+2, s+2);
+    minimapCtx.fillStyle = MINIMAP_BOX_COLOR;
+    minimapCtx.fillRect(px, py, s, s);
+    // A ribbon cross, so it reads as a present and not just a bigger enemy.
+    if(s >= 7){
+      minimapCtx.fillStyle = '#ffd76a';
+      minimapCtx.fillRect(px + Math.floor(s/2) - 1, py, 2, s);
+      minimapCtx.fillRect(px, py + Math.floor(s/2) - 1, s, 2);
+    }
+  }
 }
 
 // A circle now rather than a diamond: the vision cone carries the facing, so the marker only

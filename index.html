@@ -604,6 +604,9 @@
   .pStat .pMore{font-size:9px;color:var(--gold);margin-left:4px;font-weight:normal;}
 
   #lvlRerollRow{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:22px;}
+  /* The boss guest's reward: a red title plaque, and no reroll (the cards are the prize). */
+  #levelUpPanel.special #lvlRerollRow{visibility:hidden;}
+  #levelUpPanel.special #lvlHeader .lvlChip[data-i18n]{background:#e0302f;color:#fff0c0;}
   #rerollBtn{font-family:'Silkscreen',monospace;font-size:14px;letter-spacing:4px;
     padding:12px 30px 10px;border:none;cursor:pointer;margin:0;
     color:var(--gold);background:var(--plaque);box-shadow:inset 0 0 0 3px var(--gold);}
@@ -1016,6 +1019,7 @@
 <script src="js/shop.js"></script>
 <script src="js/zombies.js"></script>
 <script src="js/director.js"></script>
+<script src="js/mysterybox.js"></script>
 <script src="js/boss.js"></script>
 <script src="js/guitarrista.js"></script>
 <script src="js/face.js"></script>

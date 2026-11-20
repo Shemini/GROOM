@@ -162,6 +162,9 @@ function loadAssets(){
       gameState = 'menu';
       // Built now, while the title is up, so its geometry is ready before the first frame.
       if(typeof initBoss === 'function') initBoss();
+      // Where mystery boxes may appear: worked out once, here, rather than with a hitch at the
+      // first box (it floods the whole nav grid, ~0.1 s).
+      if(typeof buildBoxSpots === 'function') boxSpots = buildBoxSpots();
       landingSetReady();   // unlocks PLAY on the title screen
     }, 10);
   }

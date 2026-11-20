@@ -183,6 +183,7 @@ function handleKeyDown(e){
     if(e.code==='KeyK' && typeof bossDebugTakeRound === 'function'){ bossDebugTakeRound(); return; }
   }
   if(typeof directorDebugKey === 'function' && directorDebugKey(e.code)) return;
+  if(typeof mysteryBoxDebugKey === 'function' && mysteryBoxDebugKey(e.code)) return;
   // Jump. Queued here and taken by the next movement update, so a tap is never missed between
   // frames; preventDefault stops the page scrolling when the pointer isn't locked.
   if(e.code==='Space' && gameState==='playing'){ e.preventDefault(); playerJumpQueued = true; }

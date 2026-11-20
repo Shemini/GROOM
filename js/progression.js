@@ -52,7 +52,7 @@ function buildUpgradePool(){
   const full = ownedSkillCount() >= SKILL_SLOT_LIMIT;
   STATS.forEach(s=>{
     const lvl = statLevel(s.key);
-    if(full && lvl === 0) return;
+    if(full && !skillInSlots(s.key)) return;
     pool.push({ctype:'stat', stat:s, rarity: rollSkillRarity()});
     // Picked often enough: its evolution is offered too, once, alongside further levels.
     if(lvl >= STAT_EVOLVE_AT && STAT_EVOLUTIONS[s.key] && !statEvolved(s.key)) pool.push({ctype:'statEvolve', stat:s});
@@ -81,7 +81,10 @@ function buildUpgradePool(){
   }
   return pool;
 }
-function ownedSkillCount(){ return STATS.filter(s=>statLevel(s.key) > 0).length; }
+// Only skills chosen through ordinary level-ups take a slot. Ones from boss rewards and
+// mystery boxes are extras: they don't open or close anything.
+function ownedSkillCount(){ return (player.skillSlots||[]).length; }
+function skillInSlots(key){ return (player.skillSlots||[]).indexOf(key) !== -1; }
 
 // One roll per card, by SKILL_RARITIES' weights.
 function rollSkillRarity(){
@@ -143,10 +146,10 @@ function renderLevelUpCards(picks){
       const art = stat.icon
         ? '<img src="'+STATS_DIR+encodeURIComponent(stat.icon)+'.png" alt="">'
         : '<div class="swatch"></div>';
-      // A skill not taken yet uses up one of the run's slots: say how many are left.
-      const chip = lvl === 0
-        ? t('lvl.kindNewSkill',{n: SKILL_SLOT_LIMIT - ownedSkillCount()})
-        : t('lvl.kindStat');
+      // A skill not in your slots yet uses one up: say how many are left. The boss reward is
+      // its own thing, and says so.
+      const chip = item.special ? t('lvl.kindReward')
+        : (!skillInSlots(stat.key) ? t('lvl.kindNewSkill',{n: SKILL_SLOT_LIMIT - ownedSkillCount()}) : t('lvl.kindStat'));
       const rarTag = rar.key === 'normal' ? '' : '<span class="rarTag">'+t('rar.'+rar.key)+'</span>';
       card.innerHTML =
         '<div class="cardHead"><span class="kindChip">'+chip+'</span>'+hotkey+'</div>'+
@@ -232,6 +235,16 @@ function levelUpArmed(){ return performance.now() >= levelUpArmedAt; }
 
 // Header and instruction bar, refreshed whenever the cards are.
 function updateLevelUpChrome(){
+  const special = levelUpMode === 'special';
+  // The reward screen: its own title and instruction, and no reroll — the cards are the prize.
+  const panel = document.getElementById('levelUpPanel');
+  if(panel) panel.classList.toggle('special', special);
+  const title = document.querySelector('#lvlHeader .lvlChip[data-i18n]');
+  if(title) title.textContent = t(special ? 'lvl.rewardTitle' : 'lvl.title');
+  const instr = document.querySelector('#lvlInstruction [data-i18n="lvl.instruction"]');
+  if(instr) instr.textContent = t(special ? 'lvl.rewardInstruction' : 'lvl.instruction');
+  const keys = document.getElementById('lvlKeysHint');
+  if(keys) keys.textContent = special ? '1 · 2 · 3' : t('lvl.keys');
   const lvl = document.getElementById('lvlNumber');
   if(lvl) lvl.textContent = t('hud.level',{n:player.level});
   const funds = document.getElementById('lvlFunds');
@@ -260,6 +273,7 @@ function updateRerollButton(){
   }
 }
 function doReroll(){
+  if(levelUpMode === 'special') return;   // nothing to reroll on a reward
   if(player.money<player.rerollCost) return;
   player.money -= player.rerollCost; player.rerollCost += 50;
   soundPurchase(); updateHUD();
@@ -276,21 +290,50 @@ function safeRenderLevelUpCards(picks){
   catch(e){ console.error('Level-up card render failed', e); return false; }
 }
 
+// 'normal', or 'special' while a boss guest's reward is on screen.
+let levelUpMode = 'normal';
+
 function maybeShowLevelUp(){
-  if(gameState==='playing' && player.pendingLevelUps>0){
-    player.pendingLevelUps--;
-    gameState='levelup'; document.exitPointerLock(); soundLevelUp();
-    const picks = pickThreeStats();
-    if(picks.length===0){ gameState='playing'; requestLock(); return; }
-    if(!safeRenderLevelUpCards(picks)){ gameState='playing'; requestLock(); return; }
-    levelUpEl.classList.remove('hidden');
-  }
+  if(gameState!=='playing') return;
+  if((player.pendingSpecial||0) <= 0 && player.pendingLevelUps <= 0) return;
+  gameState='levelup'; document.exitPointerLock(); soundLevelUp();
+  if(!showNextLevelUpScreen()){ gameState='playing'; requestLock(); return; }
+  levelUpEl.classList.remove('hidden');
 }
-// `mult` is the card's rarity multiplier: it scales what this one pick adds.
-function applyStatLevel(key, mult){
+
+// Whatever is queued next: a boss reward first (it's the thing just earned), then ordinary
+// level-ups. False when there's nothing left or the cards couldn't be built.
+function showNextLevelUpScreen(){
+  let picks;
+  if((player.pendingSpecial||0) > 0){
+    player.pendingSpecial--;
+    levelUpMode = 'special';
+    picks = pickSpecialStats();
+  } else if(player.pendingLevelUps > 0){
+    player.pendingLevelUps--;
+    levelUpMode = 'normal';
+    picks = pickThreeStats();
+  } else return false;
+  if(picks.length===0) return showNextLevelUpScreen();
+  return safeRenderLevelUpCards(picks);
+}
+
+// The boss reward: three different skills from all of them, every one legendary.
+function pickSpecialStats(){
+  const legendary = SKILL_RARITIES.find(r=>r.key==='legendary') || SKILL_RARITIES[SKILL_RARITIES.length-1];
+  return shuffle(STATS.slice()).slice(0, SPECIAL_LEVELUP_CHOICES)
+    .map(s=>({ ctype:'stat', stat:s, rarity:legendary, special:true }));
+}
+// `mult` is the card's rarity multiplier: it scales what this one pick adds. `extra` marks a
+// pick from a boss reward or a mystery box, which doesn't take one of the skill slots.
+function applyStatLevel(key, mult, extra){
   const def = STATS.find(s=>s.key===key);
   if(!def) return;
   const amount = def.perLevel*(mult || 1);
+  if(!extra){
+    if(!player.skillSlots) player.skillSlots = [];
+    if(!skillInSlots(key)) player.skillSlots.push(key);
+  }
   player.stats[key] = (player.stats[key]||0)+1;
   if(!player.statValues) player.statValues = {};
   player.statValues[key] = (player.statValues[key]||0) + amount;
@@ -299,19 +342,16 @@ function applyStatLevel(key, mult){
 }
 function rarityMult(key){ const r = SKILL_RARITIES.find(x=>x.key===key); return r ? r.mult : 1; }
 function chooseLevelUpCard(sel){
-  if(sel.ctype==='stat') applyStatLevel(sel.key, rarityMult(sel.rarity));
+  if(sel.ctype==='stat') applyStatLevel(sel.key, rarityMult(sel.rarity), levelUpMode === 'special');
   else if(sel.ctype==='weapon') applyWeaponLevel(sel.widx);
   else if(sel.ctype==='newWeapon') draftWeapon(sel.widx);
   else if(sel.ctype==='statEvolve') applyStatEvolution(sel.key);
   else applyEvolution(sel.widx);
-  if(player.pendingLevelUps>0){
-    player.pendingLevelUps--; soundLevelUp();
-    const picks = pickThreeStats();
-    if(picks.length===0 || !safeRenderLevelUpCards(picks)){
-      levelUpEl.classList.add('hidden'); gameState='playing'; requestLock(); return;
-    }
-    return;
+  if((player.pendingSpecial||0) > 0 || player.pendingLevelUps > 0){
+    soundLevelUp();
+    if(showNextLevelUpScreen()) return;
   }
+  levelUpMode = 'normal';
   levelUpEl.classList.add('hidden'); gameState='playing'; requestLock();
 }
 
@@ -475,6 +515,8 @@ function restartRun(){
   playerVelY = 0;
   playerAirborne = 0;
   playerJumping = false; playerJumpQueued = false;
+  levelUpMode = 'normal';
+  if(typeof resetMysteryBoxes === 'function') resetMysteryBoxes();
   if(typeof comboReset === 'function') comboReset();
   if(typeof weaponCancelReload === 'function') weaponCancelReload();
   boxState = 'idle';

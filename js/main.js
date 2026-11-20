@@ -35,6 +35,7 @@ function animate(){
     updateCombo(delta);
     updateStatPerks(delta);
     updateDirector(delta);
+    updateMysteryBoxes(delta);
     updateInteractables(delta, elapsed);
     updateSoap(delta, elapsed);
     updateWeaponAudio();

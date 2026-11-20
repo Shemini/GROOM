@@ -764,7 +764,11 @@ function killZombie(z, headshot){
   comboOnKill();
   const rewardMult = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult * comboRewardMult();
   addMoney((BASE_MONEY_REWARD+Math.floor(Math.random()*8)+(headshot?BASE_MONEY_HEADSHOT_BONUS:0))*rewardMult);
+  // A boss guest's special level-up is queued before its XP is paid, so the reward screen
+  // comes first and any ordinary level-ups the XP brings follow it.
+  if(z.miniBoss) player.pendingSpecial = (player.pendingSpecial||0) + 1;
   addXP((BASE_XP_REWARD+difficultyLevel()*1.4)*rewardMult*(z.miniBoss ? MINIBOSS_XP : 1));
+  if(z.miniBoss) maybeShowLevelUp();   // in case the XP alone didn't level you
   // Score is its own thing: the enemy's worth and the risk you took (Bloodlust), times a
   // combo multiplier far steeper than the gold one.
   const scoreWorth = (1+statValue('enemyIntensity')*0.15) * z.def.rewardMult * (z.elite ? R_ELITE_HP : 1) * (z.miniBoss ? MINIBOSS_HP : 1);

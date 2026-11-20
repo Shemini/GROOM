@@ -862,6 +862,26 @@ const SKILL_RARITIES = [
 const SKILL_SLOT_LIMIT = 4;
 // Times a skill must be picked before its evolution (STAT_EVOLUTIONS) is offered.
 const STAT_EVOLVE_AT = 5;
+// Killing a boss guest grants a special level-up: this many LEGENDARY cards, drawn from every
+// skill rather than only the four you've chosen. Taking one doesn't use up a skill slot.
+const SPECIAL_LEVELUP_CHOICES = 3;
+
+// MYSTERY BOXES — one appears every MYSTERY_BOX_EVERY seconds somewhere on the map, to reward
+// exploring. Walk into it for a random skill at a random rarity (better odds than a level-up;
+// like the boss reward, any skill, and no slot used). Gone after MYSTERY_BOX_LIFETIME.
+const MYSTERY_BOX_EVERY = 60;          // seconds
+const MYSTERY_BOX_LIFETIME = 60;       // seconds before it vanishes
+const MYSTERY_BOX_WARN = 15;           // seconds of blinking on the minimap before it goes
+const MYSTERY_BOX_WALL_CLEARANCE = 1.5;// metres it keeps from any wall or drop
+const MYSTERY_BOX_SCATTER = 6;         // metres it may wander from the nearest valid spot
+const MYSTERY_BOX_MIN_DIST = 30;       // never this close to the player when it appears
+// ...nor further than this, in a straight line: the streets make the walk a good deal longer,
+// and it has to be reachable within its lifetime (walking is 7.5 m/s).
+const MYSTERY_BOX_MAX_DIST = 200;
+const MINIMAP_BOX_BLINK_MAX = 6;       // flashes a second at the very end (from 1.5)
+const MYSTERY_BOX_PICKUP_RADIUS = 1.6; // metres
+// Rarity odds for a box's skill: no normals, and much more of the good stuff.
+const MYSTERY_BOX_RARITY_WEIGHTS = { normal:0, uncommon:45, rare:32, epic:16, legendary:7 };
 
 // Critical hits are a flat multiplier now: the old BRUTALITY stat only paid off once
 // PRECISIÓN had been taken, which made it a trap pick most of the time.
@@ -964,6 +984,13 @@ const MINIMAP_CONE_BLOCK = 3;        // block size of the cone, matching the map
 // piece of UI rather than a marker plus a separate glow.
 const MINIMAP_CONE_COLOR = 'rgba(143,174,58,0.30)';
 const MINIMAP_GUITAR_COLOR = '#ffc46b';
+// Mystery boxes: bigger than an enemy and in their own colour. They pop in large, blink, and
+// settle; in their last seconds they blink faster and faster.
+const MINIMAP_BOX_COLOR = '#c58cff';
+const MINIMAP_BOX_OUTLINE = '#20180c';
+const MINIMAP_BOX_SIZE = 8;
+const MINIMAP_BOX_POP_SIZE = 18;
+const MINIMAP_BOX_POP_TIME = 1.4;      // seconds the arrival pop lasts
 const MINIMAP_V_FLIP = false; // flip if markers end up vertically mirrored vs. the real map
 let currentInteractable = null;
 let pendingSwapTarget = null;
@@ -1041,6 +1068,8 @@ const player = {
   ammoByWeapon: { 0: {mag:1, reserve:0}, 1: {mag:12, reserve:72} },  // slot 0 is melee: a placeholder record keeps every ammo lookup valid
   currentWeapon: STARTER_INDEX,
   reloading: false, reloadUntil: 0, lastReloadStart: 0, lastShotTime: -999,
+  skillSlots: [],       // skills chosen through ordinary level-ups: the run's SKILL_SLOT_LIMIT
+  pendingSpecial: 0,    // boss-guest rewards waiting to be shown
   stats: {},            // stat key -> times picked
   statValues: {},       // stat key -> accumulated value (rarity makes each pick worth a different amount)
   level: 1, xp: 0, xpToNext: 0, pendingLevelUps: 0, rerollCost: 50,
