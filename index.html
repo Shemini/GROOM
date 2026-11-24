@@ -1033,5 +1033,10 @@
 <script src="js/audio.js"></script>
 <script src="js/weaponaudio.js"></script>
 <script src="js/main.js"></script>
+<!-- Wedding site only: when GROOM runs at mariaysabas.es/groom/, load the site's login so
+     scores are saved to the player's account. On any other host (Netlify, local) nothing loads. -->
+<script type="module">
+  if(location.pathname.startsWith('/groom/')) import('/auth.js').catch(()=>{});
+</script>
 </body>
 </html>

@@ -66,6 +66,10 @@ function showRunSummary(){
   // Counts up rather than appearing, so the number lands.
   const el2 = document.getElementById('runScore');
   const target = runFinalScore(), t0 = performance.now();
+
+  // On the wedding site (mariaysabas.es/groom/) the run is saved to the player's account.
+  // window.weddingScores only exists there; elsewhere this does nothing.
+  if(window.weddingScores) window.weddingScores.save('groom', target, false);
   const tick = ()=>{
     const k = Math.min(1, (performance.now() - t0)/1400);
     el2.textContent = fmt(target * (1 - Math.pow(1-k, 3)));
